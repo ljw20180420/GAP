@@ -5,50 +5,10 @@
 
 struct Track : Graph
 {
-    std::vector<EdgeLocal *> locals;
-    std::vector<EdgeGlobal *> globals;
-    std::set<std::string> node_names;
     MonoDeque<Dot *> sources;
 
     Track(int argc, char **argv, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel) : Graph(argc, argv, file2seq, file2browheel)
     {
-        for (auto &node : nodes)
-            node_names.emplace(node.name);
-        int max_n = 0;
-        for (auto &edge : local_crosses)
-        {
-            if (edge.n > max_n)
-                max_n = edge.n;
-            if (max_n >= locals.size())
-                locals.resize(max_n + 1, NULL);
-            locals[edge.n] = &edge;
-        }
-        for (auto &edge : local_circuits)
-        {
-            if (edge.n > max_n)
-                max_n = edge.n;
-            if (max_n >= locals.size())
-                locals.resize(max_n + 1, NULL);
-            locals[edge.n] = &edge;
-        }
-        for (auto &edge : global_crosses)
-        {
-            if (edge.n > max_n)
-                max_n = edge.n;
-            if (max_n >= globals.size())
-                globals.resize(max_n + 1, NULL);
-            globals[edge.n] = &edge;
-        }
-        for (auto &edge : global_circuits)
-        {
-            if (edge.n > max_n)
-                max_n = edge.n;
-            if (max_n >= globals.size())
-                globals.resize(max_n + 1, NULL);
-            globals[edge.n] = &edge;
-        }
-        locals.resize(max_n + 1, NULL);
-        globals.resize(max_n + 1, NULL);
     }
 
     void ReadTrack(std::deque<std::string> mg_files, std::deque<std::string> read_files, std::string run_name, int64_t max_seq, int64_t max_track)
@@ -144,96 +104,105 @@ struct Track : Graph
         int64_t track_num = 0;
         while (!path.empty() && track_num < max_track)
         {
-            if (path.front()->s_sz == 0)
+            if (path[0]->s_sz == 0)
             {
-                fout_track << Oname << '\t' << ++track_num << '\t' << path.size() << '\n';
-                std::string node_name = nodes[-(*std::next(path.begin()))->n - 4].name;
-                for (auto iter = path.begin(); iter != path.end(); ++iter)
+                int node_n = path[1]->n;
+                fout_track << Oname << '\t' << ++track_num << '\t' << path.size() << '\n' << node_n << '\t' << path[0]->s << '\t' << path[0]->w << '\t' << path[0]->val << '\n';
+                for (int i = 1; i<path.size(); ++i)
                 {
-                    if ((*iter)->n >= 0)
+                    if (path[i]->n >= 0)
                     {
-                        if (globals[(*iter)->n])
+                        if (edges[path[i]->n]->global)
                         {
-                            int n = (*iter)->n;
-                            auto iter_s = iter;
+                            int n = path[i]->n;
+                            int is = i;
                             do
                             {
-                                ++iter;
-                            } while (iter != path.end() && (*iter)->n == n);
-                            int lambda = (*std::prev(iter))->lambda;
-                            int64_t s = (*std::prev(iter))->s, ls;
+                                ++i;
+                            } while (i < path.size() && path[i]->n == n);
+                            int lambda = path[i-1]->lambda;
+                            int64_t s = path[i-1]->s, ls;
                             std::string name;
                             do
                             {
-                                std::tie(name, ls) = globals[(*iter_s)->n]->browheel.get_axis(s + (*iter_s)->lambda - lambda);
-                                fout_track << globals[(*iter_s)->n]->name << ':' << name << '\t' << ls << '\t' << (*iter_s)->w << '\t' << (*iter_s)->val << '\n';
-                                ++iter_s;
-                            } while (iter_s != iter);
-                            --iter;
+                                std::tie(name, ls) = static_cast<EdgeGlobal *>(edges[path[is]->n])->browheel.get_axis(s + path[is]->lambda - lambda);
+                                fout_track << path[is]->n << '\t' << name << '\t' << ls << '\t' << path[is]->w << '\t' << path[is]->val << '\n';
+                                ++is;
+                            } while (is != i);
+                            --i;
                         }
                         else
-                        {
-                            fout_track << locals[(*iter)->n]->name << ':' << locals[(*iter)->n]->nameseq.name << '\t' << (*iter)->s << '\t' << (*iter)->w << '\t' << (*iter)->val << '\n';
-                        }
+                            fout_track << path[i]->n << '\t' << path[i]->s << '\t' << path[i]->w << '\t' << path[i]->val << '\n';
                     }
                     else
                     {
-                        if (iter != path.begin())
-                        {
-                            int n = (*std::prev(iter))->n;
-                            if (n >= 0)
-                                node_name = locals[n] ? locals[n]->head->name : globals[n]->head->name;
-                        }
-                        fout_track << node_name << '\t' << (*iter)->s << '\t' << (*iter)->w << '\t' << (*iter)->val << '\n';
+                        int n = path[i-1]->n;
+                        if (n >= 0)
+                            node_n = Dot::nidx_trans(edges[n]->head->n);
+                        fout_track << node_n << '\t' << path[i]->s << '\t' << path[i]->w << '\t' << path[i]->val << '\n';
                     }
                 }
 
-                std::deque<std::array<char, 3>> align;
-                for (auto it1 = path.begin(), it2 = std::next(it1); it2 != std::prev(path.end()); ++it1, ++it2)
+                std::string align_query, align_mid, align_ref;
+                for (int i = 1; i < path.size() - 1; ++i)
                 {
-                    if ((*it2)->w > (*it1)->w && ((*it2)->s > (*it1)->s || ((*it2)->n == (*it1)->n && (*it2)->n >= 0 && globals[(*it2)->n] && (*it2)->lambda > (*it1)->lambda)))
+                    if (path[i]->w > path[i - 1]->w && (path[i]->s > path[i - 1]->s || (path[i]->n == path[i - 1]->n && path[i]->n >= 0 && edges[path[i]->n]->global && path[i]->lambda > path[i - 1]->lambda)))
                     {
                         char c;
-                        if (!globals[(*it2)->n])
-                            c = locals[(*it2)->n]->nameseq.seq[(*it2)->s - 1];
+                        if (!edges[path[i]->n]->global)
+                            c = static_cast<EdgeLocal *>(edges[path[i]->n])->nameseq.seq[path[i]->s - 1];
                         else
                         {
-                            auto &browheel = globals[(*it2)->n]->browheel;
-                            c = BroWheel::int2base[browheel.sequence(browheel.sequence.size() - 1 - (*it2)->s)];
+                            auto &browheel = static_cast<EdgeGlobal *>(edges[path[i]->n])->browheel;
+                            c = BroWheel::int2base[browheel.sequence(browheel.sequence.size() - 1 - path[i]->s)];
                         }
-                        align.emplace_back(std::array<char, 3>{O[(*it2)->w - 1], '|', c});
+                        align_query.push_back(O[path[i]->w - 1]);
+                        align_mid.push_back('|');
+                        align_ref.push_back(c);
                     }
                     else
                     {
-                        for (int w = (*it1)->w; w < (*it2)->w; ++w)
-                            align.emplace_back(std::array<char, 3>{O[w], ' ', '-'});
-                        int n = std::max((*it1)->n, (*it2)->n);
-                        if (n >= 0 && std::min((*it1)->n, (*it2)->n) < 0 && !locals[n])
-                            continue;
-                        if (n >= 0)
+                        int sz = path[i]->w - path[i - 1]->w;
+                        align_query.append(O, path[i - 1]->w, sz);
+                        align_mid.append(sz, ' ');
+                        align_ref.append(sz, '-');
+                        
+                        if (path[i - 1]->n < 0 && path[i]->n >= 0)
                         {
-                            if (locals[n])
+                            align_query.push_back(' ');
+                            align_mid.push_back(' ');
+                            align_ref.push_back(' ');
+                        }
+                        
+                        int n = std::max(path[i - 1]->n, path[i]->n);
+                        if (n >= 0 && (std::min(path[i - 1]->n, path[i]->n) >= 0 || !edges[n]->global))
+                        {
+                            if (!edges[n]->global)
                             {
-                                int sup = (*it2)->n < 0 ? locals[n]->nameseq.seq.size() : (*it2)->s;
-                                for (int s = (*it1)->s; s < sup; ++s)
-                                    align.emplace_back(std::array<char, 3>{'-', ' ', locals[n]->nameseq.seq[s]});
+                                EdgeLocal *local = static_cast<EdgeLocal *>(edges[n]);
+                                int sz = (path[i]->n < 0 ? local->nameseq.seq.size() : path[i]->s) - (path[i - 1]->n < 0 ? 0 : path[i - 1]->s);
+                                align_query.append(sz, '-');
+                                align_mid.append(sz, ' ');
+                                align_ref.append(local->nameseq.seq, path[i - 1]->s, sz);
                             }
                             else
                             {
-                                auto &browheel = globals[n]->browheel;
-                                for (int64_t s = (*it2)->s + (*it1)->lambda - (*it2)->lambda + 1; s <= (*it2)->s; ++s)
-                                    align.emplace_back(std::array<char, 3>{'-', ' ', BroWheel::int2base[browheel.sequence(browheel.sequence.size() - 1 - s)]});
+                                auto &browheel = static_cast<EdgeGlobal *>(edges[n])->browheel;
+                                align_query.push_back('-');
+                                align_mid.push_back(' ');
+                                align_ref.push_back(BroWheel::int2base[browheel.sequence(browheel.sequence.size() - 1 - path[i]->s)]);
                             }
+                        }
+                        if (path[i - 1]->n >= 0 && path[i]->n < 0)
+                        {
+                            align_query.push_back(' ');
+                            align_mid.push_back(' ');
+                            align_ref.push_back(' ');
                         }
                     }
                 }
-                fout_align << Oname << '\t' << track_num << '\n';
-                for (int i = 0; i < 3; ++i)
-                {
-                    for (auto &ali : align)
-                        fout_align << ali[i];
-                    fout_align << '\n';
-                }
+                fout_align << Oname << '\t' << track_num << '\n' << align_query << '\n' << align_mid << '\n' << align_ref << '\n';
+
                 Dot *dot_parent = *std::next(path.begin());
                 while (path.front() == sources[dot_parent->fs + dot_parent->s_sz - 1])
                 {
@@ -263,18 +232,22 @@ struct Track : Graph
     {
         std::ifstream fin(run_name + ".trk");
         std::ofstream fout(run_name + ".ext");
-        std::string Oname;
+        std::string Oname, line;
         int64_t track_num;
         int64_t track_length;
         while (true)
         {
-            fin >> Oname >> track_num >> track_length;
-            while (fin.good() && track_num > max_extract)
+            do
             {
+                std::getline(fin, line);
+                std::istringstream iss(line);
+                std::getline(iss, Oname, '\t');
+                iss >> track_num >> track_length;
+                if (!fin.good() || track_num <= max_extract)
+                    break;
                 for (int64_t i = 0; i < track_length; ++i)
-                    std::getline(fin, Oname);
-                fin >> Oname >> track_num >> track_length;
-            }
+                    std::getline(fin, line);
+            } while (true);
             if (!fin.good())
                 break;
             fout << Oname << '\t' << track_num << '\n';
@@ -282,24 +255,39 @@ struct Track : Graph
                 continue;
             else
             {
-                std::string name;
-                int w;
-                int64_t s;
-                double val;
-                fin >> name >> s >> w >> val;
+
+                int np, wp, n, w;
+                int64_t sp, s;
+                double valp, val;
+                std::string namep, name;
+                fin >> n >> s >> w >> val >> std::ws;
                 for (int64_t i = 1; i < track_length; ++i)
                 {
-                    std::string namep(std::move(name));
-                    int wp = w;
-                    int64_t sp = s;
-                    double valp = val;
-                    fin >> name >> s >> w >> val;
-                    if (namep != name)
+                    np = n;
+                    wp = w;
+                    sp = s;
+                    valp = val;
+                    namep.swap(name);
+                    fin >> n;
+                    if (n >= 0 && edges[n]->global)
+                        fin >> name;
+                    fin >> s >> w >> val >> std::ws;
+                    if (np != n)
                     {
-                        if (node_names.find(namep) != node_names.end())
-                            fout << name << '\t' << s << '\t' << w << '\t' << val << '\n';
+                        if (np < 0)
+                        {
+                            fout << edges[n]->name;
+                            if (edges[n]->global)
+                                fout << ':' << name;
+                            fout << '\t' << s << '\t' << w << '\t' << val << '\n';
+                        }
                         else
-                            fout << namep << '\t' << sp << '\t' << wp << '\t' << valp << '\n';
+                        {
+                            fout << edges[np]->name;
+                            if (edges[np]->global)
+                                fout << ':' << namep;
+                            fout << '\t' << sp << '\t' << wp << '\t' << valp << '\n';
+                        }
                     }
                 }
             }

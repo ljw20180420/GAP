@@ -9,6 +9,7 @@
 #include <typeinfo>
 #include <exception>
 #include <unistd.h>
+#include <ctime>
 
 struct Parallel_Align
 {
@@ -257,8 +258,14 @@ void test_Align(std::string dir, std::string run_name, std::string argfile, int 
     Parallel_Align parallel_align(argfile, run_name);
     // parallel_align.do_index(150000000, 3, true);  
     parallel_align.load_index();
-    // parallel_align.single_align(100); // st
-    parallel_align.parallel_align(threads1_sz, 100); // mt
+    // time_t time_tic = time(0);
+    // // parallel_align.single_align(100); // st
+    // parallel_align.parallel_align(threads1_sz, 100); // mt
+    // std::cerr << "align time is " << time(0) - time_tic << '\n';
+
+    for (size_t i = 0; i < threads1_sz; ++i)
+        parallel_align.mg_files.emplace_back(run_name + std::to_string(i) + ".mg");
+
     parallel_align.track(INT64_MAX, max_track, max_extract);
 }
 
@@ -279,11 +286,23 @@ void run_sim(std::string sim_dir, std::string run_name, int threads1_sz, int64_t
 
 int main(int argc, char **argv)
 {
-    // test_GenerateRandomReads("./test_RandomReads.bak", "argfile");
-    test_Align("./test_RandomReads.bak", "random", "argfile", 24, 1, 1);
+    // test_GenerateRandomReads("./test_RandomReads", "argfile");
+    test_Align("./test_RandomReads", "random", "argfile", 24, 1, 1);
 
-    // test_Align("./test_CRISPR", "CRISPR", "argfile", 3, 1, 1);
-    // test_Align("./test_CRISPR_cross", "CRISPR", "argfile", 3, 1, 1);
+    
+    // test_Align("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_time/test_CRISPR_5", "CRISPR", "argfile", 6, 1, 1);
+    
+    // test_Align("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_time/test_CRISPR_10", "CRISPR", "argfile", 6, 1, 1);
+
+    // test_Align("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_time/test_CRISPR_15", "CRISPR", "argfile", 6, 1, 1);
+
+    // test_Align("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_time/test_CRISPR_20", "CRISPR", "argfile", 6, 1, 1);
+
+    // test_Align("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_time/test_CRISPR_25", "CRISPR", "argfile", 6, 1, 1);
+
+    // test_Align("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_CRISPR_cross", "CRISPR", "argfile", 6, 1, 1);
+
+    // test_Align("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/zyj/zhengjin/4C_fold/run", "4C", "argfile", 12, 1, 1);
 
     // run_sim("./test_single_cut", "sim", 12, 10, 10);
     // run_sim("./test_double_cut", "sim", 12, 10, 10);
