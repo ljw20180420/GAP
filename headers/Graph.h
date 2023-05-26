@@ -2,26 +2,11 @@
 #define GRAPH_H
 
 #include <stack>
-#include <unordered_set>
-#include <unordered_map>
 #include <cfloat>
-#include <sstream>
 #include "BroWheel.h"
-#include <forward_list>
-#include <list>
+#include "Memory.h"
 
 constexpr static const double inf = std::numeric_limits<double>::infinity();
-
-struct Dot // cannot use constructor because on Memory
-{
-    int n; // n determines the type of Dot
-    size_t s;
-    int w;
-    double val;
-    Dot **sources; // apply on memory
-    int s_sz;      // s_sz<0 means visited
-    size_t id;
-};
 
 struct Node;
 
@@ -40,12 +25,12 @@ struct Edge
     Node *tail;
     Node *head;
 
-    Edge(std::string name_, std::vector<double> &gamma_, double ve_, double ue_, double vf_, double uf_, double T_, int n_)
+    Edge(std::string name_, double gamma_[7][7], double ve_, double ue_, double vf_, double uf_, double T_, int n_)
     {
         name = name_;
-        for (int i = 0, k = 0; i <= sigma; ++i)
-            for (int j = 0; j <= sigma; ++j, ++k)
-                gamma[i][j] = gamma_[k];
+        for (int i = 0; i <= sigma; ++i)
+            for (int j = 0; j <= sigma; ++j)
+                gamma[i][j] = gamma_[i][j];
         ve = ve_;
         ue = ue_;
         vf = vf_;
@@ -63,7 +48,7 @@ struct EdgeLocal : Edge
     double vfm;
     double ufm;
 
-    EdgeLocal(std::string name_, std::vector<double> &gamma_, double ve_, double ue_, double vf_, double uf_, double T_, int n_, std::string &seq_, double vfp_, double ufp_, double vfm_, double ufm_)
+    EdgeLocal(std::string name_, double gamma_[7][7], double ve_, double ue_, double vf_, double uf_, double T_, int n_, std::string &seq_, double vfp_, double ufp_, double vfm_, double ufm_)
         : Edge(name_, gamma_, ve_, ue_, vf_, uf_, T_, n_), seq(seq_)
     {
         vfp = vfp_;
@@ -73,11 +58,29 @@ struct EdgeLocal : Edge
     }
 };
 
+struct Dot // cannot use constructor because on Memory
+{
+    int n; // n determines the type of Dot
+    size_t s;
+    int w;
+    double val;
+    Dot **sources; // apply on memory
+    int s_sz;      // s_sz<0 means visited
+    size_t id;
+};
+
 struct EdgeLocalCross : EdgeLocal
 {
     Dot **E;
     Dot **F;
     Dot **G;
+
+    EdgeLocalCross(EdgeLocal &edge)
+    : EdgeLocal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.seq, edge.vfp, edge.ufp, edge.vfm, edge.ufm)
+    {
+        tail=edge.tail;
+        head=edge.head;
+    }
 };
 
 struct EdgeLocalCircuit : EdgeLocal
@@ -89,16 +92,54 @@ struct EdgeLocalCircuit : EdgeLocal
     Dot **G;
     Dot **D0;
     Dot **DX;
+
+    EdgeLocalCircuit(EdgeLocal &edge)
+    : EdgeLocal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.seq, edge.vfp, edge.ufp, edge.vfm, edge.ufm)
+    {
+        tail=edge.tail;
+        head=edge.head;
+    }
+};
+
+struct TrackNode
+{
+    std::list<TrackNode>::iterator itp;
+    std::list<TrackNode>::iterator itcs[5];
+    Dot *E;
+    Dot *F;
+    Dot *G;
+    int tau = 0;
+
+    TrackNode(Memory *memory_, std::list<TrackNode>::iterator itp_, std::list<TrackNode>::iterator itc_, int n, int s, int W)
+    {
+        itp = itp_;
+        for (int i = 0; i < 5; ++i)
+            itcs[i] = itc_;
+        alloc_initial(memory_, E, n, s, W);
+        alloc_initial(memory_, F, n, s, W);
+        alloc_initial(memory_, G, n, s, W);
+    }
+
+    void alloc_initial(Memory *memory_, Dot *&ptr, int n, int s, int W)
+    {
+        ptr = memory_->heap_alloc<Dot>(W+1);
+        for (int w = 0; w <= W; ++w)
+        {
+            ptr[w].n = n;
+            ptr[w].s = s;
+            ptr[w].w = w;
+        }
+    }
 };
 
 struct EdgeGlobal : Edge
 {
     BroWheel &browheel;
     std::vector<double> C;
-    std::vector<std::list<std::pair<size_t,int>>> Cdelta;
+    std::vector<std::list<std::pair<size_t, int>>> Cdelta;
     std::list<TrackNode> tracknodes;
 
-    EdgeGlobal(std::string name_, std::vector<double> &gamma_, double ve_, double ue_, double vf_, double uf_, double T_, int n_, BroWheel &browheel_)
+    EdgeGlobal(std::string name_, double gamma_[7][7], double ve_, double ue_, double vf_, double uf_, double T_, int n_, BroWheel &browheel_)
         : Edge(name_, gamma_, ve_, ue_, vf_, uf_, T_, n_), browheel(browheel_)
     {
     }
@@ -106,7 +147,15 @@ struct EdgeGlobal : Edge
 
 struct EdgeGlobalCross : EdgeGlobal
 {
+    EdgeGlobalCross(EdgeGlobal &edge)
+    : EdgeGlobal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.browheel)
+    {
+        tail=edge.tail;
+        head=edge.head;
+    }
 };
+
+struct SNC;
 
 struct EdgeGlobalCircuit : EdgeGlobal
 {
@@ -115,6 +164,13 @@ struct EdgeGlobalCircuit : EdgeGlobal
 
     Dot *G;
     Dot **D0;
+
+    EdgeGlobalCircuit(EdgeGlobal &edge)
+    : EdgeGlobal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.browheel)
+    {
+        tail=edge.tail;
+        head=edge.head;
+    }
 };
 
 struct Node
@@ -133,8 +189,8 @@ struct Node
     Dot Abar;
     Dot **A;
     Dot *B;
-    std::vector<std::map<EdgeGlobalCross*,std::list<std::pair<size_t,int>>>> AdeltaCross;
-    std::vector<std::map<EdgeGlobalCircuit*,std::list<std::pair<size_t,int>>>> AdeltaCircuit;
+    std::vector<std::map<EdgeGlobalCross *, std::list<std::pair<size_t, int>>>> AdeltaCross;
+    std::vector<std::map<EdgeGlobalCircuit *, std::list<std::pair<size_t, int>>>> AdeltaCircuit;
 
     Node(std::string name_, double ve_, double ue_)
     {
@@ -160,10 +216,10 @@ struct Graph
     std::vector<Node> nodes;
     std::vector<Node *> roots;
     std::vector<Node *> targets;
-    std::vector<EdgeLocalCross> local_crosses;
-    std::vector<EdgeLocalCircuit> local_circuits;
-    std::vector<EdgeGlobalCross> global_crosses;
-    std::vector<EdgeGlobalCircuit> global_circuits;
+    std::list<EdgeLocalCross> local_crosses;
+    std::list<EdgeLocalCircuit> local_circuits;
+    std::list<EdgeGlobalCross> global_crosses;
+    std::list<EdgeGlobalCircuit> global_circuits;
 
     std::list<SCC> sccs;
 
@@ -172,16 +228,19 @@ struct Graph
         for (int i = 1; i < argc; ++i)
             if (!strcmp(argv[i], "--nodes"))
             {
-                while (argv[++i][0] != '-')
-                    nodes.emplace_back(argv[i], std::stod(argv[++i]), std::stod(argv[++i]));
+                while (++i < argc && (strlen(argv[i]) < 2 || argv[i][0] != '-' || argv[i][1] != '-'))
+                {
+                    nodes.emplace_back(argv[i], str2double(argv[i + 1]), str2double(argv[i + 2]));
+                    i += 2;
+                }
                 --i;
             }
-        std::vector<EdgeLocal> locals;
-        std::vector<EdgeGlobal> globals;
+        std::list<EdgeLocal> locals;
+        std::list<EdgeGlobal> globals;
         for (int i = 1, n = 0; i < argc; ++i)
-            if (!strcmp(argv[i],"--roots"))
+            if (!strcmp(argv[i], "--roots"))
             {
-                while (argv[++i][0] != '-')
+                while (++i < argc && (strlen(argv[i]) < 2 || argv[i][0] != '-' || argv[i][1] != '-'))
                     for (auto &node : nodes)
                         if (node.name == argv[i])
                         {
@@ -190,22 +249,35 @@ struct Graph
                         }
                 --i;
             }
-            else if (!strcmp(argv[i],"--targets"))
+            else if (!strcmp(argv[i], "--targets"))
             {
-                while (argv[++i][0] != '-')
+                while (++i < argc && (strlen(argv[i]) < 2 || argv[i][0] != '-' || argv[i][1] != '-'))
                     for (auto &node : nodes)
                         if (node.name == argv[i])
                             targets.push_back(&node);
                 --i;
             }
-            else if (!strcmp(argv[i],"--locals"))
+            else if (!strcmp(argv[i], "--locals"))
             {
-                while (argv[++i][0] != '-')
+                while (++i < argc && (strlen(argv[i]) < 2 || argv[i][0] != '-' || argv[i][1] != '-'))
                 {
-                    std::vector<double> gamma_;
-                    for (int k = 0; k < (sigma + 1) * (sigma + 1); ++k)
-                        gamma_.push_back(std::stod(argv[i++]));
-                    locals.emplace_back(argv[i], gamma_, std::stod(argv[++i]), std::stod(argv[++i]), std::stod(argv[++i]), std::stod(argv[++i]), std::stod(argv[++i]), n++, file2seq[argv[++i]], std::stod(argv[++i]), std::stod(argv[++i]), std::stod(argv[++i]), std::stod(argv[++i]));
+                    double gamma_[7][7]={
+                        {-inf, -inf, -inf, -inf, -inf, -inf, -inf},
+                        {-inf, -inf, -inf, -inf, -inf, -inf, -inf},
+                        {-inf, -inf, -inf, -inf, -inf, -inf, -inf},
+                        {-inf, -inf, -inf, 1, -3, -3, -3},
+                        {-inf, -inf, -inf, -3, 1, -3, -3},
+                        {-inf, -inf, -inf, -3, -3, 1, -3},
+                        {-inf, -inf, -inf, -3, -3, -3, 1}
+                    };
+                    if (!strcmp(argv[i],"default_gamma"))
+                        ++i;
+                    else
+                        for (int a=0; a<7; ++a)
+                            for (int b=0; b<7; ++b)
+                                gamma_[a][b]=str2double(argv[i++]);
+                    locals.emplace_back(argv[i], gamma_, str2double(argv[i + 1]), str2double(argv[i + 2]), str2double(argv[i + 3]), str2double(argv[i + 4]), str2double(argv[i + 5]), n++, file2seq[argv[i + 6]], str2double(argv[i + 7]), str2double(argv[i + 8]), str2double(argv[i + 9]), str2double(argv[i + 10]));
+                    i += 10;
                     for (auto &node : nodes)
                     {
                         if (node.name == argv[i + 1])
@@ -217,14 +289,27 @@ struct Graph
                 }
                 --i;
             }
-            else if (!strcmp(argv[i],"--globals"))
+            else if (!strcmp(argv[i], "--globals"))
             {
-                while (argv[++i][0] != '-')
+                while (++i < argc && (strlen(argv[i]) < 2 || argv[i][0] != '-' || argv[i][1] != '-'))
                 {
-                    std::vector<double> gamma_;
-                    for (int k = 0; k < (sigma + 1) * (sigma + 1); ++k)
-                        gamma_.push_back(std::stod(argv[i++]));
-                    globals.emplace_back(argv[i], gamma_, std::stod(argv[++i]), std::stod(argv[++i]), std::stod(argv[++i]), std::stod(argv[++i]), std::stod(argv[++i]), n++, file2browheel[argv[++i]]);
+                    double gamma_[7][7]={
+                        {-inf, -inf, -inf, -inf, -inf, -inf, -inf},
+                        {-inf, -inf, -inf, -inf, -inf, -inf, -inf},
+                        {-inf, -inf, -inf, -inf, -inf, -inf, -inf},
+                        {-inf, -inf, -inf, 1, -3, -3, -3},
+                        {-inf, -inf, -inf, -3, 1, -3, -3},
+                        {-inf, -inf, -inf, -3, -3, 1, -3},
+                        {-inf, -inf, -inf, -3, -3, -3, 1}
+                    };
+                    if (!strcmp(argv[i],"default_gamma"))
+                        ++i;
+                    else
+                        for (int a=0; a<7; ++a)
+                            for (int b=0; b<7; ++b)
+                                gamma_[a][b]=str2double(argv[i++]);
+                    globals.emplace_back(argv[i], gamma_, str2double(argv[i + 1]), str2double(argv[i + 2]), str2double(argv[i + 3]), str2double(argv[i + 4]), str2double(argv[i + 5]), n++, file2browheel[argv[i + 6]]);
+                    i += 6;
                     for (auto &node : nodes)
                     {
                         if (node.name == argv[i + 1])
@@ -262,38 +347,55 @@ struct Graph
         }
     }
 
-    void DeepFirstLine(Node *node, bool reverse, std::vector<bool> &visit, std::vector<EdgeLocal> &locals, std::vector<EdgeGlobal> &globals)
+    double str2double(const char *str)
     {
-        for (int i = 0; i < locals.size() + globals.size(); ++i)
-        {
-            Edge *edge = i < locals.size() ? (Edge *)&locals[i] : (Edge *)&globals[i - locals.size()];
-            if (reverse ? edge->head == node : edge->tail == node)
-                if (!visit[edge->n])
-                {
-                    visit[edge->n] = true;
-                    DeepFirstLine(reverse ? edge->tail : edge->head, reverse, visit, locals, globals);
-                }
-        }
+        if (!strcmp(str, "inf"))
+            return inf;
+        else if (!strcmp(str, "-inf"))
+            return -inf;
+        else
+            return std::stod(str);
     }
 
-    void RemoveEdge(std::vector<Node *> &nodes, bool reverse, std::vector<bool> &visit, std::vector<EdgeLocal> &locals, std::vector<EdgeGlobal> &globals)
+    void DeepFirstLine(Node *node, bool reverse, std::vector<bool> &visit, std::list<EdgeLocal> &locals, std::list<EdgeGlobal> &globals)
     {
-        for (int i = 0; i < locals.size() + globals.size(); ++i)
-        {
-            Edge *edge = i < locals.size() ? (Edge *)&locals[i] : (Edge *)&globals[i - locals.size()];
-            visit[edge->n] = false;
-        }
+        for (auto &edge : locals)
+            if (reverse ? edge.head == node : edge.tail == node)
+                if (!visit[edge.n])
+                {
+                    visit[edge.n] = true;
+                    DeepFirstLine(reverse ? edge.tail : edge.head, reverse, visit, locals, globals);
+                }
+        for (auto &edge : globals)
+            if (reverse ? edge.head == node : edge.tail == node)
+                if (!visit[edge.n])
+                {
+                    visit[edge.n] = true;
+                    DeepFirstLine(reverse ? edge.tail : edge.head, reverse, visit, locals, globals);
+                }
+    }
+
+    void RemoveEdge(std::vector<Node *> &nodes, bool reverse, std::vector<bool> &visit, std::list<EdgeLocal> &locals, std::list<EdgeGlobal> &globals)
+    {
+        for (auto &edge : locals)
+            visit[edge.n] = false;
+        for (auto &edge : globals)
+            visit[edge.n] = false;
         for (auto &node : nodes)
             DeepFirstLine(node, reverse, visit, locals, globals);
-        for (auto iter = locals.begin(); iter != locals.end(); ++iter)
+        for (auto iter = locals.begin(); iter != locals.end();)
             if (!visit[iter->n])
-                locals.erase(iter);
-        for (auto iter = globals.begin(); iter != globals.end(); ++iter)
+                iter=locals.erase(iter);
+            else
+                ++iter;
+        for (auto iter = globals.begin(); iter != globals.end();)
             if (!visit[iter->n])
-                globals.erase(iter);
+                iter=globals.erase(iter);
+            else
+                ++iter;
     }
 
-    void DeepFirst(Node *node, std::stack<Node *> &stack, int &id, std::vector<bool> &visit, std::vector<bool> &in_stack, std::vector<int> &disc, std::vector<int> &low, std::vector<EdgeLocal> &locals, std::vector<EdgeGlobal> &globals)
+    void DeepFirst(Node *node, std::stack<Node *> &stack, int &id, std::vector<bool> &visit, std::vector<bool> &in_stack, std::vector<int> &disc, std::vector<int> &low, std::list<EdgeLocal> &locals, std::list<EdgeGlobal> &globals)
     {
         int n = node - nodes.data();
         visit[n] = true;
@@ -302,21 +404,29 @@ struct Graph
         ++id;
         stack.push(node);
         in_stack[n] = true;
-        for (int i = 0; i < locals.size() + globals.size(); ++i)
-        {
-            Edge *edge = i < locals.size() ? (Edge *)&locals[i] : (Edge *)&globals[i - locals.size()];
-            if (edge->tail == node)
+        for (auto &edge : locals)
+            if (edge.tail == node)
             {
-                if (!visit[edge->head - nodes.data()])
+                if (!visit[edge.head - nodes.data()])
                 {
-                    DeepFirst(edge->head, stack, id, visit, in_stack, disc, low, locals, globals);
-                    low[n] = low[n] < low[edge->head - nodes.data()] ? low[n] : low[edge->head - nodes.data()];
+                    DeepFirst(edge.head, stack, id, visit, in_stack, disc, low, locals, globals);
+                    low[n] = low[n] < low[edge.head - nodes.data()] ? low[n] : low[edge.head - nodes.data()];
                 }
-                else if (in_stack[edge->head - nodes.data()])
-                    low[n] = low[n] < disc[edge->head - nodes.data()] ? low[n] : disc[edge->head - nodes.data()];
+                else if (in_stack[edge.head - nodes.data()])
+                    low[n] = low[n] < disc[edge.head - nodes.data()] ? low[n] : disc[edge.head - nodes.data()];
             }
-        }
-        if (disc[n] = low[n])
+        for (auto &edge : globals)
+            if (edge.tail == node)
+            {
+                if (!visit[edge.head - nodes.data()])
+                {
+                    DeepFirst(edge.head, stack, id, visit, in_stack, disc, low, locals, globals);
+                    low[n] = low[n] < low[edge.head - nodes.data()] ? low[n] : low[edge.head - nodes.data()];
+                }
+                else if (in_stack[edge.head - nodes.data()])
+                    low[n] = low[n] < disc[edge.head - nodes.data()] ? low[n] : disc[edge.head - nodes.data()];
+            }
+        if (disc[n] == low[n])
         {
             sccs.emplace_front();
             Node *top;
@@ -361,18 +471,18 @@ struct Graph
         }
     }
 
-    void SCCTS(std::vector<EdgeLocal> &locals, std::vector<EdgeGlobal> &globals)
+    void SCCTS(std::list<EdgeLocal> &locals, std::list<EdgeGlobal> &globals)
     {
         std::vector<bool> visit(nodes.size()), in_stack(nodes.size());
         std::vector<int> disc(nodes.size()), low(nodes.size());
-        for (int n=0; n<nodes.size(); ++n)
+        for (size_t n = 0; n < nodes.size(); ++n)
         {
             visit[n] = false;
             in_stack[n] = false;
         }
         std::stack<Node *> stack;
         int id = 0;
-        for (int n=0; n<nodes.size(); ++n)
+        for (size_t n = 0; n < nodes.size(); ++n)
             if (!visit[n])
                 DeepFirst(&nodes[n], stack, id, visit, in_stack, disc, low, locals, globals);
     }
