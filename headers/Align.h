@@ -512,7 +512,6 @@ struct Align : Memory, GraphCopy<U>
         std::vector<double> &vf=edge.vf, &uf=edge.uf;
         std::vector<std::vector<U>> &boxes=edgecopy.boxes;
         auto & gamma=edge.gamma;
-        double gamma_max=graph.gamma_max;
         
         Dot<U> *A=edgecopy.A[0], *B=edgecopy.B;
         for(size_t w=0; w<=O.size(); ++w)
@@ -526,21 +525,17 @@ struct Align : Memory, GraphCopy<U>
         simnodes.top().sr1=0;
         simnodes.top().sr2=Bro.size()-1;
         
-        TrieState<U> & ts=PushTrieState(O.size(),0,O.size()+1);
-        double opt=-inf;
-        ts.G[0].w=0;
+        TrieState<U> & ts=PushTrieState(O.size()+1,0,O.size()+1);
+        ts.E[0].w=ts.G[0].w=0;
+        ts.E[0].val=-inf;
         ts.G[0].val=tildeANT[0].val+T;
         A[0].val=ts.G[0].val;
-        opt=ts.G[0].val+ge[O.size()];
-        for(size_t g=1,e=0; g<=O.size(); ++g,++e)
+        for(size_t g=1; g<=O.size(); ++g)
         {
-            ts.G[g].w=ts.E[e].w=g;
-            ts.E[e].val=ts.G[e].val+ve;
-            if(e>0)
-                ts.E[e].val=std::max(ts.E[e].val,ts.E[e-1].val+ue);
-            ts.G[g].val=std::max(ts.E[e].val,tildeANT[g].val+T);
+            ts.G[g].w=ts.E[g].w=g;
+            ts.E[g].val=std::max(ts.E[g-1].val+ue,ts.G[g-1].val+ve);
+            ts.G[g].val=std::max(ts.E[g].val,tildeANT[g].val+T);
             A[g].val=ts.G[g].val;
-            opt=std::max(opt,ts.G[g].val+ge[O.size()-g]);
         }
         simnodes.top().visit=true;
         PushPre(edge);
@@ -559,10 +554,8 @@ struct Align : Memory, GraphCopy<U>
             else
             {
                 TrieState<U> & tsp=triestates.back();
-                int Efn, Ffn=tsp.Gfn, Gfn=0;
-                if(Ffn>0)
-                    Gfn=O.size()-tsp.G[0].w+1;
-                Efn=std::max(0,Gfn-1);
+                int Efn, Ffn=tsp.Gfn, Gfn;
+                Efn=Gfn=O.size()-tsp.G[0].w+1;
                 TrieState<U> & ts=PushTrieState(Efn,Ffn,Gfn);
                 for(int g=0,f=0; g<Gfn; ++g)
                 {
@@ -575,76 +568,36 @@ struct Align : Memory, GraphCopy<U>
                     }
                 }
                 U letter=simnodes.top().letter;
-                if(Gfn>0)
+                ts.E[0].w=ts.G[0].w=O.size()-Gfn+1;
+                ts.E[0].val=-inf;
+                if(ts.F[0].val<tildeANT[ts.G[0].w].val+T)
+                    ts.F[0].val=-inf;
+                ts.G[0].val=ts.F[0].val;
+                for(int g=1,f=1; g<Gfn; ++g)
                 {
-                    ts.G[0].w=O.size()-Gfn+1;
-                    ts.G[0].val=ts.F[0].val;
-                    for(int g=1,f=1,e=0; g<Gfn; ++g,++e)
+                    int w=ts.E[g].w=ts.G[g].w=ts.G[g-1].w+1;
+                    ts.E[g].val=std::max(ts.E[g-1].val+ue,ts.G[g-1].val+ve);
+                    if(ts.E[g].val+ue<tildeANT[w].val+T+ve)
+                        ts.E[g].val=-inf;
+                    ts.G[g].val=ts.E[g].val;
+                    if(tsp.G[f-1].w==w-1)
+                        ts.G[g].val=std::max(ts.G[g].val,tsp.G[f-1].val+gamma[letter][int(O[w-1])]);
+                    if(f<Ffn && ts.F[f].w==w)
                     {
-                        int w=ts.E[e].w=ts.G[g].w=ts.G[e].w+1;
-                        ts.E[e].val=ts.G[e].val+ve;
-                        if(e>0)
-                            ts.E[e].val=std::max(ts.E[e].val,ts.E[e-1].val+ue);
-                        ts.G[g].val=ts.E[e].val;
-                        if(tsp.G[f-1].w==w-1)
-                            ts.G[g].val=std::max(ts.G[g].val,tsp.G[f-1].val+gamma[letter][int(O[w-1])]);
-                        if(f<Ffn && ts.F[f].w==w)
-                        {
-                            ts.G[g].val=std::max(ts.G[g].val,ts.F[f].val);
-                            ++f;
-                        }
+                        ts.G[g].val=std::max(ts.G[g].val,ts.F[f].val);
+                        ++f;
+                    }
+                    if(ts.G[g].val<tildeANT[w].val+T)
+                    {
+                        ts.G[g].val=-inf;
+                        if(ts.F[f-1].w==w)
+                            ts.F[f-1].val=-inf;
                     }
                 }
-                SimNode<U> & sn=simnodes.top();
-                for(int g=0; g<Gfn; ++g)
                 {
-                    int w=ts.G[g].w;
-                    if(ts.G[g].val>=A[w].val)
-                    {
-                        if(ts.G[g].val>A[w].val)
-                        {
-                            A[w].val=ts.G[g].val;
-                            boxes[w].clear();
-                            opt=std::max(opt,A[w].val+ge[O.size()-w]);
-                        }
-                        boxes[w].push_back(sn.sr1);
-                        boxes[w].push_back(sn.sr2);
-                        boxes[w].push_back(triestates.size()-1);
-                    }
-                }
-                if(Gfn>0)
-                {
-                    int w=ts.G[0].w;
-                    if(ts.G[0].val<tildeANT[w].val+T || ts.G[0].val+(O.size()-w)*gamma_max<opt)
-                        ts.G[0].val=ts.F[0].val=-inf;
-                    for(int g=1,e=0,f=1;g<Gfn;++g,++e)
-                    {
-                        int w=ts.G[g].w;
-                        if(ts.G[g].val+(O.size()-w)*gamma_max<opt)
-                        {
-                            ts.G[g].val=ts.E[e].val=-inf;
-                            if(f<Ffn && w==ts.F[f].w)
-                                ts.F[f].val=-inf;
-                        }
-                        else
-                        {
-                            if(ts.G[g].val<tildeANT[w].val+T)
-                            {
-                                ts.G[g].val=-inf;
-                                if(f<Ffn && w==ts.F[f].w)
-                                    ts.F[f].val=-inf;
-                            }
-                            if(ts.E[w].val+ue<tildeANT[w].val+T+ve)
-                                ts.E[w].val=-inf;
-                        }
-                        if(f<Ffn && w==ts.F[f].w)
-                            ++f;
-                    }    
-                }
-                {
-                    int* Xfns[3]={&ts.Efn,&ts.Ffn,&ts.Gfn};
+                    int* Xfns[2]={&ts.Ffn,&ts.Gfn};
                     int i=0;
-                    for(Do* X : {ts.E,ts.F,ts.G})
+                    for(Do* X : {ts.F,ts.G})
                     {
                         int XfnNew=0;
                         for(int x=0; x<*Xfns[i]; ++x)
@@ -656,6 +609,21 @@ struct Align : Memory, GraphCopy<U>
                             }
                         *Xfns[i]=XfnNew;
                         ++i;
+                    }
+                }
+                for(int g=0; g<ts.Gfn; ++g)
+                {
+                    int w=ts.G[g].w;
+                    if(ts.G[g].val>=A[w].val)
+                    {
+                        if(ts.G[g].val>A[w].val)
+                        {
+                            A[w].val=ts.G[g].val;
+                            boxes[w].clear();
+                        }
+                        boxes[w].push_back(simnodes.top().sr1);
+                        boxes[w].push_back(simnodes.top().sr2);
+                        boxes[w].push_back(triestates.size()-1);
                     }
                 }
                 simnodes.top().visit=true;
@@ -910,12 +878,11 @@ struct Align : Memory, GraphCopy<U>
         EdgeGlobal<U> & edge=graph.globals[g];
         EdgeGlobalCopy<U> & edgecopy=this->globalcopys[g];
         NodeCopy<U> & NTCP=this->nodecopys[edge.tail];
-        Node<U> & NH=graph.nodes[edge.head];
         NodeCopy<U> & NHCP=this->nodecopys[edge.head];
         std::list<SNC<U>> &sncs=edgecopy.sncs;
         Dot<U> *B=edgecopy.B, **A=edgecopy.A;
         BroWheel<U> & Bro=edge.Bro;
-        double T=edge.T, ue=edge.ue, ve=edge.ve, gamma_max=graph.gamma_max;
+        double T=edge.T, ue=edge.ue, ve=edge.ve;
         std::vector<double> &uf=edge.uf, &vf=edge.vf;
         std::vector<std::vector<U>> &boxes=edgecopy.boxes;
         if(w==0)
@@ -930,7 +897,6 @@ struct Align : Memory, GraphCopy<U>
         }
         else
         {
-            double opt=B[w].val+(O.size()-w)*NH.tue;
             double H2=NTCP.tildeA[tAsz-1][w-1].val+T;
             auto it=sncs.begin();
             it->Gp=it->G;
@@ -958,7 +924,6 @@ struct Align : Memory, GraphCopy<U>
                     {
                         A[0][w].val=it->G;
                         boxes[w].clear();
-                        opt=std::max(opt,A[0][w].val+NH.ge[O.size()-w]);
                     }
                     boxes[w].push_back(it->sr1);
                     boxes[w].push_back(it->sr2);
@@ -968,8 +933,6 @@ struct Align : Memory, GraphCopy<U>
                     it->G=it->F=-inf;
                 if(it->E+ue<NTCP.tildeA[0][w].val+T+ve)
                     it->E=-inf;
-                if(it->G+(O.size()-w)*gamma_max<opt)
-                    it->G=it->F=it->E=-inf;
                 InsertSNC(it,to_add,sncs,Bro);
                 it=add_it(it,to_add,sncs.end());
             }

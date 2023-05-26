@@ -223,7 +223,6 @@ struct Graph
     int* global_C;
     int* tAsz;
     bool* cross=NULL;
-    double gamma_max;
     
     Graph(std::string file)
     {
@@ -260,7 +259,6 @@ struct Graph
         locals=new EdgeLocal<T>[l_sz];
         delete[] globals;
         globals=new EdgeGlobal<T>[g_sz];
-        gamma_max=-inf;
         for(int i=0, e=0, l=0, g=0; i<scc_n; ++i)
         {
             for(int j=0; j<local_C[i]; ++j,++e,++l)
@@ -269,10 +267,6 @@ struct Graph
                 locals[l].tail=edges[e].tail;
                 locals[l].head=edges[e].head;
                 locals[l].readin(edges[e].files.front(),edges[e].files.back());
-                
-                for(int ii=2; ii<7; ++ii)
-                    for(int jj=2; jj<7; ++jj)
-                        gamma_max=std::max(gamma_max,locals[l].gamma[ii][jj]);
                 
                 if(nodes[locals[l].tail].tAsz<tAsz[i])
                     nodes[locals[l].tail].tAsz=tAsz[i];
@@ -292,10 +286,6 @@ struct Graph
                 globals[g].tail=edges[e].tail;
                 globals[g].head=edges[e].head;
                 globals[g].readin_and_index(edges[e].files.front(),edges[e].files.back());
-                
-                for(int ii=2; ii<7; ++ii)
-                    for(int jj=2; jj<7; ++jj)
-                        gamma_max=std::max(gamma_max,globals[g].gamma[ii][jj]);
                 
                 if(nodes[globals[g].tail].tAsz<tAsz[i])
                     nodes[globals[g].tail].tAsz=tAsz[i];

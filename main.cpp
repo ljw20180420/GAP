@@ -12,6 +12,7 @@ typedef int temp_type;
 
 int main(int argc, char **argv) 
 {
+    // warning if node with nonzero ue has global out edge
     bool acyclic=false;
     int n_sz=5, r_sz=2, lseqlb=100, lsequb=200, gseqlb=10000, gsequb=20000, aseqlb=50, asequb=100, seq_num=100, head_in=10, tail_in=10, ll=300, max_num=1, max_glo=3;
     double gpro=0.5, rpro=0, tve=-(1e-6), tue=0, ve=-5, ue=-2, vf=-5, uf=-2, T=-10, tvf=-(1e-6), tuf=0, mat=1, mis=-3, indel_rate=0.005, mut_rate=0.005, apro=0.5;
