@@ -34,32 +34,22 @@ struct Edge
 {
     const static int sigma = 6;
 
+    int n;
     bool global;
     std::string name;
-    double gamma[sigma + 1][sigma + 1];
-    double ve;
-    double ue;
-    double vf;
-    double uf;
-    double T;
-    std::unique_ptr<double[]> gf;
-    int n;
+    double gamma[sigma + 1][sigma + 1] = {
+        {-inf, -inf, -inf, -inf, -inf, -inf, -inf},
+        {-inf, -inf, -inf, -inf, -inf, -inf, -inf},
+        {-inf, -inf, -3, -3, -3, -3, -3},
+        {-inf, -inf, -3, 1, -3, -3, -3},
+        {-inf, -inf, -3, -3, 1, -3, -3},
+        {-inf, -inf, -3, -3, -3, 1, -3},
+        {-inf, -inf, -3, -3, -3, -3, 1}};
+    double ve, ue, vf, uf, T, dT, minScore;
+    int64_t diffseg = 0;
     Node *tail;
     Node *head;
-
-    Edge(std::string name_, double gamma_[7][7], double ve_, double ue_, double vf_, double uf_, double T_, int n_)
-    {
-        name = name_;
-        for (int i = 0; i <= sigma; ++i)
-            for (int j = 0; j <= sigma; ++j)
-                gamma[i][j] = gamma_[i][j];
-        ve = ve_;
-        ue = ue_;
-        vf = vf_;
-        uf = uf_;
-        T = T_;
-        n = n_;
-    }
+    std::vector<double> gf;
 };
 
 struct NameSeq
@@ -76,37 +66,17 @@ struct NameSeq
 
 struct EdgeLocal : Edge
 {
-    NameSeq &nameseq;
+    NameSeq *pnameseq;
     double vfp;
     double ufp;
     double vfm;
     double ufm;
     double gfm;
-    std::unique_ptr<double[]> gfpT;
+    std::vector<double> gfpT;
 
-    EdgeLocal(std::string name_, double gamma_[7][7], double ve_, double ue_, double vf_, double uf_, double T_, int n_, NameSeq &nameseq_, double vfp_, double ufp_, double vfm_, double ufm_)
-        : Edge(name_, gamma_, ve_, ue_, vf_, uf_, T_, n_), nameseq(nameseq_), vfp(vfp_), ufp(ufp_), vfm(vfm_), ufm(ufm_)
+    EdgeLocal(Edge &edge)
+        : Edge(edge)
     {
-        global = false;
-        gfm = vfm + (nameseq.seq.size() - 1) * ufm;
-        gfpT.reset(new double[nameseq.seq.size() + 1]);
-        gfpT[0] = T;
-        for (int s = 0; s < nameseq.seq.size(); ++s)
-        {
-            if (s == 0)
-                gfpT[s + 1] = gfpT[s] + vfp;
-            else
-                gfpT[s + 1] = gfpT[s] + ufp;
-        }
-        gf.reset(new double[nameseq.seq.size() + 1]);
-        gf[0] = 0;
-        for (int s = 0; s < nameseq.seq.size(); ++s)
-        {
-            if (s == 0)
-                gf[s + 1] = gf[s] + vf;
-            else
-                gf[s + 1] = gf[s] + uf;
-        }
     }
 };
 
@@ -177,13 +147,12 @@ struct TrackTree
 
 struct EdgeGlobal : Edge
 {
-    BroWheel &browheel;
+    BroWheel *pbrowheel;
     TrackTree tracktree;
 
-    EdgeGlobal(std::string name_, double gamma_[7][7], double ve_, double ue_, double vf_, double uf_, double T_, int n_, BroWheel &browheel_)
-        : Edge(name_, gamma_, ve_, ue_, vf_, uf_, T_, n_), browheel(browheel_)
+    EdgeGlobal(Edge &edge)
+        : Edge(edge)
     {
-        global = true;
     }
 };
 
@@ -381,16 +350,13 @@ struct EdgeLocalCross : EdgeLocal
     std::unique_ptr<int64_t *[]> Eids, Fids, Gids;
 
     EdgeLocalCross(EdgeLocal &edge)
-        : EdgeLocal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.nameseq, edge.vfp, edge.ufp, edge.vfm, edge.ufm)
+        : EdgeLocal(edge)
     {
-        tail = edge.tail;
-        head = edge.head;
-        global = false;
     }
 
     int get_trn()
     {
-        return 3 * (nameseq.seq.size() + 1);
+        return 3 * (pnameseq->seq.size() + 1);
     }
 
     int64_t get_tnn(int Omax)
@@ -400,18 +366,18 @@ struct EdgeLocalCross : EdgeLocal
 
     int64_t get_tsn(int Omax)
     {
-        return int64_t(Omax + 1) * 8 * (nameseq.seq.size() + 1);
+        return int64_t(Omax + 1) * 8 * (pnameseq->seq.size() + 1);
     }
 
     int *get_Ss()
     {
-        int S = nameseq.seq.size();
+        int S = pnameseq->seq.size();
         return new int[3]{S, S, S};
     }
 
     int64_t *get_SE(int Omax)
     {
-        int64_t mid = int64_t(Omax + 1) * 2 * (nameseq.seq.size() + 1);
+        int64_t mid = int64_t(Omax + 1) * 2 * (pnameseq->seq.size() + 1);
         return new int64_t[3]{0, mid, get_tnn(Omax)};
     }
 
@@ -452,16 +418,13 @@ struct EdgeLocalCircuit : EdgeLocal
     int64_t *Dids;
 
     EdgeLocalCircuit(EdgeLocal &edge)
-        : EdgeLocal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.nameseq, edge.vfp, edge.ufp, edge.vfm, edge.ufm)
+        : EdgeLocal(edge)
     {
-        tail = edge.tail;
-        head = edge.head;
-        global = false;
     }
 
     int get_trn()
     {
-        return 1 + 4 * (nameseq.seq.size() + 1) + 2 * (tail->scc_sz - 1);
+        return 1 + 4 * (pnameseq->seq.size() + 1) + 2 * (tail->scc_sz - 1);
     }
 
     int64_t get_tnn(int Omax)
@@ -471,19 +434,19 @@ struct EdgeLocalCircuit : EdgeLocal
 
     int64_t get_tsn(int Omax)
     {
-        return int64_t(Omax + 1) * (1 + 10 * (nameseq.seq.size() + 1) + 3 * (tail->scc_sz - 1));
+        return int64_t(Omax + 1) * (1 + 10 * (pnameseq->seq.size() + 1) + 3 * (tail->scc_sz - 1));
     }
 
     int *get_Ss()
     {
-        int S = nameseq.seq.size();
+        int S = pnameseq->seq.size();
         int scc_sz = tail->scc_sz;
         return new int[6]{S, S, S, S, scc_sz - 2, scc_sz - 2};
     }
 
     int64_t *get_SE(int Omax)
     {
-        int S = nameseq.seq.size();
+        int S = pnameseq->seq.size();
         int scc_sz = tail->scc_sz;
         return new int64_t[6]{0, Omax + 1, int64_t(Omax + 1) * (1 + 2 * (S + 1)), int64_t(Omax + 1) * (1 + 4 * (S + 1)), int64_t(Omax + 1) * (1 + 4 * (S + 1) + (scc_sz - 1)), int64_t(Omax + 1) * (1 + 4 * (S + 1) + 2 * (scc_sz - 1))};
     }
@@ -515,11 +478,8 @@ struct EdgeLocalCircuit : EdgeLocal
 struct EdgeGlobalCross : EdgeGlobal
 {
     EdgeGlobalCross(EdgeGlobal &edge)
-        : EdgeGlobal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.browheel)
+        : EdgeGlobal(edge)
     {
-        tail = edge.tail;
-        head = edge.head;
-        global = true;
     }
 };
 
@@ -554,11 +514,8 @@ struct EdgeGlobalCircuit : EdgeGlobal
     std::unique_ptr<int64_t *[]> D0ids;
 
     EdgeGlobalCircuit(EdgeGlobal &edge)
-        : EdgeGlobal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.browheel)
+        : EdgeGlobal(edge)
     {
-        tail = edge.tail;
-        head = edge.head;
-        global = true;
     }
 
     int get_trn()
@@ -649,8 +606,15 @@ struct Graph
     int *pQs_sz;
     int64_t *pQid;
 
-    ~Graph()
+    void get_affine(std::vector<double> &g, int seqlen, double initial, double u, double v)
     {
+        g.resize(seqlen + 1);
+        g[0] = initial;
+        for (int s = 0; s < seqlen; ++s)
+            if (s == 0)
+                g[s + 1] = g[s] + v;
+            else
+                g[s + 1] = g[s] + u;
     }
 
     Graph(int argc, char **argv, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel)
@@ -692,65 +656,56 @@ struct Graph
                         }
                 --i;
             }
-            else if (!strcmp(argv[i], "--locals"))
+            else if (!strcmp(argv[i], "--locals") || !strcmp(argv[i], "--globals"))
             {
+                bool is_global = !strcmp(argv[i], "--globals");
                 while (++i < argc && (strlen(argv[i]) < 2 || argv[i][0] != '-' || argv[i][1] != '-'))
                 {
-                    double gamma_[7][7] = {
-                        {-inf, -inf, -inf, -inf, -inf, -inf, -inf},
-                        {-inf, -inf, -inf, -inf, -inf, -inf, -inf},
-                        {-inf, -inf, -3, -3, -3, -3, -3},
-                        {-inf, -inf, -3, 1, -3, -3, -3},
-                        {-inf, -inf, -3, -3, 1, -3, -3},
-                        {-inf, -inf, -3, -3, -3, 1, -3},
-                        {-inf, -inf, -3, -3, -3, -3, 1}};
+                    Edge edge;
+                    edge.n = n++;
+                    edge.global = is_global;
                     if (!strcmp(argv[i], "default_gamma"))
                         ++i;
                     else
                         for (int a = 0; a < 7; ++a)
                             for (int b = 0; b < 7; ++b)
-                                gamma_[a][b] = str2double(argv[i++]);
-                    locals.emplace_back(argv[i], gamma_, str2double(argv[i + 1]), str2double(argv[i + 2]), str2double(argv[i + 3]), str2double(argv[i + 4]), str2double(argv[i + 5]), n++, file2seq[argv[i]], str2double(argv[i + 6]), str2double(argv[i + 7]), str2double(argv[i + 8]), str2double(argv[i + 9]));
-                    i += 9;
+                                edge.gamma[a][b] = str2double(argv[i++]);
+                    edge.name = argv[i];
+                    edge.ve = str2double(argv[++i]);
+                    edge.ue = str2double(argv[++i]);
+                    edge.vf = str2double(argv[++i]);
+                    edge.uf = str2double(argv[++i]);
+                    edge.T = str2double(argv[++i]);
+                    edge.dT = str2double(argv[++i]);
+                    edge.minScore = str2double(argv[++i]);
+                    edge.diffseg = std::stoi(argv[++i]);
+                    get_affine(edge.gf, file2seq[edge.name].seq.size(), 0, edge.uf, edge.vf);
                     for (auto &node : nodes)
                     {
                         if (node.name == argv[i + 1])
-                            locals.back().tail = &node;
+                            edge.tail = &node;
                         if (node.name == argv[i + 2])
-                            locals.back().head = &node;
+                            edge.head = &node;
                     }
                     i += 2;
-                }
-                --i;
-            }
-            else if (!strcmp(argv[i], "--globals"))
-            {
-                while (++i < argc && (strlen(argv[i]) < 2 || argv[i][0] != '-' || argv[i][1] != '-'))
-                {
-                    double gamma_[7][7] = {
-                        {-inf, -inf, -inf, -inf, -inf, -inf, -inf},
-                        {-inf, -inf, -inf, -inf, -inf, -inf, -inf},
-                        {-inf, -inf, -3, -3, -3, -3, -3},
-                        {-inf, -inf, -3, 1, -3, -3, -3},
-                        {-inf, -inf, -3, -3, 1, -3, -3},
-                        {-inf, -inf, -3, -3, -3, 1, -3},
-                        {-inf, -inf, -3, -3, -3, -3, 1}};
-                    if (!strcmp(argv[i], "default_gamma"))
-                        ++i;
+
+                    if (!is_global)
+                    {
+                        locals.emplace_back(edge);
+                        EdgeLocal &local = locals.back();
+                        local.pnameseq = &file2seq[edge.name];
+                        local.vfp = str2double(argv[++i]);
+                        local.ufp = str2double(argv[++i]);
+                        local.vfm = str2double(argv[++i]);
+                        local.ufm = str2double(argv[++i]);
+                        local.gfm = local.vfm + (local.pnameseq->seq.size() - 1) * local.ufm;
+                        get_affine(local.gfpT, local.pnameseq->seq.size(), local.T, local.ufp, local.vfp);
+                    }
                     else
-                        for (int a = 0; a < 7; ++a)
-                            for (int b = 0; b < 7; ++b)
-                                gamma_[a][b] = str2double(argv[i++]);
-                    globals.emplace_back(argv[i], gamma_, str2double(argv[i + 1]), str2double(argv[i + 2]), str2double(argv[i + 3]), str2double(argv[i + 4]), str2double(argv[i + 5]), n++, file2browheel[argv[i]]);
-                    i += 5;
-                    for (auto &node : nodes)
                     {
-                        if (node.name == argv[i + 1])
-                            globals.back().tail = &node;
-                        if (node.name == argv[i + 2])
-                            globals.back().head = &node;
+                        globals.emplace_back(edge);
+                        globals.back().pbrowheel = &file2browheel[edge.name];
                     }
-                    i += 2;
                 }
                 --i;
             }

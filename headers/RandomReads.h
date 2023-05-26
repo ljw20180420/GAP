@@ -66,13 +66,13 @@ void random_seq(Graph &graph, std::ofstream &fout_read, std::ofstream &fout_trut
             else
                 local = node->out_local_circuits[rv - node->out_local_crosses.size()];
             len = aseqlb + rand() % (asequb - aseqlb);
-            start = rand() % (local->nameseq.seq.size() - len + 1);
-            str = local->nameseq.seq.substr(start, len);
+            start = rand() % (local->pnameseq->seq.size() - len + 1);
+            str = local->pnameseq->seq.substr(start, len);
             std::tie(head_str, mut, tail_str) = random_mut(str, indel_rate, mut_rate, head_in, tail_in);
             seq += head_str;
-            fout_truth << local->name << ':' << local->nameseq.name << '\t' << start << '\t' << seq.size() << '\n';
+            fout_truth << local->name << '\t' << start << '\t' << seq.size() << '\n';
             seq += mut;
-            fout_truth << local->name << ':' << local->nameseq.name << '\t' << start + len << '\t' << seq.size() << '\n';
+            fout_truth << local->name << '\t' << start + len << '\t' << seq.size() << '\n';
             seq += tail_str;
             node = local->head;
         }
@@ -84,14 +84,14 @@ void random_seq(Graph &graph, std::ofstream &fout_read, std::ofstream &fout_trut
             else
                 global = node->out_global_circuits[rv - node->out_local_crosses.size() - node->out_local_circuits.size() - node->out_global_crosses.size()];
             len = aseqlb + rand() % (asequb - aseqlb);
-            start = rand() % (global->browheel.sequence.size() - len);
+            start = rand() % (global->pbrowheel->sequence.size() - len);
             for (int64_t i = 1; i <= len; ++i)
-                str.push_back(BroWheel::int2base[global->browheel.sequence(global->browheel.sequence.size() - 1 - start - i)]);
+                str.push_back(BroWheel::int2base[global->pbrowheel->sequence(global->pbrowheel->sequence.size() - 1 - start - i)]);
             std::tie(head_str, mut, tail_str) = random_mut(str, indel_rate, mut_rate, head_in, tail_in);
             seq += head_str;
-            fout_truth << global->name << ':' << global->browheel.name_cumlen.front().first << '\t' << start << '\t' << seq.size() << '\n';
+            fout_truth << global->name << ':' << global->pbrowheel->name_cumlen.front().first << '\t' << start << '\t' << seq.size() << '\n';
             seq += mut;
-            fout_truth << global->name << ':' << global->browheel.name_cumlen.front().first << '\t' << start + len << '\t' << seq.size() << '\n';
+            fout_truth << global->name << ':' << global->pbrowheel->name_cumlen.front().first << '\t' << start + len << '\t' << seq.size() << '\n';
             seq += tail_str;
             node = global->head;
         }
@@ -99,7 +99,7 @@ void random_seq(Graph &graph, std::ofstream &fout_read, std::ofstream &fout_trut
     fout_read << seq << '\n';
 }
 
-void random_DG(int n_sz, int r_sz, int t_sz, int max_e_sz, std::string argfile, bool acyclic, double gpro, double rpro, double nve, double nue, double ve, double ue, double vf, double uf, double T, double vfp, double ufp, double vfm, double ufm, double mat, double mis, std::string local_file, std::string global_file, int lseqlb, int lsequb, int gseqlb, int gsequb, int aseqlb, int asequb, int seq_num, std::string read_file, std::string truth_file, double indel_rate, double mut_rate, int head_in, int tail_in, double apro)
+void random_DG(int n_sz, int r_sz, int t_sz, int max_e_sz, std::string argfile, bool acyclic, double gpro, double rpro, double nve, double nue, double ve, double ue, double vf, double uf, double T, double dT, double minScore, int64_t diffseg, double vfp, double ufp, double vfm, double ufm, double mat, double mis, std::string local_file, std::string global_file, int lseqlb, int lsequb, int gseqlb, int gsequb, int aseqlb, int asequb, int seq_num, std::string read_file, std::string truth_file, double indel_rate, double mut_rate, int head_in, int tail_in, double apro)
 {
     srand(1);
     std::vector<std::vector<std::string>> args;
@@ -167,7 +167,7 @@ void random_DG(int n_sz, int r_sz, int t_sz, int max_e_sz, std::string argfile, 
                         "-inf", "-inf", "-inf", mis_s, mat_s, mis_s, mis_s,
                         "-inf", "-inf", "-inf", mis_s, mis_s, mat_s, mis_s,
                         "-inf", "-inf", "-inf", mis_s, mis_s, mis_s, mat_s,
-                        global_file + std::to_string(en), std::to_string(ve), std::to_string(ue), std::to_string(vf), std::to_string(uf), std::to_string(T), "node" + std::to_string(t), "node" + std::to_string(h)});
+                        global_file + std::to_string(en), std::to_string(ve), std::to_string(ue), std::to_string(vf), std::to_string(uf), std::to_string(T), std::to_string(dT), std::to_string(minScore), std::to_string(diffseg), "node" + std::to_string(t), "node" + std::to_string(h)});
                 }
                 else
                 {
@@ -179,7 +179,7 @@ void random_DG(int n_sz, int r_sz, int t_sz, int max_e_sz, std::string argfile, 
                         "-inf", "-inf", "-inf", mis_s, mat_s, mis_s, mis_s,
                         "-inf", "-inf", "-inf", mis_s, mis_s, mat_s, mis_s,
                         "-inf", "-inf", "-inf", mis_s, mis_s, mis_s, mat_s,
-                        local_file + std::to_string(en), std::to_string(ve), std::to_string(ue), std::to_string(vf), std::to_string(uf), std::to_string(T), std::to_string(vfp), std::to_string(ufp), std::to_string(vfm), std::to_string(ufm), "node" + std::to_string(t), "node" + std::to_string(h)});
+                        local_file + std::to_string(en), std::to_string(ve), std::to_string(ue), std::to_string(vf), std::to_string(uf), std::to_string(T), std::to_string(dT), std::to_string(minScore), std::to_string(diffseg), "node" + std::to_string(t), "node" + std::to_string(h), std::to_string(vfp), std::to_string(ufp), std::to_string(vfm), std::to_string(ufm)});
                 }
             }
             else

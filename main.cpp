@@ -199,8 +199,7 @@ struct Parallel_Align
     void track(int64_t max_seq, int64_t max_track, int64_t max_extract)
     {
         Track track(argc, argv, file2seq, file2browheel);
-        track.ReadTrack(mg_files, read_files, run_name, max_seq, max_track);
-        track.extract(run_name, max_extract);
+        track.ReadTrack(mg_files, read_files, run_name, max_seq, max_track, max_extract, 0);
     }
 };
 
@@ -246,9 +245,10 @@ void test_GenerateRandomReads(std::string dir, std::string argfile)
 
     int n_sz = 5, r_sz = 2, t_sz = 1, max_e_sz = 8, lseqlb = 100, lsequb = 200, gseqlb = 10000, gsequb = 20000, aseqlb = 50, asequb = 100, seq_num = 10000, head_in = 10, tail_in = 10;
     bool acyclic = false;
-    double gpro = 0.5, rpro = 0, nve = 0, nue = 0, ve = -5, ue = -2, vf = -5, uf = -2, T = -10, vfp = 0, ufp = 0, vfm = 0, ufm = 0, mat = 1, mis = -3, indel_rate = 0.005, mut_rate = 0.005, apro = 0.5;
+    double gpro = 0.5, rpro = 0, nve = 0, nue = 0, ve = -5, ue = -2, vf = -5, uf = -2, T = -10, dT = -5, minScore = 20, vfp = 0, ufp = 0, vfm = 0, ufm = 0, mat = 1, mis = -3, indel_rate = 0.005, mut_rate = 0.005, apro = 0.5;
+    int64_t diffseg = 10;
 
-    random_DG(n_sz, r_sz, t_sz, max_e_sz, "argfile", acyclic, gpro, rpro, nve, nue, ve, ue, vf, uf, T, vfp, ufp, vfm, ufm, mat, mis, "local_file", "global_file", lseqlb, lsequb, gseqlb, gsequb, aseqlb, asequb, seq_num, "read_file", "truth_file", indel_rate, mut_rate, head_in, tail_in, apro);
+    random_DG(n_sz, r_sz, t_sz, max_e_sz, "argfile", acyclic, gpro, rpro, nve, nue, ve, ue, vf, uf, T, dT, minScore, diffseg, vfp, ufp, vfm, ufm, mat, mis, "local_file", "global_file", lseqlb, lsequb, gseqlb, gsequb, aseqlb, asequb, seq_num, "read_file", "truth_file", indel_rate, mut_rate, head_in, tail_in, apro);
 }
 
 void test_Align(std::string dir, std::string run_name, std::string argfile, int threads1_sz, int64_t max_track, int64_t max_extract)
@@ -263,8 +263,8 @@ void test_Align(std::string dir, std::string run_name, std::string argfile, int 
     // parallel_align.parallel_align(threads1_sz, 100); // mt
     // std::cerr << "align time is " << time(0) - time_tic << '\n';
 
-    for (size_t i = 0; i < threads1_sz; ++i)
-        parallel_align.mg_files.emplace_back(run_name + std::to_string(i) + ".mg");
+    for (size_t i = 0; i < threads1_sz; ++i) // test track
+        parallel_align.mg_files.emplace_back(run_name + std::to_string(i) + ".mg"); // test track
 
     parallel_align.track(INT64_MAX, max_track, max_extract);
 }

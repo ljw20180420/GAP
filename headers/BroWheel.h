@@ -755,25 +755,25 @@ struct BroWheel
         return (c + 6) >> 1 & 7;
     }
 
-    std::tuple<std::string, int64_t> get_axis(int64_t s)
-    {
-        s=sequence.size()-1-s;
-        int64_t l=0, r=name_cumlen.size();
-        while (r-l>1)
-        {
-            int64_t m=(l+r)/2;
-            if (name_cumlen[m].second>s)
-                r=m;
-            else
-                l=m;
-        }
-        s-=name_cumlen[l].second;
-        if (r<name_cumlen.size())
-            s=name_cumlen[r].second-name_cumlen[l].second-1-s;
-        else
-            s=sequence.size()-name_cumlen[l].second-1-s;
-        return std::make_tuple(name_cumlen[l].first, s);
-    }
+    // std::tuple<std::string, int64_t> get_axis(int64_t s)
+    // {
+    //     s=sequence.size()-1-s;
+    //     int64_t l=0, r=name_cumlen.size();
+    //     while (r-l>1)
+    //     {
+    //         int64_t m=(l+r)/2;
+    //         if (name_cumlen[m].second>s)
+    //             r=m;
+    //         else
+    //             l=m;
+    //     }
+    //     s-=name_cumlen[l].second;
+    //     if (r<name_cumlen.size())
+    //         s=name_cumlen[r].second-name_cumlen[l].second-1-s;
+    //     else
+    //         s=sequence.size()-name_cumlen[l].second-1-s;
+    //     return std::make_tuple(name_cumlen[l].first, s);
+    // }
 };
 
 const std::string BroWheel::int2base="KLNACTG";
