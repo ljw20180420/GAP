@@ -105,6 +105,7 @@ struct SNC
     T sr1;
     T sr2;
     T s;
+    T os;
     typename std::list<SNC<T>>::iterator itp;
     std::vector<typename std::list<SNC<T>>::iterator> itcs;
     typename std::list<SNC<T>>::iterator itd;
@@ -117,7 +118,6 @@ struct Node
     double tve;
     double tue;
     int scc;
-    std::vector<double> ge;
 };
 
 template <typename U>
@@ -304,12 +304,6 @@ struct Graph
         for(int i=0; i<t_sz; ++i)
             if(nodes[targets[i]].tAsz<1)
                 nodes[targets[i]].tAsz=1;
-        for(int i=0; i<n_sz; ++i)
-            if(nodes[i].tAsz>0)
-            {
-                nodes[i].ge.push_back(0);
-                nodes[i].ge.push_back(nodes[i].tve);
-            }
     }
     
     ~Graph()

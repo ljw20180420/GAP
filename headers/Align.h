@@ -170,9 +170,7 @@ struct Tracker
         for(int read_num=0; fin.good(); ++read_num)
         {
             for(int target_num=0; target_num<nt; ++target_num)
-            {
                 ExplorePath(&VV[tids[target_num]], read_num, target_num, max_num, max_glo, graph, fout);
-            }
             delete[] tids;
             delete[] VV;
             delete[] ranges;
@@ -221,13 +219,13 @@ struct Align : Memory, GraphCopy<U>
     std::vector<double> vals;
     std::vector<Dot<U>*> VV;
     std::ofstream MGout;
-    std::vector<TrieState<U>> triestates;
+    std::stack<TrieState<U>> triestates;
     std::stack<SimNode<U>> simnodes;
     
-    Align(Graph<U> & graph_v) : graph(graph_v)
+    Align(Graph<U> & graph_v, size_t chunk_sz_) : graph(graph_v)
     {
         this->GetCopy(graph_v);
-        Initial(1024*1024*1024);
+        Initial(chunk_sz_);
     }
     
     void CallGetMinimalGraph(int W,std::string & O)
@@ -288,15 +286,13 @@ struct Align : Memory, GraphCopy<U>
         auto & box=this->globalcopys[global-graph.globals].boxes[target->w];
         if(box.empty())
             return;
-        Node<U> & NT=graph.nodes[global->tail];
-        NodeCopy<U> & NTCP=this->nodecopys[global->tail];
         U** robs=heap_alloc<U*>(box.size()/3);
         robs[0]=heap_alloc<U>(box.size());
         for(size_t i=0; i<box.size(); ++i)
             robs[0][i]=box[i];
         for(size_t i=1; i<box.size()/3; ++i)
             robs[i]=robs[i-1]+3;
-        std::sort(robs,robs+box.size()/3,[](U* p1, U* p2) {return p1[0]>p2[0] || (p1[0]==p2[0] && p1[1]<p2[1]);});
+        std::sort(robs,robs+box.size()/3,[](U* p1, U* p2) {return p1[0]>p2[0] || (p1[0]==p2[0] && (p1[1]<p2[1] || (p1[1]==p2[1] && p1[2]>p2[2])));});
         adrs.clear();
         size_t rr=0;
         do
@@ -372,21 +368,16 @@ struct Align : Memory, GraphCopy<U>
                 for(int j=0; j<node.tAsz; ++j)
                     this->nodecopys[i].tildeA[j]=alloc_initial(-1, O.size());
                 this->nodecopys[i].cid_now=0;
-                size_t ge_sz=node.ge.size();
-                if(ge_sz<O.size()+1)
-                {
-                    node.ge.resize(O.size()+1);
-                    for(size_t j=ge_sz; j<=O.size(); ++j)
-                        node.ge[j]=node.ge[j-1]+node.tue;
-                }
             }
         }
         for(int i=0; i<graph.r_sz; ++i)
         {
             Dot<U>* barA=this->nodecopys[graph.roots[i]].barA=alloc_initial(-1, O.size());
-            for(size_t w=0; w<=O.size(); ++w)
+            barA[0].val=0, barA[1].val=graph.nodes[graph.roots[i]].tve;
+            barA[0].s_sz=barA[1].s_sz=0;
+            for(size_t w=2; w<=O.size(); ++w)
             {
-                barA[w].val=graph.nodes[graph.roots[i]].ge[w];
+                barA[w].val=barA[w-1].val+graph.nodes[graph.roots[i]].tue;
                 barA[w].s_sz=0;
             }
         }
@@ -484,9 +475,7 @@ struct Align : Memory, GraphCopy<U>
     template <typename Y>
     void CrossInitial(int W, Dot<U>** E, Dot<U>** F, Dot<U>** G, double ve, double ue, Y & edge)
     {
-        Node<U> & NT=graph.nodes[edge.tail];
-        NodeCopy<U> & NTCP=this->nodecopys[edge.tail];
-        Dot<U>* tildeANT=NTCP.tildeA[NT.tAsz-1];
+        Dot<U>* tildeANT=this->nodecopys[edge.tail].tildeA[graph.nodes[edge.tail].tAsz-1];
         for(int j=0; j<=W; ++j)
             F[0][j].val=-inf;
         E[0][0].val=-inf;
@@ -501,9 +490,7 @@ struct Align : Memory, GraphCopy<U>
     template <typename Y>
     void CrossBody(std::string & seq, std::string & O, int s, int W, Dot<U>** E, Dot<U>** F, Dot<U>** G, double ve, double ue, Y & edge, double gfps)
     {
-        Node<U> & NT=graph.nodes[edge.tail];
-        NodeCopy<U> & NTCP=this->nodecopys[edge.tail];
-        Dot<U>* tildeANT=NTCP.tildeA[NT.tAsz-1];
+        Dot<U>* tildeANT=this->nodecopys[edge.tail].tildeA[graph.nodes[edge.tail].tAsz-1];
         for(int w=0; w<=W; ++w)
             source_max(F[s][w],{&F[s-1][w],&G[s-1][w]},{F[s-1][w].val+edge.uf[w],G[s-1][w].val+edge.vf[w]});
         E[s][0].val=-inf;
@@ -524,12 +511,9 @@ struct Align : Memory, GraphCopy<U>
             return;
         Node<U> & NH=graph.nodes[edge.head];
         double tve=NH.tve, tue=NH.tue;
-        std::vector<double> & ge=NH.ge;
         BroWheel<U> & Bro=edge.Bro;
         double ve=edge.ve, ue=edge.ue, T=edge.T;
-        std::vector<double> &vf=edge.vf, &uf=edge.uf;
         std::vector<std::vector<U>> &boxes=edgecopy.boxes;
-        auto & gamma=edge.gamma;
         
         Dot<U> *A=edgecopy.A[0], *B=edgecopy.B;
         for(size_t w=0; w<=O.size(); ++w)
@@ -543,7 +527,9 @@ struct Align : Memory, GraphCopy<U>
         simnodes.top().sr1=0;
         simnodes.top().sr2=Bro.size()-1;
         
-        TrieState<U> & ts=PushTrieState(O.size()+1,0,O.size()+1);
+        triestates.emplace();
+        TrieState<U> & ts=triestates.top();
+        PushTrieState(ts,O.size()+1,0,O.size()+1);
         ts.E[0].w=ts.G[0].w=0;
         ts.E[0].val=-inf;
         ts.G[0].val=tildeANT[0].val+T;
@@ -562,91 +548,54 @@ struct Align : Memory, GraphCopy<U>
         {
             if(simnodes.top().visit)
             {
-                TrieState<U> & ts=triestates.back();
+                TrieState<U> & ts=triestates.top();
                 this->now=ts.now;
                 this->remain=ts.remain;
                 this->chunk_id=ts.chunk_id;
-                triestates.pop_back();
+                triestates.pop();
                 simnodes.pop();
             }
             else
             {
-                TrieState<U> & tsp=triestates.back();
-                int Efn, Ffn=tsp.Gfn, Gfn;
-                Efn=Gfn=O.size()-tsp.G[0].w+1;
-                TrieState<U> & ts=PushTrieState(Efn,Ffn,Gfn);
-                for(int g=0,f=0; g<Gfn; ++g)
-                {
-                    int w=ts.F[g].w=tsp.G[g].w;
-                    ts.F[g].val=tsp.G[g].val+vf[w];
-                    if(f<tsp.Ffn && w==tsp.F[f].w)
-                    {
-                        ts.F[g].val=std::max(ts.F[g].val,tsp.F[f].val+uf[w]);
-                        ++f;
-                    }
-                }
-                U letter=simnodes.top().letter;
-                ts.E[0].w=ts.G[0].w=O.size()-Gfn+1;
-                ts.E[0].val=-inf;
-                if(ts.F[0].val<tildeANT[ts.G[0].w].val+T)
-                    ts.F[0].val=-inf;
-                ts.G[0].val=ts.F[0].val;
-                for(int g=1,f=1; g<Gfn; ++g)
-                {
-                    int w=ts.E[g].w=ts.G[g].w=ts.G[g-1].w+1;
-                    ts.E[g].val=std::max(ts.E[g-1].val+ue,ts.G[g-1].val+ve);
-                    if(ts.E[g].val+ue<tildeANT[w].val+T+ve)
-                        ts.E[g].val=-inf;
-                    ts.G[g].val=ts.E[g].val;
-                    if(tsp.G[f-1].w==w-1)
-                        ts.G[g].val=std::max(ts.G[g].val,tsp.G[f-1].val+gamma[letter][int(O[w-1])]);
-                    if(f<Ffn && ts.F[f].w==w)
-                    {
-                        ts.G[g].val=std::max(ts.G[g].val,ts.F[f].val);
-                        ++f;
-                    }
-                    if(ts.G[g].val<tildeANT[w].val+T)
-                    {
-                        ts.G[g].val=-inf;
-                        if(ts.F[f-1].w==w)
-                            ts.F[f-1].val=-inf;
-                    }
-                }
-                {
-                    int* Xfns[2]={&ts.Ffn,&ts.Gfn};
-                    int i=0;
-                    for(Do* X : {ts.F,ts.G})
-                    {
-                        int XfnNew=0;
-                        for(int x=0; x<*Xfns[i]; ++x)
-                            if(X[x].val!=-inf)
-                            {
-                                if(x!=XfnNew)
-                                    X[XfnNew]=X[x];
-                                ++XfnNew;
-                            }
-                        *Xfns[i]=XfnNew;
-                        ++i;
-                    }
-                }
-                for(int g=0; g<ts.Gfn; ++g)
-                {
-                    int w=ts.G[g].w;
-                    if(ts.G[g].val>=A[w].val)
-                    {
-                        if(ts.G[g].val>A[w].val)
-                        {
-                            A[w].val=ts.G[g].val;
-                            boxes[w].clear();
-                        }
-                        boxes[w].push_back(simnodes.top().sr1);
-                        boxes[w].push_back(simnodes.top().sr2);
-                        boxes[w].push_back(triestates.size()-1);
-                    }
-                }
+                TrieState<U> & tsp=triestates.top();
+                triestates.emplace();
+                TrieState<U> & ts=triestates.top();
+                PushTrieState(ts,O.size()-tsp.G[0].w+1,tsp.Gfn,O.size()-tsp.G[0].w+1);
+                CrossBodyGlobal(tsp,ts,edge,edgecopy,O,simnodes.top().letter,simnodes.top().sr1,simnodes.top().sr2,triestates.size()-1);
                 simnodes.top().visit=true;
                 if(ts.Gfn>0)
-                    PushPre(edge);
+                {
+                    if(simnodes.top().sr1<simnodes.top().sr2)
+                        PushPre(edge);
+                    else
+                    {
+                        U os=edge.Bro.SimSuffix(simnodes.top().sr1);
+                        if(--os>=0)
+                        {
+                            TrieState<U> tssp,tss;
+                            PushTrieState(tssp,O.size()+1,O.size()+1,O.size()+1);
+                            PushTrieState(tss,O.size()-ts.G[0].w+1,ts.Gfn,O.size()-ts.G[0].w+1);
+                            U letter=edge.G(os);
+                            U sr=simnodes.top().sr1;
+                            sr=Bro.C[letter-1]+Bro.GetOcc(sr,letter);
+                            U seq_sz=triestates.size();
+                            CrossBodyGlobal(ts,tss,edge,edgecopy,O,letter,sr,sr,seq_sz);
+                            while(tss.Gfn>0 && --os>=0)
+                            {
+                                std::swap(tssp,tss);
+                                this->now=tss.now, this->remain=tss.remain, this->chunk_id=tss.chunk_id;
+                                tss.Efn=tss.Gfn=O.size()-tssp.G[0].w+1;
+                                tss.Ffn=tssp.Gfn;
+                                tss.E=heap_alloc<Do>(tss.Efn);
+                                tss.F=heap_alloc<Do>(tss.Ffn);
+                                tss.G=heap_alloc<Do>(tss.Gfn);
+                                letter=edge.G(os);
+                                sr=Bro.C[letter-1]+Bro.GetOcc(sr,letter);
+                                CrossBodyGlobal(tssp,tss,edge,edgecopy,O,letter,sr,sr,++seq_sz);
+                            }
+                        }
+                    }
+                }
             }
         }
         B[0].val=-inf;
@@ -667,10 +616,81 @@ struct Align : Memory, GraphCopy<U>
         update_cross(this->nodecopys[edge.head], O.size());
     }
     
-    TrieState<U> & PushTrieState(int Efn, int Ffn, int Gfn)
+    void CrossBodyGlobal(TrieState<U> & tsp, TrieState<U> & ts, EdgeGlobal<U> & edge, EdgeGlobalCopy<U> & edgecopy, std::string & O, U letter, U sr1, U sr2, U seq_sz)
     {
-        triestates.emplace_back();
-        TrieState<U> & ts=triestates.back();
+        Dot<U>* tildeANT=this->nodecopys[edge.tail].tildeA[graph.nodes[edge.tail].tAsz-1];
+        for(int g=0,f=0; g<ts.Ffn; ++g)
+        {
+            int w=ts.F[g].w=tsp.G[g].w;
+            ts.F[g].val=tsp.G[g].val+edge.vf[w];
+            if(f<tsp.Ffn && w==tsp.F[f].w)
+            {
+                ts.F[g].val=std::max(ts.F[g].val,tsp.F[f].val+edge.uf[w]);
+                ++f;
+            }
+        }
+        ts.E[0].w=ts.G[0].w=O.size()-ts.Gfn+1;
+        ts.E[0].val=-inf;
+        if(ts.F[0].val<tildeANT[ts.G[0].w].val+edge.T)
+            ts.F[0].val=-inf;
+        ts.G[0].val=ts.F[0].val;
+        for(int g=1,f=1; g<ts.Gfn; ++g)
+        {
+            int w=ts.E[g].w=ts.G[g].w=ts.G[g-1].w+1;
+            ts.E[g].val=std::max(ts.E[g-1].val+edge.ue,ts.G[g-1].val+edge.ve);
+            if(ts.E[g].val+edge.ue<tildeANT[w].val+edge.T+edge.ve)
+                ts.E[g].val=-inf;
+            ts.G[g].val=ts.E[g].val;
+            if(tsp.G[f-1].w==w-1)
+                ts.G[g].val=std::max(ts.G[g].val,tsp.G[f-1].val+edge.gamma[letter][int(O[w-1])]);
+            if(f<ts.Ffn && ts.F[f].w==w)
+            {
+                ts.G[g].val=std::max(ts.G[g].val,ts.F[f].val);
+                ++f;
+            }
+            if(ts.G[g].val<tildeANT[w].val+edge.T)
+            {
+                ts.G[g].val=-inf;
+                if(ts.F[f-1].w==w)
+                    ts.F[f-1].val=-inf;
+            }
+        }
+        {
+            int* Xfns[2]={&ts.Ffn,&ts.Gfn};
+            int i=0;
+            for(Do* X : {ts.F,ts.G})
+            {
+                int XfnNew=0;
+                for(int x=0; x<*Xfns[i]; ++x)
+                    if(X[x].val!=-inf)
+                    {
+                        if(x!=XfnNew)
+                            X[XfnNew]=X[x];
+                        ++XfnNew;
+                    }
+                *Xfns[i]=XfnNew;
+                ++i;
+            }
+        }
+        for(int g=0; g<ts.Gfn; ++g)
+        {
+            int w=ts.G[g].w;
+            if(ts.G[g].val>=edgecopy.A[0][w].val)
+            {
+                if(ts.G[g].val>edgecopy.A[0][w].val)
+                {
+                    edgecopy.A[0][w].val=ts.G[g].val;
+                    edgecopy.boxes[w].clear();
+                }
+                edgecopy.boxes[w].push_back(sr1);
+                edgecopy.boxes[w].push_back(sr2);
+                edgecopy.boxes[w].push_back(seq_sz);
+            }
+        }
+    }
+    
+    void PushTrieState(TrieState<U> & ts, int Efn, int Ffn, int Gfn)
+    {
         ts.now=this->now;
         ts.remain=this->remain;
         ts.chunk_id=this->chunk_id;
@@ -678,16 +698,16 @@ struct Align : Memory, GraphCopy<U>
         ts.E=heap_alloc<Do>(ts.Efn);
         ts.F=heap_alloc<Do>(ts.Ffn);
         ts.G=heap_alloc<Do>(ts.Gfn);
-        return ts;
     }
     
     void PushPre(EdgeGlobal<U> & edge)
     {
         U sr1=simnodes.top().sr1, sr2=simnodes.top().sr2;
+        U left=sr2-sr1+1;
         for(U letter=2; letter<7; ++letter)
         {
             U sr1cp=sr1, sr2cp=sr2;
-            edge.Bro.PreRange(sr1cp, sr2cp, letter);
+            edge.Bro.PreRange(sr1cp,sr2cp,letter);
             if(sr1cp>sr2cp)
                 continue;
             simnodes.emplace();
@@ -695,6 +715,9 @@ struct Align : Memory, GraphCopy<U>
             simnodes.top().sr1=sr1cp;
             simnodes.top().sr2=sr2cp;
             simnodes.top().visit=false;
+            left-=sr2cp-sr1cp+1;
+            if(left==0)
+                break;
         }
     }
     
@@ -736,9 +759,9 @@ struct Align : Memory, GraphCopy<U>
         for(size_t w=0; w<=O.size(); ++w)
         {
             for(int ll=l; ll<l+graph.local_C[scc]; ++ll)
-                CircuitIterationEdge(w,ll,O,tAsz);
+                CircuitIterationEdge(w,ll,O);
             for(int gg=g; gg<g+graph.global_C[scc]; ++gg)
-                CircuitIterationEdgeGlobal(w,gg,O,tAsz);
+                CircuitIterationEdgeGlobal(w,gg,O);
             for(int a=1; a<tAsz; ++a)
             {
                 for(int ll=l; ll<l+graph.local_C[scc]; ++ll)
@@ -817,15 +840,13 @@ struct Align : Memory, GraphCopy<U>
         }
     }
     
-    void CircuitIterationEdge(int w, int l, std::string & O, int tAsz)
+    void CircuitIterationEdge(int w, int l, std::string & O)
     {
         EdgeLocal<U> & edge=graph.locals[l];
         EdgeLocalCopy<U> & edgecopy=this->localcopys[l];
-        NodeCopy<U> & NTCP=this->nodecopys[edge.tail];
         NodeCopy<U> & NHCP=this->nodecopys[edge.head];
         Dot<U> **E=edgecopy.E, **F=edgecopy.F, **G=edgecopy.G, *B=edgecopy.B, **C=edgecopy.C, **H=edgecopy.H, **A=edgecopy.A;
-        double *ue=edge.ue, *ve=edge.ve, T=edge.T, *gfp=edge.gfp;
-        std::vector<double> &uf=edge.uf, &vf=edge.vf;
+        double *ue=edge.ue, *ve=edge.ve;
         std::string & seq=edge.seq;
         if(w==0)
         {
@@ -874,9 +895,7 @@ struct Align : Memory, GraphCopy<U>
     template <typename Y>
     void CircuitInitial(int w, Dot<U>** C, Dot<U>** E, Dot<U>** F, Dot<U>** G, Dot<U>** H, double ve, double ue, Y & edge)
     {
-        Node<U> & NT=graph.nodes[edge.tail];
-        NodeCopy<U> & NTCP=this->nodecopys[edge.tail];
-        Dot<U>* tildeANT=NTCP.tildeA[NT.tAsz-1];
+        Dot<U>* tildeANT=this->nodecopys[edge.tail].tildeA[graph.nodes[edge.tail].tAsz-1];
         C[0][w-1].val=-inf;
         source_max(H[0][w-1],{&tildeANT[w-1]},{tildeANT[w-1].val+edge.T});
         source_max(E[0][w],{&E[0][w-1],&H[0][w-1]},{E[0][w-1].val+ue,H[0][w-1].val+ve});
@@ -887,9 +906,7 @@ struct Align : Memory, GraphCopy<U>
     template <typename Y>
     void CircuitBody(std::string & seq, std::string & O, int w, int s, Dot<U>** C, Dot<U>** E, Dot<U>** F, Dot<U>** G, Dot<U>** H, double ve, double ue, Y & edge, double gfps)
     {
-        Node<U> & NT=graph.nodes[edge.tail];
-        NodeCopy<U> & NTCP=this->nodecopys[edge.tail];
-        Dot<U>* tildeANT=NTCP.tildeA[NT.tAsz-1];
+        Dot<U>* tildeANT=this->nodecopys[edge.tail].tildeA[graph.nodes[edge.tail].tAsz-1];
         source_max(C[s][w-1],{&C[s-1][w-1],&H[s-1][w-1]},{C[s-1][w-1].val+edge.uf[w-1],H[s-1][w-1].val+edge.vf[w-1]});
         source_max(H[s][w-1],{&C[s][w-1],&tildeANT[w-1]},{C[s][w-1].val,tildeANT[w-1].val+gfps+edge.T});
         source_max(E[s][w],{&G[s][w-1],&E[s][w-1],&H[s][w-1]},{G[s][w-1].val+ve,E[s][w-1].val+ue,H[s][w-1].val+ve});
@@ -898,7 +915,7 @@ struct Align : Memory, GraphCopy<U>
         source_max(G[s][w],{&E[s][w],&F[s][w],&G[s-1][w-1],&H[s-1][w-1]},{E[s][w].val,F[s][w].val,G[s-1][w-1].val+gm,H[s-1][w-1].val+gm});
     }
     
-    void CircuitIterationEdgeGlobal(int w, int g, std::string & O, int tAsz)
+    void CircuitIterationEdgeGlobal(int w, int g, std::string & O)
     {
         EdgeGlobal<U> & edge=graph.globals[g];
         EdgeGlobalCopy<U> & edgecopy=this->globalcopys[g];
@@ -922,7 +939,7 @@ struct Align : Memory, GraphCopy<U>
         }
         else
         {
-            double H=NTCP.tildeA[tAsz-1][w-1].val+T;
+            double H=NTCP.tildeA[graph.nodes[edge.tail].tAsz-1][w-1].val+T;
             auto it=sncs.begin();
             it->Gp=it->G;
             it->F=-inf;
@@ -931,7 +948,7 @@ struct Align : Memory, GraphCopy<U>
             boxes[w].push_back(it->sr1);
             boxes[w].push_back(it->sr2);
             boxes[w].push_back(it->s);
-            it=InsertSNC(it,sncs,Bro);
+            it=InsertSNC(it,sncs,edge);
             while(it!=sncs.end())
             {
                 it->Gp=it->G;
@@ -956,7 +973,7 @@ struct Align : Memory, GraphCopy<U>
                     boxes[w].push_back(it->sr2);
                     boxes[w].push_back(it->s);
                 }
-                it=InsertSNC(it,sncs,Bro);
+                it=InsertSNC(it,sncs,edge);
             }
             if(size_t(w)==O.size())
                 sncs.clear();
@@ -998,27 +1015,51 @@ struct Align : Memory, GraphCopy<U>
         }
     }
     
-    typename std::list<SNC<U>>::iterator InsertSNC(typename std::list<SNC<U>>::iterator it, std::list<SNC<U>> & sncs, BroWheel<U> & Bro)
+    typename std::list<SNC<U>>::iterator InsertSNC(typename std::list<SNC<U>>::iterator it, std::list<SNC<U>> & sncs, EdgeGlobal<U> & edge)
     {
         if(it->G!=-inf && it->Gp==-inf)
         {
             if(it->itcs.size()==0)
             {
                 auto itn=std::next(it);
-                for(U letter=2; letter<7; ++letter)
+                if(it->sr1==it->sr2)
                 {
-                    SNC<U> snc;
-                    snc.sr1=it->sr1;
-                    snc.sr2=it->sr2;
-                    Bro.PreRange(snc.sr1, snc.sr2, letter);
-                    if(snc.sr1<=snc.sr2)
+                    if(it->itp->sr1<it->itp->sr2)
+                        it->os=edge.Bro.SimSuffix(it->sr1);
+                    if(it->os>0)
                     {
+                        SNC<U> snc;
+                        snc.os=it->os-1;
                         snc.s=it->s+1;
-                        snc.letter=letter;
+                        snc.letter=edge.G(snc.os);
+                        snc.sr1=snc.sr2=edge.Bro.C[snc.letter-1]+edge.Bro.GetOcc(it->sr1,snc.letter);
                         snc.E=snc.F=snc.G=-inf;
                         snc.itp=it;
                         sncs.insert(itn,snc);
                         it->itcs.push_back(std::prev(itn));
+                    }
+                }
+                else
+                {
+                    U left=it->sr2-it->sr1+1;
+                    for(U letter=2; letter<7; ++letter)
+                    {
+                        SNC<U> snc;
+                        snc.sr1=it->sr1;
+                        snc.sr2=it->sr2;
+                        edge.Bro.PreRange(snc.sr1, snc.sr2, letter);
+                        if(snc.sr1<=snc.sr2)
+                        {
+                            snc.s=it->s+1;
+                            snc.letter=letter;
+                            snc.E=snc.F=snc.G=-inf;
+                            snc.itp=it;
+                            sncs.insert(itn,snc);
+                            it->itcs.push_back(std::prev(itn));
+                            left-=snc.sr2-snc.sr1+1;
+                        }
+                        if(left==0)
+                            break;
                     }
                 }
                 if(it->itcs.size()==0)

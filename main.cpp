@@ -25,7 +25,8 @@ int main(int argc, char **argv)
         index_global<temp_type>(index_information,ll,threads1,thread2);
     }
     Graph<temp_type> graph(graph_file);
-    Align<temp_type> align(graph);
+    size_t chunk_sz=1024*1024*1024;
+    Align<temp_type> align(graph,chunk_sz);
     align.MGout.open(min_graph_file);
     std::ifstream fin(read_file);
     std::string O;
