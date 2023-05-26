@@ -9,7 +9,7 @@
 std::tuple<std::string, std::string, std::string> random_mut(std::string &str, double indel_rate, double mut_rate, int head_in, int tail_in)
 {
     std::string mut;
-    size_t row = 0;
+    int64_t row = 0;
     while (row <= str.size())
     {
         double rv = double(rand()) / RAND_MAX;
@@ -55,8 +55,8 @@ void random_seq(Graph &graph, std::ofstream &fout_read, std::ofstream &fout_trut
             }
         if (reach_target)
             break;
-        size_t rv = rand() % (node->out_local_crosses.size() + node->out_local_circuits.size() + node->out_global_crosses.size() + node->out_global_circuits.size());
-        size_t len, start;
+        int64_t rv = rand() % (node->out_local_crosses.size() + node->out_local_circuits.size() + node->out_global_crosses.size() + node->out_global_circuits.size());
+        int64_t len, start;
         std::string str, head_str, mut, tail_str;
         if (rv < node->out_local_crosses.size() + node->out_local_circuits.size())
         {
@@ -85,7 +85,7 @@ void random_seq(Graph &graph, std::ofstream &fout_read, std::ofstream &fout_trut
                 global = node->out_global_circuits[rv - node->out_local_crosses.size() - node->out_local_circuits.size() - node->out_global_crosses.size()];
             len = aseqlb + rand() % (asequb - aseqlb);
             start = rand() % (global->browheel.sequence.size() - len);
-            for (size_t i = 1; i <= len; ++i)
+            for (int64_t i = 1; i <= len; ++i)
                 str.push_back(BroWheel::int2base[global->browheel.sequence(global->browheel.sequence.size() - 1 - start - i)]);
             std::tie(head_str, mut, tail_str) = random_mut(str, indel_rate, mut_rate, head_in, tail_in);
             seq += head_str;
@@ -108,7 +108,7 @@ void random_DG(int n_sz, int r_sz, int t_sz, int max_e_sz, std::string argfile, 
         args.emplace_back(std::vector<std::string>{"node" + std::to_string(i), std::to_string(nve), std::to_string(nue)});
     args.emplace_back(std::vector<std::string>{"--roots"});
     args.emplace_back(std::vector<std::string>{"node0"});
-    std::vector<size_t> indices(n_sz - 1);
+    std::vector<int64_t> indices(n_sz - 1);
     std::iota(indices.begin(), indices.end(), 1);
     std::random_shuffle(indices.begin(), indices.end());
     for (int i = 0; i < r_sz - 1; ++i)
@@ -214,20 +214,20 @@ void random_DG(int n_sz, int r_sz, int t_sz, int max_e_sz, std::string argfile, 
             {
                 if (graph.sccs.size() > 1)
                     at_least_two_sccs = true;
-                size_t up_single_type = (args_local.size() + args_global.size() + 2) / 3;
+                int64_t up_single_type = (args_local.size() + args_global.size() + 2) / 3;
                 average_four_edge_types = graph.local_crosses.size() > 0 && graph.local_crosses.size() <= up_single_type && graph.local_circuits.size() > 0 && graph.local_circuits.size() <= up_single_type && graph.global_crosses.size() > 0 && graph.global_crosses.size() <= up_single_type && graph.global_circuits.size() > 0 && graph.global_circuits.size() <= up_single_type;
                 break;
             }
             delete[] argv;
         }
-    } while (!at_least_two_sccs || args_local.size() + args_global.size() > size_t(max_e_sz) || !average_four_edge_types);
+    } while (!at_least_two_sccs || args_local.size() + args_global.size() > max_e_sz || !average_four_edge_types);
 
     for (auto &pair : file2seq)
     {
-        size_t seqlen = lseqlb + rand() % (lsequb - lseqlb);
+        int64_t seqlen = lseqlb + rand() % (lsequb - lseqlb);
         std::ofstream fout(pair.first);
         fout << '>' << pair.first << '\n';
-        for (size_t j = 0; j < seqlen; ++j)
+        for (int64_t j = 0; j < seqlen; ++j)
             fout << BroWheel::int2base[rand() % 4 + 3];
         fout << '\n';
         fout.close();
@@ -235,10 +235,10 @@ void random_DG(int n_sz, int r_sz, int t_sz, int max_e_sz, std::string argfile, 
     }
     for (auto &pair : file2browheel)
     {
-        size_t seqlen = gseqlb + rand() % (gsequb - gseqlb);
+        int64_t seqlen = gseqlb + rand() % (gsequb - gseqlb);
         std::ofstream fout(pair.first);
         fout << '>' << pair.first << '\n';
-        for (size_t j = 0; j < seqlen; ++j)
+        for (int64_t j = 0; j < seqlen; ++j)
             fout << BroWheel::int2base[rand() % 4 + 3];
         fout << '\n';
         fout.close();

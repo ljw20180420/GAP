@@ -5,21 +5,27 @@
 #include <cfloat>
 #include <list>
 #include "BroWheel.h"
-#include "Memory.h"
 
 constexpr static const double inf = std::numeric_limits<double>::infinity();
 
-struct Dot // cannot use constructor because on Memory
+struct Dot
 {
+    static const int DotQ = -3, DotAbar = -2, DotB = -1;
+
     bool visit;
     int n; // n determines the type of Dot
-    size_t s;
+    int64_t s;
     int w;
     double val;
-    Dot **sources; // apply on memory
-    int s_sz;      // s_sz<0 means visited
+    int64_t fs; // first source
+    int s_sz;
     int lambda;
-    size_t id;
+    int64_t id;
+
+    static int nidx_trans(int nidx)
+    {
+        return -nidx - 4;
+    }
 };
 
 struct Node;
@@ -82,6 +88,17 @@ struct EdgeLocal : Edge
     }
 };
 
+template <typename T>
+void ptrDelete(T **ptr)
+{
+    if (ptr)
+    {
+        if (*ptr)
+            delete[] * ptr;
+        delete[] ptr;
+    }
+}
+
 struct EdgeLocalCross : EdgeLocal
 {
     Dot **E;
@@ -89,11 +106,18 @@ struct EdgeLocalCross : EdgeLocal
     Dot **G;
 
     EdgeLocalCross(EdgeLocal &edge)
-        : EdgeLocal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.nameseq, edge.vfp, edge.ufp, edge.vfm, edge.ufm)
+        : EdgeLocal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.nameseq, edge.vfp, edge.ufp, edge.vfm, edge.ufm), E(NULL), F(NULL), G(NULL)
     {
         tail = edge.tail;
         head = edge.head;
         global = false;
+    }
+
+    ~EdgeLocalCross()
+    {
+        ptrDelete(E);
+        ptrDelete(F);
+        ptrDelete(G);
     }
 };
 
@@ -108,15 +132,32 @@ struct EdgeLocalCircuit : EdgeLocal
     Dot **DX;
 
     EdgeLocalCircuit(EdgeLocal &edge)
-        : EdgeLocal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.nameseq, edge.vfp, edge.ufp, edge.vfm, edge.ufm)
+        : EdgeLocal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.nameseq, edge.vfp, edge.ufp, edge.vfm, edge.ufm), D(NULL), E(NULL), F0(NULL), G0(NULL), G(NULL), D0(NULL), DX(NULL)
     {
         tail = edge.tail;
         head = edge.head;
         global = false;
     }
+
+    ~EdgeLocalCircuit()
+    {
+        if (D)
+            delete[] D;
+        ptrDelete(E);
+        ptrDelete(F0);
+        ptrDelete(G0);
+        ptrDelete(G);
+        ptrDelete(D0);
+        ptrDelete(DX);
+    }
 };
 
-enum enumEFG{enumE, enumF, enumG};
+enum enumEFG
+{
+    enumE,
+    enumF,
+    enumG
+};
 
 struct TrackTree
 {
@@ -158,8 +199,8 @@ struct TrackTree
     void emplace_back(int64_t cidx_, int n_, int64_t s_, int lambda_)
     {
         tracknodes.emplace_back(cidx_);
-        dots.resize(tracknodes.size() * (enumG + 1) * (W+1));
-        for (int k = (tracknodes.size() - 1) * (enumG + 1) * (W+1), t = enumE; t <= enumG; ++t)
+        dots.resize(tracknodes.size() * (enumG + 1) * (W + 1));
+        for (int k = (tracknodes.size() - 1) * (enumG + 1) * (W + 1), t = enumE; t <= enumG; ++t)
             for (int w = 0; w <= W; ++w, ++k)
             {
                 dots[k].n = n_;
@@ -208,13 +249,13 @@ struct SNC
     int8_t c;
     int8_t idl;
     int lambda;
-    size_t sr1;
-    size_t sr2;
-    size_t cid; // 0 means not try to add child yet
+    int64_t sr1;
+    int64_t sr2;
+    int64_t cid; // 0 means not try to add child yet
     SNC *itp;
     SNC *jump;
 
-    SNC(double E_, double F0_, double G0_, double hatG_, int8_t c_, int8_t idl_, int lambda_, size_t sr1_, size_t sr2_, size_t cid_, SNC *itp_, SNC *jump_)
+    SNC(double E_, double F0_, double G0_, double hatG_, int8_t c_, int8_t idl_, int lambda_, int64_t sr1_, int64_t sr2_, int64_t cid_, SNC *itp_, SNC *jump_)
         : E(E_), F0(F0_), G0(G0_), hatG(hatG_), c(c_), idl(idl_), lambda(lambda_), sr1(sr1_), sr2(sr2_), cid(cid_), itp(itp_), jump(jump_)
     {
     }
@@ -226,17 +267,23 @@ struct EdgeGlobalCircuit : EdgeGlobal
     Dot **D0;
 
     EdgeGlobalCircuit(EdgeGlobal &edge)
-        : EdgeGlobal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.browheel)
+        : EdgeGlobal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.browheel), D0(NULL)
     {
         tail = edge.tail;
         head = edge.head;
         global = true;
+    }
+
+    ~EdgeGlobalCircuit()
+    {
+        ptrDelete(D0);
     }
 };
 
 struct Node
 {
     int scc_id;
+    int scc_sz;
     std::string name;
     double ve;
     double ue;
@@ -249,9 +296,9 @@ struct Node
     std::vector<EdgeGlobalCross *> in_global_crosses;
     std::vector<EdgeGlobalCircuit *> in_global_circuits;
     Dot Abar;
-    std::vector<std::deque<Dot>> A;
-    std::deque<Dot> B;
-    std::deque<std::deque<Dot *>> AdeltaDot;
+    Dot **A;
+    Dot *B;
+    std::deque<Dot *> *AdeltaDot;
 
     struct GlobalSuffix
     {
@@ -265,10 +312,10 @@ struct Node
         }
     };
 
-    std::deque<std::deque<GlobalSuffix>> AdeltaGlobal;
+    std::deque<GlobalSuffix> *AdeltaGlobal;
 
     Node(std::string name_, double ve_, double ue_)
-        : name(name_), ve(ve_), ue(ue_)
+        : name(name_), ve(ve_), ue(ue_), A(NULL), B(NULL), AdeltaDot(NULL), AdeltaGlobal(NULL)
     {
     }
 
@@ -308,6 +355,17 @@ struct Node
             AdeltaGlobal[w].clear();
         }
     }
+
+    ~Node()
+    {
+        if (B)
+            delete[] B;
+        ptrDelete(A);
+        if (AdeltaDot)
+            delete[] AdeltaDot;
+        if (AdeltaGlobal)
+            delete[] AdeltaGlobal;
+    }
 };
 
 struct SCC
@@ -326,10 +384,10 @@ struct Graph
     std::vector<Node> nodes;
     std::vector<Node *> roots;
     std::vector<Node *> targets;
-    std::deque<EdgeLocalCross> local_crosses;
-    std::deque<EdgeLocalCircuit> local_circuits;
-    std::deque<EdgeGlobalCross> global_crosses;
-    std::deque<EdgeGlobalCircuit> global_circuits;
+    std::vector<EdgeLocalCross> local_crosses;
+    std::vector<EdgeLocalCircuit> local_circuits;
+    std::vector<EdgeGlobalCross> global_crosses;
+    std::vector<EdgeGlobalCircuit> global_circuits;
 
     std::deque<SCC> sccs;
 
@@ -460,7 +518,7 @@ struct Graph
             for (auto node : sccs[i].nodes)
             {
                 node->scc_id = i;
-                node->A.resize(sccs[i].nodes.size());
+                node->scc_sz = sccs[i].nodes.size();
             }
     }
 
@@ -592,14 +650,14 @@ struct Graph
     {
         std::vector<bool> visit(nodes.size()), in_stack(nodes.size());
         std::vector<int> disc(nodes.size()), low(nodes.size());
-        for (size_t n = 0; n < nodes.size(); ++n)
+        for (int64_t n = 0; n < nodes.size(); ++n)
         {
             visit[n] = false;
             in_stack[n] = false;
         }
         std::stack<Node *> stack;
         int id = 0;
-        for (size_t n = 0; n < nodes.size(); ++n)
+        for (int64_t n = 0; n < nodes.size(); ++n)
             if (!visit[n])
                 DeepFirst(&nodes[n], stack, id, visit, in_stack, disc, low, locals, globals);
     }

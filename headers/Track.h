@@ -3,15 +3,15 @@
 
 #include "Align.h"
 
-struct Track : Memory, Graph
+struct Track : Graph
 {
     std::vector<EdgeLocal *> locals;
     std::vector<EdgeGlobal *> globals;
     std::set<std::string> node_names;
+    MonoDeque<Dot *> sources;
 
-    Track(int argc, char **argv, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel, size_t chunk_sz_) : Graph(argc, argv, file2seq, file2browheel)
+    Track(int argc, char **argv, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel) : Graph(argc, argv, file2seq, file2browheel)
     {
-        Initial(chunk_sz_);
         for (auto &node : nodes)
             node_names.emplace(node.name);
         int max_n = 0;
@@ -19,7 +19,7 @@ struct Track : Memory, Graph
         {
             if (edge.n > max_n)
                 max_n = edge.n;
-            if (size_t(max_n) >= locals.size())
+            if (max_n >= locals.size())
                 locals.resize(max_n + 1, NULL);
             locals[edge.n] = &edge;
         }
@@ -27,7 +27,7 @@ struct Track : Memory, Graph
         {
             if (edge.n > max_n)
                 max_n = edge.n;
-            if (size_t(max_n) >= locals.size())
+            if (max_n >= locals.size())
                 locals.resize(max_n + 1, NULL);
             locals[edge.n] = &edge;
         }
@@ -35,7 +35,7 @@ struct Track : Memory, Graph
         {
             if (edge.n > max_n)
                 max_n = edge.n;
-            if (size_t(max_n) >= globals.size())
+            if (max_n >= globals.size())
                 globals.resize(max_n + 1, NULL);
             globals[edge.n] = &edge;
         }
@@ -43,7 +43,7 @@ struct Track : Memory, Graph
         {
             if (edge.n > max_n)
                 max_n = edge.n;
-            if (size_t(max_n) >= globals.size())
+            if (max_n >= globals.size())
                 globals.resize(max_n + 1, NULL);
             globals[edge.n] = &edge;
         }
@@ -51,25 +51,25 @@ struct Track : Memory, Graph
         globals.resize(max_n + 1, NULL);
     }
 
-    void ReadTrack(std::deque<std::string> mg_files, std::deque<std::string> read_files, std::string run_name, size_t max_seq, size_t max_track)
+    void ReadTrack(std::deque<std::string> mg_files, std::deque<std::string> read_files, std::string run_name, int64_t max_seq, int64_t max_track)
     {
         std::vector<std::ifstream> fins;
         for (auto &file : mg_files)
             fins.emplace_back(file, std::ios::binary);
         std::ofstream fout_track(run_name+".trk");
         std::ofstream fout_align(run_name+".alg");
-        size_t max_id = 0;
+        int64_t max_id = 0;
         std::vector<std::string> Onames(fins.size());
-        std::vector<size_t> fzs(fins.size());
-        for (size_t i = 0; i < fins.size(); ++i)
+        std::vector<int64_t> fzs(fins.size());
+        for (int64_t i = 0; i < fins.size(); ++i)
         {
-            size_t id;
+            int64_t id;
             fins[i].seekg(0, fins[i].end);
             fzs[i] = fins[i].tellg();
-            if (fzs[i] > sizeof(size_t))
+            if (fzs[i] > sizeof(int64_t))
             {
-                fins[i].seekg(-sizeof(size_t), fins[i].end);
-                fins[i].read((char *)&id, sizeof(size_t));
+                fins[i].seekg(-sizeof(int64_t), fins[i].end);
+                fins[i].read((char *)&id, sizeof(int64_t));
                 max_id = id > max_id ? id : max_id;
                 fins[i].seekg(0, fins[i].beg);
                 int Onsz;
@@ -79,7 +79,7 @@ struct Track : Memory, Graph
             }
         }
         std::vector<Dot> dots(max_id + 1);
-        size_t seq_num = 0;
+        int64_t seq_num = 0;
         std::string Oname, O;
         auto iter = read_files.begin();
         std::ifstream fin_seq(*iter);
@@ -90,12 +90,12 @@ struct Track : Memory, Graph
                 ++seq_num;
                 if (Oname[0]=='@')
                     fin_seq.ignore(std::numeric_limits<std::streamsize>::max(),'\n').ignore(std::numeric_limits<std::streamsize>::max(),'\n');
-                for (size_t f = 0; f < fins.size(); ++f)
+                for (int64_t f = 0; f < fins.size(); ++f)
                 {
                     if (Onames[f] == Oname)
                     {
-                        ssize_t id = -1;
-                        size_t uid = 0;
+                        int64_t id = -1;
+                        int64_t uid = 0;
                         do
                         {
                             ++id;
@@ -105,22 +105,22 @@ struct Track : Memory, Graph
                             fins[f].read((char *)&dots[id].val, sizeof(Dot::val));
                             fins[f].read((char *)&dots[id].s_sz, sizeof(Dot::s_sz));
                             fins[f].read((char *)&dots[id].lambda, sizeof(Dot::lambda));
-                            dots[id].sources = heap_alloc<Dot *>(dots[id].s_sz);
+                            dots[id].fs = sources.offset;
                             for (int i = 0; i < dots[id].s_sz; ++i)
                             {
-                                size_t idd;
+                                int64_t idd;
                                 fins[f].read((char *)&idd, sizeof(idd));
-                                dots[id].sources[i] = &dots[idd];
+                                sources.emplace_back(&dots[idd]);
                                 uid = idd > uid ? idd : uid;
                             }
-                        } while (size_t(id) < uid);
+                        } while (id < uid);
 
                         std::deque<Dot *> path;
                         path.push_front(&dots[0]);
                         BackTrack(fout_track, fout_align, path, max_track, Oname, O);
 
-                        clear();
-                        if (fzs[f] - fins[f].tellg() > sizeof(size_t))
+                        sources.clear();
+                        if (fzs[f] - fins[f].tellg() > sizeof(int64_t))
                         {
                             int Onsz;
                             fins[f].read((char *)&Onsz, sizeof(Onsz));
@@ -139,9 +139,9 @@ struct Track : Memory, Graph
         }
     }
 
-    void BackTrack(std::ofstream &fout_track, std::ofstream &fout_align, std::deque<Dot *> &path, size_t max_track, std::string &Oname, std::string &O)
+    void BackTrack(std::ofstream &fout_track, std::ofstream &fout_align, std::deque<Dot *> &path, int64_t max_track, std::string &Oname, std::string &O)
     {
-        size_t track_num = 0;
+        int64_t track_num = 0;
         while (!path.empty() && track_num < max_track)
         {
             if (path.front()->s_sz == 0)
@@ -161,7 +161,7 @@ struct Track : Memory, Graph
                                 ++iter;
                             } while (iter != path.end() && (*iter)->n == n);
                             int lambda = (*std::prev(iter))->lambda;
-                            size_t s = (*std::prev(iter))->s, ls;
+                            int64_t s = (*std::prev(iter))->s, ls;
                             std::string name;
                             do
                             {
@@ -221,7 +221,7 @@ struct Track : Memory, Graph
                             else
                             {
                                 auto &browheel = globals[n]->browheel;
-                                for (size_t s = (*it2)->s + (*it1)->lambda - (*it2)->lambda + 1; s <= (*it2)->s; ++s)
+                                for (int64_t s = (*it2)->s + (*it1)->lambda - (*it2)->lambda + 1; s <= (*it2)->s; ++s)
                                     align.emplace_back(std::array<char, 3>{'-', ' ', BroWheel::int2base[browheel.sequence(browheel.sequence.size() - 1 - s)]});
                             }
                         }
@@ -235,7 +235,7 @@ struct Track : Memory, Graph
                     fout_align << '\n';
                 }
                 Dot *dot_parent = *std::next(path.begin());
-                while (path.front() == dot_parent->sources[dot_parent->s_sz - 1])
+                while (path.front() == sources[dot_parent->fs + dot_parent->s_sz - 1])
                 {
                     path.pop_front();
                     if (path.size() == 1)
@@ -247,31 +247,31 @@ struct Track : Memory, Graph
                 }
                 if (!path.empty())
                     for (int i = 0; i < dot_parent->s_sz; ++i)
-                        if (dot_parent->sources[i] == path.front())
+                        if (sources[dot_parent->fs + i] == path.front())
                         {
                             path.pop_front();
-                            path.push_front(path.front()->sources[i + 1]);
+                            path.push_front(sources[path.front()->fs + i + 1]);
                             break;
                         }
             }
             else
-                path.push_front(path.front()->sources[0]);
+                path.push_front(sources[path.front()->fs]);
         }
     }
 
-    void extract(std::string run_name, size_t max_extract)
+    void extract(std::string run_name, int64_t max_extract)
     {
         std::ifstream fin(run_name + ".trk");
         std::ofstream fout(run_name + ".ext");
         std::string Oname;
-        size_t track_num;
-        size_t track_length;
+        int64_t track_num;
+        int64_t track_length;
         while (true)
         {
             fin >> Oname >> track_num >> track_length;
             while (fin.good() && track_num > max_extract)
             {
-                for (size_t i = 0; i < track_length; ++i)
+                for (int64_t i = 0; i < track_length; ++i)
                     std::getline(fin, Oname);
                 fin >> Oname >> track_num >> track_length;
             }
@@ -284,14 +284,14 @@ struct Track : Memory, Graph
             {
                 std::string name;
                 int w;
-                size_t s;
+                int64_t s;
                 double val;
                 fin >> name >> s >> w >> val;
-                for (size_t i = 1; i < track_length; ++i)
+                for (int64_t i = 1; i < track_length; ++i)
                 {
                     std::string namep(std::move(name));
                     int wp = w;
-                    size_t sp = s;
+                    int64_t sp = s;
                     double valp = val;
                     fin >> name >> s >> w >> val;
                     if (namep != name)

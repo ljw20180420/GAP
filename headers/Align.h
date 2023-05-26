@@ -10,7 +10,33 @@
 #include <typeinfo>
 #include "Graph.h"
 
-struct Align : Memory, Graph
+template <typename T>
+struct MonoDeque
+{
+    std::deque<T> data;
+    int64_t offset = 0;
+
+    void emplace_back(T t)
+    {
+        if (offset < data.size())
+            data[offset] = t;
+        else
+            data.emplace_back(t);
+        ++offset;
+    }
+
+    T &operator[](int64_t idx)
+    {
+        return data[idx];
+    }
+
+    void clear()
+    {
+        offset = 0;
+    }
+};
+
+struct Align : Graph
 {
     struct CrossGlobalData
     {
@@ -57,15 +83,20 @@ struct Align : Memory, Graph
         {
             int w;
             double E;
-
-            Do(int w_, double E_)
-            : w(w_), E(E_)
-            {
-            }
         };
 
-        std::deque<Do> E0, E;
-        std::deque<double> Ethres;
+        Do *E0 = NULL, *E = NULL;
+        double *Ethres = NULL;
+
+        ~CrossGlobalData()
+        {
+            if (E0)
+                delete[] E0;
+            if (E)
+                delete[] E;
+            if (Ethres)
+                delete[] Ethres;
+        }
     };
 
     const static int ww = 3;
@@ -74,127 +105,98 @@ struct Align : Memory, Graph
     std::string Oname;
     Dot Q;
     std::ofstream fout;
-    size_t max_id = 0;
+    int64_t max_id = 0;
+    int Omax;
 
     CrossGlobalData crossglobaldata;
 
-    void alloc_initial(Dot **&ptr, int n, int S)
+    MonoDeque<Dot *> sources;
+
+    Dot **dot_initial(int n, int S)
     {
-        ptr = heap_alloc<Dot *>(S + 1);
+        Dot **ptr = new Dot *[S + 1];
+        *ptr = new Dot[(S + 1) * (Omax + 1)];
         for (int s = 0; s <= S; ++s)
-            alloc_initial(ptr[s], n, s);
+        {
+            if (s > 0)
+                ptr[s] = ptr[s - 1] + (Omax + 1);
+            for (int w = 0; w <= Omax; ++w)
+            {
+                ptr[s][w].n = n;
+                ptr[s][w].s = s;
+                ptr[s][w].w = w;
+                ptr[s][w].visit = false;
+            }
+        }
+        return ptr;
     }
 
-    void alloc_initial(Dot *&ptr, int n, int s)
+    Dot *dot_initial_row(int n, int s)
     {
-        ptr = heap_alloc<Dot>(O.size() + 1);
-        for (size_t w = 0; w <= O.size(); ++w)
+        Dot *ptr = new Dot[Omax + 1];
+        for (int w = 0; w <= Omax; ++w)
         {
             ptr[w].n = n;
             ptr[w].s = s;
             ptr[w].w = w;
             ptr[w].visit = false;
         }
+        return ptr;
     }
 
-    void dot_initial(std::vector<std::deque<Dot>> &Dotss, int n)
+    Align(int argc, char **argv, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel, std::string file, int Omax_) : Graph(argc, argv, file2seq, file2browheel), fout(file, std::ifstream::binary), Omax(Omax_)
     {
-        for (int s = 0; s < Dotss.size(); ++s)
-            dot_initial(Dotss[s], n, s);
-    }
+        crossglobaldata.E0 = new CrossGlobalData::Do[Omax + 1];
+        crossglobaldata.E = new CrossGlobalData::Do[Omax + 1];
+        crossglobaldata.Ethres = new double[Omax + 1];
 
-    void dot_initial(std::deque<Dot> &Dots, int n, int s)
-    {
-        if (Dots.size() < O.size() + 1)
-            Dots.resize(O.size() + 1);
-        for (int w = 0; w <= O.size(); ++w)
+        for (int i = 0; i < nodes.size(); ++i)
         {
-            Dots[w].n = n;
-            Dots[w].s = s;
-            Dots[w].w = w;
-            Dots[w].visit = false;
-        }
-    }
-
-    Align(int argc, char **argv, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel, size_t chunk_sz_, std::string file) : Graph(argc, argv, file2seq, file2browheel), fout(file, std::ifstream::binary)
-    {
-        Initial(chunk_sz_);
-        for (auto &node : nodes)
-        {
-            node.Abar.visit = false;
-            node.Abar.n = -2;
-            node.Abar.s = 0;
-            node.Abar.w = 0;
-            node.Abar.val = -inf;
-            node.Abar.s_sz = 0;
-            node.Abar.sources = NULL;
+            nodes[i].Abar.visit = false;
+            nodes[i].Abar.n = Dot::DotAbar;
+            nodes[i].Abar.s = 0;
+            nodes[i].Abar.w = 0;
+            nodes[i].Abar.val = -inf;
+            nodes[i].Abar.s_sz = 0;
+            nodes[i].Abar.fs = -1;
+            nodes[i].A = dot_initial(Dot::nidx_trans(i), nodes[i].scc_sz - 1);
+            nodes[i].B = dot_initial_row(Dot::DotB, 0);
+            nodes[i].AdeltaDot = new std::deque<Dot *>[Omax + 1];
+            nodes[i].AdeltaGlobal = new std::deque<Node::GlobalSuffix>[Omax + 1];
         }
         for (auto root : roots)
             root->Abar.val = 0;
-        Q.n = -3;
+        Q.n = Dot::DotQ;
         Q.s = 0;
         Q.w = 0;
-    }
-
-    void renew_source(double newval, Dot *newadr, double &maxval, std::deque<Dot *> &maxadr)
-    {
-        if (newval >= maxval)
+        for (auto &edge : local_circuits)
         {
-            if (newval > maxval)
-            {
-                maxval = newval;
-                maxadr.clear();
-            }
-            maxadr.emplace_back(newadr);
+            edge.D = dot_initial_row(edge.n, 0);
+            edge.E = dot_initial(edge.n, edge.nameseq.seq.size());
+            edge.F0 = dot_initial(edge.n, edge.nameseq.seq.size());
+            edge.G0 = dot_initial(edge.n, edge.nameseq.seq.size());
+            edge.G = dot_initial(edge.n, edge.nameseq.seq.size());
+            edge.D0 = dot_initial(edge.n, edge.head->scc_sz - 1);
+            edge.DX = dot_initial(edge.n, edge.head->scc_sz - 1);
         }
-    }
-
-    void renew_source(double newval, int64_t sr1, int32_t lambda, double &maxval, std::deque<std::pair<int64_t, int32_t>> &maxadr)
-    {
-        if (newval >= maxval)
+        for (auto &edge : global_circuits)
+            edge.D0 = dot_initial(edge.n, edge.head->scc_sz - 1);
+        for (auto &edge : local_crosses)
         {
-            if (newval > maxval)
-            {
-                maxval = newval;
-                maxadr.clear();
-            }
-            maxadr.emplace_back(sr1, lambda);
+            edge.E = dot_initial(edge.n, edge.nameseq.seq.size());
+            edge.F = dot_initial(edge.n, edge.nameseq.seq.size());
+            edge.G = dot_initial(edge.n, edge.nameseq.seq.size());
         }
     }
 
     void Mix()
     {
-        if (O.size() + 1 > crossglobaldata.Ethres.size())
-        {
-            crossglobaldata.Ethres.resize(O.size() + 1);
-            for (int n = 0; n < nodes.size(); ++n)
-            {
-                nodes[n].AdeltaDot.resize(O.size() + 1);
-                nodes[n].AdeltaGlobal.resize(O.size() + 1);
-            }
-        }
         for (int n = 0; n < nodes.size(); ++n)
-        {
-            dot_initial(nodes[n].A, -n - 4);
-            dot_initial(nodes[n].B, -1, 0);
             for (int w = 0; w <= O.size(); ++w)
                 nodes[n].A[0][w].val = -inf;
-        }
         for (auto &scc : sccs)
         {
-            for (auto edge : scc.local_circuits)
-            {
-                alloc_initial(edge->D, edge->n, 0);
-                alloc_initial(edge->E, edge->n, edge->nameseq.seq.size());
-                alloc_initial(edge->F0, edge->n, edge->nameseq.seq.size());
-                alloc_initial(edge->G0, edge->n, edge->nameseq.seq.size());
-                alloc_initial(edge->G, edge->n, edge->nameseq.seq.size());
-                alloc_initial(edge->D0, edge->n, scc.nodes.size() - 1);
-                alloc_initial(edge->DX, edge->n, scc.nodes.size() - 1);
-            }
-            for (auto edge : scc.global_circuits)
-                alloc_initial(edge->D0, edge->n, scc.nodes.size() - 1);
-            for (size_t w = 0; w <= O.size(); ++w)
+            for (int64_t w = 0; w <= O.size(); ++w)
             {
                 for (auto node : scc.nodes)
                 {
@@ -211,7 +213,7 @@ struct Align : Memory, Graph
                     CircuitIteration(w, edge, scc.nodes.size());
                 for (auto edge : scc.global_circuits)
                     CircuitIterationGlobal(w, edge, scc.nodes.size());
-                for (size_t l = 1; l < scc.nodes.size(); ++l)
+                for (int64_t l = 1; l < scc.nodes.size(); ++l)
                 {
                     for (auto edge : scc.global_circuits)
                         source_max(edge->D0[l][w], {&edge->tail->A[l - 1][w]}, {edge->tail->A[l - 1][w].val + edge->T});
@@ -241,33 +243,28 @@ struct Align : Memory, Graph
                 }
             }
             for (auto edge : scc.local_crosses)
-            {
-                alloc_initial(edge->E, edge->n, edge->nameseq.seq.size());
-                alloc_initial(edge->F, edge->n, edge->nameseq.seq.size());
-                alloc_initial(edge->G, edge->n, edge->nameseq.seq.size());
                 CrossIteration(edge, scc.nodes.size());
-            }
             for (auto edge : scc.global_crosses)
                 CrossIterationGlobal(edge, scc.nodes.size());
         }
         std::vector<Dot *> adrs;
         std::vector<double> vals;
-        for (size_t n = 0; n < targets.size(); ++n)
+        for (int64_t n = 0; n < targets.size(); ++n)
         {
-            adrs.push_back(&targets[n]->A.back()[O.size()]);
-            vals.push_back(targets[n]->A.back()[O.size()].val);
+            adrs.push_back(&targets[n]->A[targets[n]->scc_sz - 1][O.size()]);
+            vals.push_back(targets[n]->A[targets[n]->scc_sz - 1][O.size()].val);
         }
         source_max(Q, adrs.begin(), vals.begin(), vals.end());
     }
 
     void CrossIteration(EdgeLocalCross *edge, int scc_sz)
     {
-        std::deque<Dot> &A = edge->tail->A.back();
+        Dot *A = edge->tail->A[edge->tail->scc_sz - 1];
         Dot **E = edge->E;
         Dot **F = edge->F;
         Dot **G = edge->G;
-        for (size_t s = 0; s <= edge->nameseq.seq.size(); ++s)
-            for (size_t w = 0; w <= O.size(); ++w)
+        for (int64_t s = 0; s <= edge->nameseq.seq.size(); ++s)
+            for (int64_t w = 0; w <= O.size(); ++w)
             {
                 if (w == 0)
                     source_max(E[s][w], {}, {});
@@ -287,23 +284,28 @@ struct Align : Memory, Graph
 
     void CrossIterationGlobal(EdgeGlobalCross *edge, int scc_sz)
     {
-        std::deque<Dot> &A = edge->tail->A.back();
+        Dot *A = edge->tail->A[edge->tail->scc_sz - 1];
         std::deque<CrossGlobalData::SimNode> &simnodes = crossglobaldata.simnodes;
-        std::deque<CrossGlobalData::Do> &E0 = crossglobaldata.E0, &E = crossglobaldata.E;
-        std::deque<double> &Ethres = crossglobaldata.Ethres;
+        CrossGlobalData::Do *E0 = crossglobaldata.E0, *E = crossglobaldata.E;
+        double *Ethres = crossglobaldata.Ethres;
         std::deque<CrossGlobalData::Doo> &FG = crossglobaldata.FG;
 
         int c = -1;
         int64_t sr1 = 0, sr2 = edge->browheel.sequence.size() - 1;
         crossglobaldata.emplace_back(c, sr1, sr2);
-        for (size_t w = 0; w <= O.size(); ++w)
+        for (int64_t w = 0; w <= O.size(); ++w)
         {
             double tgw = (O.size() > w ? (O.size() - w - 1) * edge->tail->ue + edge->tail->ve : 0);
-            E0.emplace_back(w, w > 0 ? std::max(E0[w-1].E + edge->ue, FG[w - 1].G + edge->ve) : -inf);
-            if (E0[w].E + edge->ue < std::max(E0[w].E, A[w].val + edge->T) + edge->tail->ve && E0[w].E + (O.size() - w) * edge->ue < std::max(E0[w].E, A[w].val + edge->T) + tgw)
+            E0[w].w = w;
+            if (w > 0)
+                E0[w].E = std::max(E0[w - 1].E + edge->ue, FG[w - 1].G + edge->ve);
+            else
+                E0[w].E = -inf;
+            double tmp = std::max(E0[w].E, A[w].val + edge->T);
+            if (E0[w].E + edge->ue < tmp + edge->tail->ve && E0[w].E + (O.size() - w) * edge->ue < tmp + tgw)
                 E0[w].E = -inf;
             FG.emplace_back(w, -inf, std::max(E0[w].E, A[w].val + edge->T));
-            Ethres[w] = std::max(E0[w].E, FG[w].G + std::min(0.0, std::min(edge->tail->ve - edge->ue, tgw - (O.size() - w) * edge->ue)));
+            Ethres[w] = std::max(E0[w].E, FG[w].G + std::min({0.0, edge->tail->ve - edge->ue, tgw - (O.size() - w) * edge->ue}));
             edge->head->updateA0(w, FG[w].G, edge, simnodes[0].sr1, 0);
         }
 
@@ -335,49 +337,43 @@ struct Align : Memory, Graph
                     crossglobaldata.emplace_back(c, sr1, sr2);
                     break;
                 }
-                else if(FG.size() > simnodes.back().shiftFG)
+                else if (FG.size() > simnodes.back().shiftFG)
                     FG.erase(FG.begin() + simnodes.back().shiftFG, FG.end());
             } while (true);
             if (simnodes.empty())
                 break;
 
             int64_t idx = simnodes[simnodes.size() - 2].shiftFG;
-            for (int j = 0, w = FG[idx].w;;)
+            for (int e = 0, w = FG[idx].w;; ++e)
             {
-                E.emplace_back(w, std::max((!E.empty() && E.back().w == w - 1) ? E.back().E + edge->ue : -inf, (simnodes.back().shiftFG < FG.size() && FG.back().w == w - 1) ? FG.back().G + edge->ve : -inf));
-                if (E.back().E < Ethres[w])
-                    E.back().E = -inf;
+                E[e].w = w;
+                E[e].E = std::max((e > 0 && E[e - 1].w == w - 1) ? E[e - 1].E + edge->ue : -inf, (simnodes.back().shiftFG < FG.size() && FG.back().w == w - 1) ? FG.back().G + edge->ve : -inf);
+                if (E[e].E < Ethres[w])
+                    E[e].E = -inf;
 
                 double F_val = idx < simnodes.back().shiftFG && FG[idx].w == w ? std::max(FG[idx].F + edge->uf, FG[idx].G + edge->vf) : -inf;
-                double G_val = j > 0 && FG[idx - 1].w == w - 1 ? FG[idx - 1].G + edge->gamma[simnodes.back().c][BroWheel::base2int(O[w - 1])] : -inf;
-                G_val = std::max(std::max(G_val, E.back().E), F_val);
+                double G_val = idx > simnodes[simnodes.size() - 2].shiftFG && FG[idx - 1].w == w - 1 ? FG[idx - 1].G + edge->gamma[simnodes.back().c][BroWheel::base2int(O[w - 1])] : -inf;
+                G_val = std::max({G_val, E[e].E, F_val});
                 if (G_val >= FG[w].G)
                 {
                     FG.emplace_back(w, F_val, G_val);
                     edge->head->updateA0(w, G_val, edge, simnodes.back().sr1, simnodes.size() - 1);
                 }
                 if (idx < simnodes.back().shiftFG && FG[idx].w <= w)
-                {
-                    ++j;
                     ++idx;
-                }
-                if (w < O.size() && (FG[idx - 1].w == w || (simnodes.back().shiftFG < FG.size() && FG.back().w == w) || (!E.empty() && E.back().w == w && E.back().E > -inf)))
+                if (w < O.size() && (FG[idx - 1].w == w || (simnodes.back().shiftFG < FG.size() && FG.back().w == w) || E[e].E > -inf))
                     ++w;
                 else if (idx < simnodes.back().shiftFG)
                     w = FG[idx].w;
                 else
                     break;
             }
-
-            E.clear();
         }
-
-        E0.clear();
     }
 
-    void CircuitIteration(size_t w, EdgeLocalCircuit *edge, int scc_sz)
+    void CircuitIteration(int64_t w, EdgeLocalCircuit *edge, int scc_sz)
     {
-        std::deque<Dot> &A = edge->tail->A.back();
+        Dot *A = edge->tail->A[edge->tail->scc_sz - 1];
         Dot *D = edge->D;
         Dot **E = edge->E;
         Dot **F0 = edge->F0;
@@ -386,7 +382,7 @@ struct Align : Memory, Graph
 
         if (w > 0)
             source_max(D[w - 1], {&A[w - 1]}, {A[w - 1].val + edge->T});
-        for (size_t s = 0; s <= edge->nameseq.seq.size(); ++s)
+        for (int64_t s = 0; s <= edge->nameseq.seq.size(); ++s)
         {
             if (w > 0)
             {
@@ -411,12 +407,12 @@ struct Align : Memory, Graph
         }
     }
 
-    void CircuitIterationGlobal(size_t w, EdgeGlobalCircuit *edge, int scc_sz)
+    void CircuitIterationGlobal(int64_t w, EdgeGlobalCircuit *edge, int scc_sz)
     {
         if (w == 0)
             return;
 
-        std::deque<Dot> &A = edge->tail->A.back(), &B = edge->tail->B;
+        Dot *A = edge->tail->A[edge->tail->scc_sz - 1], *B = edge->tail->B;
         std::deque<SNC> &sncs = edge->sncs;
 
         if (w == 1)
@@ -506,8 +502,8 @@ struct Align : Memory, Graph
         fout.write((char *)&Onsz, sizeof(Onsz));
         fout.write(Oname.data(), sizeof(char) * Onsz);
         std::queue<Dot *> dots;
-        std::deque<Dot *> visits;
-        size_t id = 0;
+        std::queue<Dot *> visits;
+        int64_t id = 0;
         Q.id = id;
         Q.visit = true;
         dots.push(&Q);
@@ -515,7 +511,7 @@ struct Align : Memory, Graph
         {
             Dot *M = dots.front();
             dots.pop();
-            visits.push_back(M);
+            visits.push(M);
             if (M->n < -3 && M->s == 0)
                 GlobalTrack(M);
             fout.write((char *)&M->n, sizeof(Dot::n));
@@ -526,22 +522,22 @@ struct Align : Memory, Graph
             fout.write((char *)&M->lambda, sizeof(Dot::lambda));
             for (int i = 0; i < M->s_sz; ++i)
             {
-                if (!M->sources[i]->visit)
+                if (!sources[M->fs + i]->visit)
                 {
-                    M->sources[i]->id = ++id;
-                    M->sources[i]->visit = true;
-                    dots.push(M->sources[i]);
+                    sources[M->fs + i]->id = ++id;
+                    sources[M->fs + i]->visit = true;
+                    dots.push(sources[M->fs + i]);
                 }
-                fout.write((char *)&M->sources[i]->id, sizeof(M->sources[i]->id));
+                fout.write((char *)&sources[M->fs + i]->id, sizeof(sources[M->fs + i]->id));
             }
         }
         if (id > max_id)
             max_id = id;
 
-        while(!visits.empty())
+        while (!visits.empty())
         {
-            visits.back()->visit = false;
-            visits.pop_back();
+            visits.front()->visit = false;
+            visits.pop();
         }
         for (auto &edge : global_crosses)
             edge.tracktree.clear();
@@ -549,19 +545,20 @@ struct Align : Memory, Graph
             edge.tracktree.clear();
         for (auto &node : nodes)
             node.clearAdelta(O.size());
-        clear();
+        sources.clear();
     }
 
     void GlobalTrack(Dot *M)
     {
-        for (auto &globalsuffix : nodes[-M->n - 4].AdeltaGlobal[M->w])
+        auto &node = nodes[Dot::nidx_trans(M->n)];
+        for (auto &globalsuffix : node.AdeltaGlobal[M->w])
         {
             EdgeGlobal *edge = globalsuffix.edge;
-            std::deque<Dot> &A = edge->tail->A.back();
+            Dot *A = edge->tail->A[edge->tail->scc_sz - 1];
             TrackTree &tracktree = edge->tracktree;
             std::deque<TrackTree::TrackNode> &tracknodes = tracktree.tracknodes;
             std::deque<Dot> &dots = tracktree.dots;
-            size_t start = edge->browheel.SimSuffix(globalsuffix.start);
+            int64_t start = edge->browheel.SimSuffix(globalsuffix.start);
             if (tracktree.tracknodes.empty())
             {
                 tracktree.W = O.size();
@@ -603,7 +600,7 @@ struct Align : Memory, Graph
                     }
                     tracknodes[tracktree.idx].tau = std::max(tracknodes[tracktree.idx].tau, M->w + 1);
                 }
-                nodes[-M->n - 4].AdeltaDot[M->w].emplace_back(&dots[tracktree.shiftG + M->w]);
+                node.AdeltaDot[M->w].emplace_back(&dots[tracktree.shiftG + M->w]);
             }
             else
             {
@@ -644,13 +641,13 @@ struct Align : Memory, Graph
                     }
                     tracknodes[tracktree.idx].tau = std::max(tracknodes[tracktree.idx].tau, M->w + 1);
                 }
-                nodes[-M->n - 4].AdeltaDot[M->w].emplace_back(&dots[tracktree.shiftG + M->w]);
+                node.AdeltaDot[M->w].emplace_back(&dots[tracktree.shiftG + M->w]);
             }
         }
-        M->s_sz = nodes[-M->n - 4].AdeltaDot[M->w].size();
-        M->sources = heap_alloc<Dot *>(M->s_sz);
-        for (int i = 0; i < M->s_sz; ++i)
-            M->sources[i] = nodes[-M->n - 4].AdeltaDot[M->w][i];
+        M->fs = sources.offset;
+        for (int i = 0; i < node.AdeltaDot[M->w].size(); ++i)
+            sources.emplace_back(node.AdeltaDot[M->w][i]);
+        M->s_sz = sources.offset - M->fs;
     }
 
     void source_max(Dot &dot, std::initializer_list<Dot *> adrs, std::initializer_list<double> vals)
@@ -662,19 +659,14 @@ struct Align : Memory, Graph
     void source_max(Dot &dot, Ita ita_b, Itv itv_b, Itv itv_e)
     {
         dot.val = -inf;
-        dot.s_sz = 0;
+        dot.fs = sources.offset;
         for (Itv itv = itv_b; itv != itv_e; ++itv)
-        {
             if (*itv > dot.val)
-                dot.val = *itv, dot.s_sz = 1;
-            else if (*itv == dot.val)
-                ++dot.s_sz;
-        }
-        dot.sources = heap_alloc<Dot *>(dot.s_sz);
-        int j = 0;
+                dot.val = *itv;
         for (Itv itv = itv_b; itv != itv_e; ++itv, ++ita_b)
             if (*itv == dot.val)
-                dot.sources[j++] = *ita_b;
+                sources.emplace_back(*ita_b);
+        dot.s_sz = sources.offset - dot.fs;
     }
 };
 

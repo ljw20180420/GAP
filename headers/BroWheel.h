@@ -253,7 +253,7 @@ struct BroWheel
     const static int f=16;
     RankVec sra=RankVec(1);
     int64_t* ssa=NULL;
-    std::vector<std::pair<std::string, size_t>> name_cumlen;
+    std::vector<std::pair<std::string, int64_t>> name_cumlen;
 
     ~BroWheel()
     {
@@ -279,7 +279,7 @@ struct BroWheel
             sequence.reserve(sequence_sz);
         std::string str;
         std::ifstream fin(file);
-        size_t seqlen=0;
+        int64_t seqlen=0;
         while (std::getline(fin, str))
         {
             if (str[0]=='>')
@@ -294,7 +294,7 @@ struct BroWheel
             }
             else
             {
-                for (size_t i=0; i<str.size(); ++i)
+                for (int64_t i=0; i<str.size(); ++i)
                     sequence.push_back((str[i]+6)>>1);
                 seqlen+=str.size();
             }
@@ -333,9 +333,9 @@ struct BroWheel
         }
         else
             sequence.set(sequence.size()-1,0);
-        size_t tmp=name_cumlen[0].second;
+        int64_t tmp=name_cumlen[0].second;
         name_cumlen[0].second=0;
-        for (size_t i=1; i<name_cumlen.size(); ++i)
+        for (int64_t i=1; i<name_cumlen.size(); ++i)
         {
             std::swap(tmp, name_cumlen[i].second);
             name_cumlen[i].second+=name_cumlen[i-1].second+1;
@@ -755,13 +755,13 @@ struct BroWheel
         return (c + 6) >> 1 & 7;
     }
 
-    std::tuple<std::string, size_t> get_axis(size_t s)
+    std::tuple<std::string, int64_t> get_axis(int64_t s)
     {
         s=sequence.size()-1-s;
-        size_t l=0, r=name_cumlen.size();
+        int64_t l=0, r=name_cumlen.size();
         while (r-l>1)
         {
-            size_t m=(l+r)/2;
+            int64_t m=(l+r)/2;
             if (name_cumlen[m].second>s)
                 r=m;
             else
