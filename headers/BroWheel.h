@@ -243,15 +243,18 @@ struct RankVec : BinVec
 
 struct BroWheel
 {
-    const static int block_size=64*1024;
     const static int sigma=6;
     const static std::string int2base;
+    std::string file;
+    bool reverse;
+    bool reverse_complement;
     BinVec sequence=BinVec(sigma);
     RankVec bwt=RankVec(sigma);
     std::array<int64_t,sigma> C;
     const static int f=16;
     RankVec sra=RankVec(1);
     int64_t* ssa=NULL;
+    std::vector<std::pair<std::string, size_t>> name_cumlen;
 
     ~BroWheel()
     {
@@ -259,57 +262,85 @@ struct BroWheel
             delete[] ssa;
     }
 
-    void readin(std::list<std::string> files, bool reverse)
+    void readin(std::string file_, bool reverse_, bool reverse_complement_)
     {
-        int64_t sequence_sz=0;
-        std::experimental::filesystem::path path=std::experimental::filesystem::current_path();
-        for(auto file : files)
-            sequence_sz+=std::experimental::filesystem::file_size(path/file);
+        file=file_;
+        reverse=reverse_;
+        reverse_complement=reverse_complement_;
+        readin();
+    }
+
+    void readin()
+    {
+        int64_t sequence_sz=std::experimental::filesystem::file_size(file);
         sequence.clear();
-        sequence.reserve(sequence_sz);
-        
-        char* str=new char[block_size];
-        for(auto file : files)
+        if (reverse_complement)
+            sequence.reserve(2*sequence_sz);
+        else
+            sequence.reserve(sequence_sz);
+        std::string str;
+        std::ifstream fin(file);
+        size_t seqlen=0;
+        while (std::getline(fin, str))
         {
-            bool flag=false;
-            std::ifstream fin(file, std::ifstream::binary);
-            do
+            if (str[0]=='>')
             {
-                fin.read(str,block_size);
-                for(int i=0; i<(fin.good()?block_size:fin.gcount()); ++i)
+                if(!name_cumlen.empty())
                 {
-                    if(!isspace(str[i]))
-                    {
-                        if(!flag)
-                            flag=true;
-                        sequence.push_back((str[i]+6)>>1);
-                    }
-                    else
-                    {
-                        if(flag)
-                        {
-                            sequence.push_back(1);
-                            flag=false;
-                        }
-                    }
+                    sequence.push_back(1);
+                    name_cumlen.back().second=seqlen;
                 }
-            }while(fin.good());
-            if(flag)
-            {
-                sequence.push_back(1);
+                seqlen=0;
+                name_cumlen.emplace_back(std::move(str), 0);
             }
-            fin.close();
+            else
+            {
+                for (size_t i=0; i<str.size(); ++i)
+                    sequence.push_back((str[i]+6)>>1);
+                seqlen+=str.size();
+            }
         }
-        sequence.set(sequence.size()-1,0);
-        sequence.shrink_to_fit();
+        sequence.push_back(1);
+        name_cumlen.back().second=seqlen;
+
         if(reverse)
+        {
             for(int64_t i=0,j=sequence.size()-2; i<j; ++i,--j)
             {
                 int c=sequence(i);
                 sequence.set(i,sequence(j));
                 sequence.set(j,c);
             }
-        delete[] str;
+            for(int64_t i=0,j=name_cumlen.size()-1; i<j; ++i,--j)
+                std::swap(name_cumlen[i], name_cumlen[j]);
+        }
+        if(reverse_complement)
+        {
+            for (int64_t i=sequence.size()-2; i>=0; --i)
+            {
+                int c=sequence(i);
+                if (c>2)
+                {
+                    if (c<5)
+                        c+=2;
+                    else
+                        c-=2;
+                }
+                sequence.push_back(c);
+            }
+            sequence.push_back(0);
+            for (int64_t i=name_cumlen.size()-1; i>=0; --i)
+                name_cumlen.emplace_back(name_cumlen[i].first+"_RC", name_cumlen[i].second);
+        }
+        else
+            sequence.set(sequence.size()-1,0);
+        size_t tmp=name_cumlen[0].second;
+        name_cumlen[0].second=0;
+        for (size_t i=1; i<name_cumlen.size(); ++i)
+        {
+            std::swap(tmp, name_cumlen[i].second);
+            name_cumlen[i].second+=name_cumlen[i-1].second+1;
+        }
     }
 
     void to_T(int64_t h, int64_t t, int64_t* SAI)
@@ -348,6 +379,8 @@ struct BroWheel
         for(int64_t n=N-1; n>=m; --n)
            futures1.push(threads1.submit(std::bind(&BroWheel::SegmentSort, this, n, ll, SAmem, SAImem, threads1.size())));
         
+        std::cerr << N << '\t' << std::time(NULL) << '\n'; // debug
+
         int64_t st=std::max(int64_t(0),N*ll);
         GetSA(st, sequence.size(), SA, SAI);
         bwt.set(SAI[0],0);
@@ -359,8 +392,12 @@ struct BroWheel
         for(int c=1; c<sigma; ++c)
             C[c]=C[c-1]+bwt.R1[c-1][R1_tail];
         
+        std::cerr << N << '\t' << std::time(NULL) << '\n'; // debug
+
         for(int64_t n=N-1; n>=0; --n)
         {
+            std::cerr << n << '\t' << std::time(NULL) << '\n'; // debug
+
             int64_t *SAn, *SAIn, pn;
             std::tie(SAn,SAIn,pn)=futures1.front().get();
             futures1.pop();
@@ -395,6 +432,8 @@ struct BroWheel
             R1_tail=bwt.count(cutoff_size);
             for(int c=1; c<sigma; ++c)
                 C[c]=C[c-1]+bwt.R1[c-1][R1_tail];
+
+            std::cerr << n << '\t' << std::time(NULL) << '\n'; // debug
         }
 
         for(int64_t k=ssa_sz-1, i=0, j=cutoff_size-2; k>=0; --k)
@@ -412,24 +451,132 @@ struct BroWheel
         for(int64_t k=0; k<ssa_sz; ++k)
             ssa[sra.rank(1,rssa[k])-1]=k*f;
         delete[] SA;
+
+        if (!check_bwt(cutoff_size)) // debug
+            std::cerr << "error\n"; // debug
     }
 
-    void saveBroWheel(std::string file)
+    void index(int64_t ll, int threads1_sz)
     {
-        std::ofstream fout(file, std::ios::binary);
-        sequence.saveBinVec(fout);
+        int64_t ssa_sz=(sequence.size()+f-1)/f;
+        int64_t* SA=new int64_t[(threads1_sz+1)*(4*ll-1)+ssa_sz];
+        int64_t* SAI=SA+2*ll-1;
+        int64_t* SAmem=SAI+2*ll;
+        int64_t* SAImem=SAmem+threads1_sz*(2*ll-1);
+        int64_t* rssa=SAImem+threads1_sz*2*ll;
+        if(ssa)
+            delete[] ssa;
+        ssa=new int64_t[ssa_sz];
+        bwt.resize(sequence.size());
+        bwt.apply_memory();
+        sra.resize(sequence.size());
+        sra.apply_memory();
+        BinVec bwtt(sigma);
+        bwtt.resize(sequence.size());
+        
+        int64_t N=sequence.size()/ll-1;
+        
+        int64_t st=std::max(int64_t(0),N*ll);
+        GetSA(st, sequence.size(), SA, SAI);
+        bwt.set(SAI[0],0);
+        int64_t cutoff_size=sequence.size()-st;
+        for(int64_t i=1; i<cutoff_size; ++i)
+            bwt.set(SAI[i],sequence(st+i-1));
+        int64_t R1_tail=bwt.count(cutoff_size);
+        C[0]=0;
+        for(int c=1; c<sigma; ++c)
+            C[c]=C[c-1]+bwt.R1[c-1][R1_tail];
+
+        for(int64_t n=N-1; n>=0; --n)
+        {
+            int64_t *SAn, *SAIn, pn;
+            std::tie(SAn,SAIn,pn)=SegmentSort(n, ll, SAmem, SAImem, threads1_sz);
+            RelativeOrder(SAI, SAIn, n, ll);
+
+            for(int64_t i=0; i<pn; i+=2)
+                SortSplit(SAn, SAIn[i], SAIn[i+1], NULL, SAI);
+            bwt.set(SAI[0],sequence((n+1)*ll-1));
+            for(int64_t i=0; i<ll; ++i)
+                SAI[SAn[i]]=SAIn[SAn[i]+ll]+i+1;
+            cutoff_size+=ll;
+            for(int64_t i=0, j=0, k=0; i<cutoff_size; ++i)
+            {
+                if(k>=ll || i!=SAI[SAn[k]])
+                    bwtt.set(i,bwt(j++));
+                else
+                {
+                    if(SAn[k]>0)
+                        bwtt.set(i,sequence(n*ll+SAn[k]-1));
+                    else
+                        bwtt.set(i,0);
+                    ++k;
+                }
+            }
+            std::swap(bwt.BV,bwtt.BV);
+            R1_tail=bwt.count(cutoff_size);
+            for(int c=1; c<sigma; ++c)
+                C[c]=C[c-1]+bwt.R1[c-1][R1_tail];
+        }
+
+        if (!check_bwt(cutoff_size)) // debug
+            std::cerr << "error\n"; // debug
+
+        
+        for(int64_t k=ssa_sz-1, i=0, j=cutoff_size-2; k>=0; --k)
+        {
+            while(j>=k*f)
+            {
+                int c=bwt(i);
+                i=C[c-1]+this->bwt.rank(c,i);
+                --j;
+            }
+            rssa[k]=i;
+            sra.set(i,1);
+        }
+        sra.count(sra.size());
+        for(int64_t k=0; k<ssa_sz; ++k)
+            ssa[sra.rank(1,rssa[k])-1]=k*f;
+        delete[] SA;
+    }
+
+    bool check_bwt(int64_t cutoff_size)
+    {
+        for(int64_t i=0, j=cutoff_size-2; j>=0; --j)
+        {
+            if (bwt(i)!=sequence(j))
+                return false;
+            int c=bwt(i);
+            i=C[c-1]+this->bwt.rank(c,i);
+        }
+        return true;
+    }
+
+    void saveBroWheel()
+    {
+        std::ofstream fout(file+".idx", std::ios::binary);
+        fout.write((char*)&reverse,sizeof(reverse));
+        fout.write((char*)&reverse_complement,sizeof(reverse_complement));
         bwt.saveRankVec(fout);
         fout.write((char*)C.data(),sigma*sizeof(C[0]));
         sra.saveRankVec(fout);
         int64_t ssa_sz=(sequence.size()+f-1)/f;
         fout.write((char*)ssa,ssa_sz*sizeof(*ssa));
+        size_t ncs=name_cumlen.size();
+        fout.write((char*)&ncs,sizeof(ncs));
+        for (size_t i=0; i<name_cumlen.size(); ++i)
+            fout.write((char*)&name_cumlen[i].second, sizeof(name_cumlen[i].second));
+        for (size_t i=0; i<name_cumlen.size(); ++i)
+            fout << name_cumlen[i].first << '\n';
         fout.close();
     }
 
-    void loadBroWheel(std::string file)
+    void loadBroWheel(std::string file_)
     {
-        std::ifstream fin(file, std::ios::binary);
-        sequence.loadBinVec(fin);
+        file=file_;
+        std::ifstream fin(file+".idx", std::ios::binary);
+        fin.read((char*)&reverse,sizeof(reverse));
+        fin.read((char*)&reverse_complement,sizeof(reverse_complement));
+        readin();
         bwt.loadRankVec(fin);
         fin.read((char*)C.data(),sigma*sizeof(C[0]));
         sra.loadRankVec(fin);
@@ -438,7 +585,14 @@ struct BroWheel
             delete[] ssa;
         ssa=new int64_t[ssa_sz];
         fin.read((char*)ssa,ssa_sz*sizeof(*ssa));
-        fin.close();
+        // size_t ncs;
+        // fin.read((char*)&ncs,sizeof(ncs));
+        // name_cumlen.resize(ncs);
+        // for (size_t i=0; i<name_cumlen.size(); ++i)
+        //     fin.read((char*)&name_cumlen[i].second, sizeof(name_cumlen[i].second));
+        // for (size_t i=0; i<name_cumlen.size(); ++i)
+        //     fin >> name_cumlen[i].first;
+        // fin.close();
     }
     
     void RelativeOrder(int64_t* SAI, int64_t* SAIn, int64_t n, int64_t ll)
@@ -531,7 +685,7 @@ struct BroWheel
         to_T(h,t,SAI);
         for(int64_t i=0; i<sz; ++i)
             SA[i]=i;
-        SAI[sz]=0;
+        SAI[sz]=-1;
         SortSplit(SA, 0, sz-1, SAI, SAI);
         int64_t* SAIh=SAI+(sizeof(int64_t)*CHAR_BIT-1)/sequence.ww;
         while(SA[0]>-sz)
@@ -621,9 +775,8 @@ struct BroWheel
             if(pa==pc)
                 SA[pa]=-1;
             else
-                do
-                    SAI[SA[++pa]]=pc;
-                while(pa!=pc);
+                for (++pa; pa<=pc; ++pa)
+                    SAI[SA[pa]]=pc;
         }
         if(pc<p2)
             SortSplit(SA, pc+1, p2, SAI, SAIh);
@@ -643,36 +796,26 @@ struct BroWheel
 
     void InsertionSort(int64_t* SA, int64_t p1, int64_t p2, int64_t* SAI, int64_t* SAIh)
     {
-        for(int64_t i=p1+1; i<=p2; ++i)
+        int64_t mv=std::numeric_limits<int64_t>::max();
+        for (int64_t i=p1, j=i, k=j-1; i<=p2; mv=std::numeric_limits<int64_t>::max())
         {
-            int64_t j=i;
-            while(j>p1 && SAIh[SA[j]]<SAIh[SA[j-1]])
+            while (k<p2)
             {
-                std::swap(SA[j],SA[j-1]);
-                --j;
+                ++k;
+                mv=std::min(mv, SAIh[SA[k]]);
             }
-        }
-        if(SAI)
-        {
-            int64_t k=p1;
-            int64_t v=SAIh[SA[k]];
-            for(int64_t i=p1+1; i<=p2; ++i)
-            {
-                int64_t u=SAIh[SA[i]];
-                if(u>v)
-                {
-                    for(int64_t j=k; j<i; ++j)
-                        SAI[SA[j]]=i-1;
-                    if(i-k==1)
-                        SA[k]=-1;
-                    k=i;
-                    v=u;
-                }
-            }
-            for(int64_t j=k; j<=p2; ++j)
-                SAI[SA[j]]=p2;
-            if(k==p2)
-                SA[k]=-1;
+
+            while (j<=k)
+                if (SAIh[SA[k]]==mv)
+                    std::swap(SA[j++], SA[k]);
+                else
+                    --k;
+            SAI[SA[i]]=j-1;
+            if (j-i==1)
+                SA[i++]=-1;
+            else
+                for (++i; i<j; ++i)
+                    SAI[SA[i]]=j-1;
         }
     }
 
@@ -684,6 +827,26 @@ struct BroWheel
     static int base2int(char c)
     {
         return (c + 6) >> 1 & 7;
+    }
+
+    std::tuple<std::string, size_t> get_axis(size_t s)
+    {
+        s=sequence.size()-1-s;
+        size_t l=0, r=name_cumlen.size();
+        while (r-l>1)
+        {
+            size_t m=(l+r)/2;
+            if (name_cumlen[m].second>s)
+                r=m;
+            else
+                l=m;
+        }
+        s-=name_cumlen[l].second;
+        if (r<name_cumlen.size())
+            s=name_cumlen[r].second-name_cumlen[l].second-1-s;
+        else
+            s=sequence.size()-name_cumlen[l].second-1-s;
+        return std::make_tuple(name_cumlen[l].first, s);
     }
 };
 

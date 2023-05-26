@@ -121,7 +121,7 @@ struct Align : Memory, Graph
         }
     }
 
-    Align(int argc, char **argv, std::map<std::string, std::string> &file2seq, std::map<std::string, BroWheel> &file2browheel, size_t chunk_sz_, std::string file) : Graph(argc, argv, file2seq, file2browheel), fout(file, std::ifstream::binary)
+    Align(int argc, char **argv, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel, size_t chunk_sz_, std::string file) : Graph(argc, argv, file2seq, file2browheel), fout(file, std::ifstream::binary)
     {
         Initial(chunk_sz_);
         for (auto &node : nodes)
@@ -170,10 +170,10 @@ struct Align : Memory, Graph
             for (auto edge : scc.local_circuits)
             {
                 alloc_initial(edge->D, edge->n, 0);
-                alloc_initial(edge->E, edge->n, edge->seq.size());
-                alloc_initial(edge->F0, edge->n, edge->seq.size());
-                alloc_initial(edge->G0, edge->n, edge->seq.size());
-                alloc_initial(edge->G, edge->n, edge->seq.size());
+                alloc_initial(edge->E, edge->n, edge->nameseq.seq.size());
+                alloc_initial(edge->F0, edge->n, edge->nameseq.seq.size());
+                alloc_initial(edge->G0, edge->n, edge->nameseq.seq.size());
+                alloc_initial(edge->G, edge->n, edge->nameseq.seq.size());
                 alloc_initial(edge->D0, edge->n, scc.nodes.size() - 1);
                 alloc_initial(edge->DX, edge->n, scc.nodes.size() - 1);
             }
@@ -198,16 +198,16 @@ struct Align : Memory, Graph
                     std::vector<Dot *> adrs{&node->B[w]};
                     std::vector<double> vals{node->B[w].val};
                     for (auto edge : node->in_local_crosses)
-                        for (size_t s = 0; s <= edge->seq.size(); ++s)
+                        for (size_t s = 0; s <= edge->nameseq.seq.size(); ++s)
                         {
                             adrs.push_back(&edge->G[s][w]);
-                            vals.push_back(edge->G[s][w].val + (s == edge->seq.size() ? 0 : edge->vfm + (edge->seq.size() - s - 1) * edge->ufm));
+                            vals.push_back(edge->G[s][w].val + (s == edge->nameseq.seq.size() ? 0 : edge->vfm + (edge->nameseq.seq.size() - s - 1) * edge->ufm));
                         }
                     for (auto edge : node->in_local_circuits)
-                        for (size_t s = 0; s <= edge->seq.size(); ++s)
+                        for (size_t s = 0; s <= edge->nameseq.seq.size(); ++s)
                         {
                             adrs.push_back(&edge->G0[s][w]);
-                            vals.push_back(edge->G0[s][w].val + (s == edge->seq.size() ? 0 : edge->vfm + (edge->seq.size() - s - 1) * edge->ufm));
+                            vals.push_back(edge->G0[s][w].val + (s == edge->nameseq.seq.size() ? 0 : edge->vfm + (edge->nameseq.seq.size() - s - 1) * edge->ufm));
                         }
                     if (w == 0)
                     {
@@ -247,7 +247,7 @@ struct Align : Memory, Graph
                     for (auto edge : scc.local_circuits)
                     {
                         source_max(edge->D0[l][w], {&edge->tail->A[l - 1][w]}, {edge->tail->A[l - 1][w].val + edge->T});
-                        source_max(edge->DX[l][w], {&edge->tail->A[l - 1][w], &edge->D0[l][w]}, {edge->tail->A[l - 1][w].val + edge->vfp + (edge->seq.size() - 1) * edge->ufp + edge->T, edge->D0[l][w].val + edge->vf + (edge->seq.size() - 1) * edge->uf});
+                        source_max(edge->DX[l][w], {&edge->tail->A[l - 1][w], &edge->D0[l][w]}, {edge->tail->A[l - 1][w].val + edge->vfp + (edge->nameseq.seq.size() - 1) * edge->ufp + edge->T, edge->D0[l][w].val + edge->vf + (edge->nameseq.seq.size() - 1) * edge->uf});
                     }
                     for (auto node : scc.nodes)
                     {
@@ -256,7 +256,7 @@ struct Align : Memory, Graph
                         for (auto edge : node->in_local_circuits)
                         {
                             adrs.push_back(&edge->D0[l][w]);
-                            vals.push_back(edge->D0[l][w].val + edge->vfm + (edge->seq.size() - 1) * edge->ufm);
+                            vals.push_back(edge->D0[l][w].val + edge->vfm + (edge->nameseq.seq.size() - 1) * edge->ufm);
                             adrs.push_back(&edge->DX[l][w]);
                             vals.push_back(edge->DX[l][w].val);
                         }
@@ -271,9 +271,9 @@ struct Align : Memory, Graph
             }
             for (auto edge : scc.local_crosses)
             {
-                alloc_initial(edge->E, edge->n, edge->seq.size());
-                alloc_initial(edge->F, edge->n, edge->seq.size());
-                alloc_initial(edge->G, edge->n, edge->seq.size());
+                alloc_initial(edge->E, edge->n, edge->nameseq.seq.size());
+                alloc_initial(edge->F, edge->n, edge->nameseq.seq.size());
+                alloc_initial(edge->G, edge->n, edge->nameseq.seq.size());
                 CrossIteration(edge, scc.nodes.size());
             }
             for (auto edge : scc.global_crosses)
@@ -299,7 +299,7 @@ struct Align : Memory, Graph
         Dot **E = edge->E;
         Dot **F = edge->F;
         Dot **G = edge->G;
-        for (size_t s = 0; s <= edge->seq.size(); ++s)
+        for (size_t s = 0; s <= edge->nameseq.seq.size(); ++s)
             for (size_t w = 0; w <= O.size(); ++w)
             {
                 if (w == 0)
@@ -313,7 +313,7 @@ struct Align : Memory, Graph
                 if (s == 0 || w == 0)
                     source_max(G[s][w], {&F[s][w], &E[s][w], &A[scc_sz - 1][w]}, {F[s][w].val, E[s][w].val, A[scc_sz - 1][w].val + (s == 0 ? 0 : edge->vfp + (s - 1) * edge->ufp) + edge->T});
                 else
-                    source_max(G[s][w], {&F[s][w], &E[s][w], &G[s - 1][w - 1], &A[scc_sz - 1][w]}, {F[s][w].val, E[s][w].val, G[s - 1][w - 1].val + edge->gamma[BroWheel::base2int(edge->seq[s - 1])][BroWheel::base2int(O[w - 1])], A[scc_sz - 1][w].val + (s == 0 ? 0 : edge->vfp + (s - 1) * edge->ufp) + edge->T});
+                    source_max(G[s][w], {&F[s][w], &E[s][w], &G[s - 1][w - 1], &A[scc_sz - 1][w]}, {F[s][w].val, E[s][w].val, G[s - 1][w - 1].val + edge->gamma[BroWheel::base2int(edge->nameseq.seq[s - 1])][BroWheel::base2int(O[w - 1])], A[scc_sz - 1][w].val + (s == 0 ? 0 : edge->vfp + (s - 1) * edge->ufp) + edge->T});
             }
     }
 
@@ -434,7 +434,7 @@ struct Align : Memory, Graph
         Dot **G = edge->G;
         if (w > 0)
             source_max(D[w - 1], {&A[scc_sz - 1][w - 1]}, {A[scc_sz - 1][w - 1].val + edge->T});
-        for (size_t s = 0; s <= edge->seq.size(); ++s)
+        for (size_t s = 0; s <= edge->nameseq.seq.size(); ++s)
         {
             if (w > 0)
             {
@@ -452,7 +452,7 @@ struct Align : Memory, Graph
             else
                 source_max(F0[s][w], {&F0[s - 1][w], &G0[s - 1][w]}, {F0[s - 1][w].val + edge->uf, G0[s - 1][w].val + edge->vf});
             if (s > 0 && w > 0)
-                source_max(G0[s][w], {&E[s][w], &F0[s][w], &G[s - 1][w - 1]}, {E[s][w].val, F0[s][w].val, G[s - 1][w - 1].val + edge->gamma[BroWheel::base2int(edge->seq[s - 1])][BroWheel::base2int(O[w - 1])]});
+                source_max(G0[s][w], {&E[s][w], &F0[s][w], &G[s - 1][w - 1]}, {E[s][w].val, F0[s][w].val, G[s - 1][w - 1].val + edge->gamma[BroWheel::base2int(edge->nameseq.seq[s - 1])][BroWheel::base2int(O[w - 1])]});
             else
                 source_max(G0[s][w], {&E[s][w], &F0[s][w]}, {E[s][w].val, F0[s][w].val});
         }
@@ -594,7 +594,7 @@ struct Align : Memory, Graph
             {
                 size_t start = pair.first->browheel.SimSuffix(suf.first);
                 if (tracknodes.empty())
-                    tracknodes.emplace_back(this, (TrackNode *)NULL, (TrackNode *)NULL, pair.first->n, pair.first->browheel.start_rev(start, suf.second), O.size(), 0);
+                    tracknodes.emplace_back(this, (TrackNode *)NULL, (TrackNode *)NULL, pair.first->n, pair.first->browheel.sequence.size()-1-start-suf.second, O.size(), 0);
                 auto tracknode = &tracknodes.front();
                 for (int w = tracknode->tau; w <= M->w; ++w)
                 {
@@ -611,7 +611,7 @@ struct Align : Memory, Graph
                     int c = pair.first->browheel.sequence(start + i);
                     if (!tracknode->itcs[c - 2])
                     {
-                        tracknodes.emplace_back(this, tracknode, (TrackNode *)NULL, pair.first->n, pair.first->browheel.start_rev(start, i), O.size(), tracknode->lambda + 1);
+                        tracknodes.emplace_back(this, tracknode, (TrackNode *)NULL, pair.first->n, pair.first->browheel.sequence.size()-1-start-i, O.size(), tracknode->lambda + 1);
                         tracknode->itcs[c - 2] = &tracknodes.back();
                     }
                     tracknode = tracknode->itcs[c - 2];
@@ -641,10 +641,10 @@ struct Align : Memory, Graph
                 size_t start = pair.first->browheel.SimSuffix(suf.first);
                 if (tracknodes.empty())
                 {
-                    alloc_initial(pair.first->G, pair.first->n, pair.first->browheel.start_rev(start, suf.second));
+                    alloc_initial(pair.first->G, pair.first->n, pair.first->browheel.sequence.size()-1-start-suf.second);
                     for (size_t w=0; w<=O.size(); ++w)
                         pair.first->G[w].lambda=0;
-                    tracknodes.emplace_back(this, (TrackNode *)NULL, (TrackNode *)NULL, pair.first->n, pair.first->browheel.start_rev(start, suf.second), O.size(), 0);
+                    tracknodes.emplace_back(this, (TrackNode *)NULL, (TrackNode *)NULL, pair.first->n, pair.first->browheel.sequence.size()-1-start-suf.second, O.size(), 0);
                 }
                 auto tracknode = &tracknodes.front();
                 for (int w = tracknode->tau; w <= M->w; ++w)
@@ -664,7 +664,7 @@ struct Align : Memory, Graph
                     int c = pair.first->browheel.sequence(start + i);
                     if (!tracknode->itcs[c - 2])
                     {
-                        tracknodes.emplace_back(this, tracknode, (TrackNode *)NULL, pair.first->n, pair.first->browheel.start_rev(start, i), O.size(), tracknode->lambda + 1);
+                        tracknodes.emplace_back(this, tracknode, (TrackNode *)NULL, pair.first->n, pair.first->browheel.sequence.size()-1-start-i, O.size(), tracknode->lambda + 1);
                         tracknode->itcs[c - 2] = &tracknodes.back();
                     }
                     tracknode = tracknode->itcs[c - 2];

@@ -7,10 +7,13 @@ struct Track : Memory, Graph
 {
     std::vector<EdgeLocal *> locals;
     std::vector<EdgeGlobal *> globals;
+    std::set<std::string> node_names;
 
-    Track(int argc, char **argv, std::map<std::string, std::string> &file2seq, std::map<std::string, BroWheel> &file2browheel, size_t chunk_sz_) : Graph(argc, argv, file2seq, file2browheel)
+    Track(int argc, char **argv, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel, size_t chunk_sz_) : Graph(argc, argv, file2seq, file2browheel)
     {
         Initial(chunk_sz_);
+        for (auto &node : nodes)
+            node_names.emplace(node.name);
         int max_n = 0;
         for (auto &edge : local_crosses)
         {
@@ -48,14 +51,13 @@ struct Track : Memory, Graph
         globals.resize(max_n + 1, NULL);
     }
 
-    void ReadTrack(std::vector<std::string> mg_files, std::string read_file, std::string file_track, std::string file_align, size_t max_seq, size_t max_track)
+    void ReadTrack(std::list<std::string> mg_files, std::list<std::string> read_files, std::string run_name, size_t max_seq, size_t max_track)
     {
         std::vector<std::ifstream> fins;
         for (auto &file : mg_files)
             fins.emplace_back(file, std::ios::binary);
-        std::ifstream fin_seq(read_file);
-        std::ofstream fout_track(file_track);
-        std::ofstream fout_align(file_align);
+        std::ofstream fout_track(run_name+".trk");
+        std::ofstream fout_align(run_name+".alg");
         size_t max_id = 0;
         std::vector<std::string> Onames(fins.size());
         std::vector<size_t> fzs(fins.size());
@@ -78,58 +80,64 @@ struct Track : Memory, Graph
         }
         std::vector<Dot> dots(max_id + 1);
         size_t seq_num = 0;
-        fin_seq >> std::ws;
-        while (fin_seq.good() && ++seq_num <= max_seq)
+        std::string Oname, O;
+        auto iter = read_files.begin();
+        std::ifstream fin_seq(*iter);
+        while (seq_num < max_seq && iter != read_files.end())
         {
-            std::string Oname, O;
-            std::getline(fin_seq, Oname);
-            std::getline(fin_seq, O);
-            if ((read_file.size() > 3 && read_file.substr(read_file.size() - 3, 3) == ".fq") || (read_file.size() > 6 && read_file.substr(read_file.size() - 6, 6) == ".fastq"))
+            if (std::getline(std::getline(fin_seq, Oname), O))
             {
-                std::string tmp;
-                std::getline(fin_seq, tmp);
-                std::getline(fin_seq, tmp);
-            }
-            fin_seq >> std::ws;
-            for (size_t f = 0; f < fins.size(); ++f)
-            {
-                if (Onames[f] == Oname)
+                ++seq_num;
+                if ((iter->size() > 3 && iter->substr(iter->size() - 3, 3) == ".fq") || (iter->size() > 6 && iter->substr(iter->size() - 6, 6) == ".fastq"))
                 {
-                    ssize_t id = -1;
-                    size_t uid = 0;
-                    do
-                    {
-                        ++id;
-                        fins[f].read((char *)&dots[id].n, sizeof(Dot::n));
-                        fins[f].read((char *)&dots[id].s, sizeof(Dot::s));
-                        fins[f].read((char *)&dots[id].w, sizeof(Dot::w));
-                        fins[f].read((char *)&dots[id].val, sizeof(Dot::val));
-                        fins[f].read((char *)&dots[id].s_sz, sizeof(Dot::s_sz));
-                        fins[f].read((char *)&dots[id].lambda, sizeof(Dot::lambda));
-                        dots[id].sources = heap_alloc<Dot *>(dots[id].s_sz);
-                        for (int i = 0; i < dots[id].s_sz; ++i)
-                        {
-                            size_t idd;
-                            fins[f].read((char *)&idd, sizeof(idd));
-                            dots[id].sources[i] = &dots[idd];
-                            uid = idd > uid ? idd : uid;
-                        }
-                    } while (size_t(id) < uid);
-
-                    std::list<Dot *> path;
-                    path.push_front(&dots[0]);
-                    BackTrack(fout_track, fout_align, path, max_track, Oname, O);
-
-                    clear();
-                    if (fzs[f] - fins[f].tellg() > sizeof(size_t))
-                    {
-                        int Onsz;
-                        fins[f].read((char *)&Onsz, sizeof(Onsz));
-                        Onames[f].resize(Onsz);
-                        fins[f].read(Onames[f].data(), sizeof(char) * Onsz);
-                    }
-                    break;
+                    std::string tmp;
+                    std::getline(std::getline(fin_seq, tmp), tmp);
                 }
+                for (size_t f = 0; f < fins.size(); ++f)
+                {
+                    if (Onames[f] == Oname)
+                    {
+                        ssize_t id = -1;
+                        size_t uid = 0;
+                        do
+                        {
+                            ++id;
+                            fins[f].read((char *)&dots[id].n, sizeof(Dot::n));
+                            fins[f].read((char *)&dots[id].s, sizeof(Dot::s));
+                            fins[f].read((char *)&dots[id].w, sizeof(Dot::w));
+                            fins[f].read((char *)&dots[id].val, sizeof(Dot::val));
+                            fins[f].read((char *)&dots[id].s_sz, sizeof(Dot::s_sz));
+                            fins[f].read((char *)&dots[id].lambda, sizeof(Dot::lambda));
+                            dots[id].sources = heap_alloc<Dot *>(dots[id].s_sz);
+                            for (int i = 0; i < dots[id].s_sz; ++i)
+                            {
+                                size_t idd;
+                                fins[f].read((char *)&idd, sizeof(idd));
+                                dots[id].sources[i] = &dots[idd];
+                                uid = idd > uid ? idd : uid;
+                            }
+                        } while (size_t(id) < uid);
+
+                        std::list<Dot *> path;
+                        path.push_front(&dots[0]);
+                        BackTrack(fout_track, fout_align, path, max_track, Oname, O);
+
+                        clear();
+                        if (fzs[f] - fins[f].tellg() > sizeof(size_t))
+                        {
+                            int Onsz;
+                            fins[f].read((char *)&Onsz, sizeof(Onsz));
+                            Onames[f].resize(Onsz);
+                            fins[f].read(Onames[f].data(), sizeof(char) * Onsz);
+                        }
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                fin_seq.close();
+                fin_seq.open(*(++iter));
             }
         }
     }
@@ -142,30 +150,49 @@ struct Track : Memory, Graph
             if (path.front()->s_sz == 0)
             {
                 fout_track << Oname << '\t' << ++track_num << '\t' << path.size() << '\n';
-                for (auto iter = path.begin(); iter != path.end();)
+                std::string node_name = nodes[-(*std::next(path.begin()))->n - 4].name;
+                for (auto iter = path.begin(); iter != path.end(); ++iter)
                 {
-                    if ((*iter)->n >= 0 && globals[(*iter)->n])
+                    if ((*iter)->n >= 0)
                     {
-                        int n = (*iter)->n;
-                        auto iter_s = iter;
-                        do
+                        if (globals[(*iter)->n])
                         {
-                            ++iter;
-                        } while (iter != path.end() && (*iter)->n == n);
-                        int lambda = (*std::prev(iter))->lambda;
-                        size_t s = (*std::prev(iter))->s;
-                        do
+                            int n = (*iter)->n;
+                            auto iter_s = iter;
+                            do
+                            {
+                                ++iter;
+                            } while (iter != path.end() && (*iter)->n == n);
+                            int lambda = (*std::prev(iter))->lambda;
+                            size_t s = (*std::prev(iter))->s, ls;
+                            std::string name;
+                            do
+                            {
+                                std::tie(name, ls) = globals[(*iter_s)->n]->browheel.get_axis(s + (*iter_s)->lambda - lambda);
+                                fout_track << globals[(*iter_s)->n]->name << ':' << name << '\t' << ls << '\t' << (*iter_s)->w << '\t' << (*iter_s)->val << '\n';
+                                ++iter_s;
+                            } while (iter_s != iter);
+                            --iter;
+                        }
+                        else
                         {
-                            fout_track << (*iter_s)->n << '\t' << s + (*iter_s)->lambda - lambda << '\t' << (*iter_s)->w << '\t' << (*iter_s)->val << '\n';
-                            ++iter_s;
-                        } while (iter_s != iter);
+                            fout_track << locals[(*iter)->n]->name << ':' << locals[(*iter)->n]->nameseq.name << '\t' << (*iter)->s << '\t' << (*iter)->w << '\t' << (*iter)->val << '\n';
+                        }
                     }
                     else
                     {
-                        fout_track << (*iter)->n << '\t' << (*iter)->s << '\t' << (*iter)->w << '\t' << (*iter)->val << '\n';
-                        ++iter;
+                        if (iter != path.begin())
+                        {
+                            int n = (*std::prev(iter))->n;
+                            if (n >= 0)
+                                node_name = locals[n] ? locals[n]->head->name : globals[n]->head->name;
+                        }
+                        fout_track << node_name << '\t' << (*iter)->s << '\t' << (*iter)->w << '\t' << (*iter)->val << '\n';
                     }
                 }
+
+                fout_track << std::endl; // debug
+
                 std::list<std::array<char, 3>> align;
                 for (auto it1 = path.begin(), it2 = std::next(it1); it2 != std::prev(path.end()); ++it1, ++it2)
                 {
@@ -173,11 +200,11 @@ struct Track : Memory, Graph
                     {
                         char c;
                         if (!globals[(*it2)->n])
-                            c = locals[(*it2)->n]->seq[(*it2)->s - 1];
+                            c = locals[(*it2)->n]->nameseq.seq[(*it2)->s - 1];
                         else
                         {
                             auto &browheel = globals[(*it2)->n]->browheel;
-                            c = BroWheel::int2base[browheel.sequence(browheel.start_rev((*it2)->s, 0))];
+                            c = BroWheel::int2base[browheel.sequence(browheel.sequence.size() - 1 - (*it2)->s)];
                         }
                         align.emplace_back(std::array<char, 3>{O[(*it2)->w - 1], '|', c});
                     }
@@ -192,15 +219,15 @@ struct Track : Memory, Graph
                         {
                             if (locals[n])
                             {
-                                int sup = (*it2)->n < 0 ? locals[n]->seq.size() : (*it2)->s;
+                                int sup = (*it2)->n < 0 ? locals[n]->nameseq.seq.size() : (*it2)->s;
                                 for (int s = (*it1)->s; s < sup; ++s)
-                                    align.emplace_back(std::array<char, 3>{'-', ' ', locals[n]->seq[s]});
+                                    align.emplace_back(std::array<char, 3>{'-', ' ', locals[n]->nameseq.seq[s]});
                             }
                             else
                             {
                                 auto &browheel = globals[n]->browheel;
                                 for (size_t s = (*it2)->s + (*it1)->lambda - (*it2)->lambda + 1; s <= (*it2)->s; ++s)
-                                    align.emplace_back(std::array<char, 3>{'-', ' ', BroWheel::int2base[browheel.sequence(browheel.start_rev(s, 0))]});
+                                    align.emplace_back(std::array<char, 3>{'-', ' ', BroWheel::int2base[browheel.sequence(browheel.sequence.size() - 1 - s)]});
                             }
                         }
                     }
@@ -237,10 +264,10 @@ struct Track : Memory, Graph
         }
     }
 
-    void extract(std::string file_track, std::string file_extract, size_t max_extract)
+    void extract(std::string run_name, size_t max_extract)
     {
-        std::ifstream fin(file_track);
-        std::ofstream fout(file_extract);
+        std::ifstream fin(run_name + ".trk");
+        std::ofstream fout(run_name + ".ext");
         std::string Oname;
         size_t track_num;
         size_t track_length;
@@ -260,20 +287,25 @@ struct Track : Memory, Graph
                 continue;
             else
             {
-                int n, w;
+                std::string name;
+                int w;
                 size_t s;
                 double val;
-                fin >> n >> s >> w >> val;
+                fin >> name >> s >> w >> val;
                 for (size_t i = 1; i < track_length; ++i)
                 {
-                    int np = n;
+                    std::string namep(std::move(name));
                     int wp = w;
                     size_t sp = s;
-                    fin >> n >> s >> w >> val;
-                    if (np < 0 && n >= 0)
-                        fout << n << '\t' << s << '\t' << w << '\n';
-                    else if (np >= 0 && n < 0)
-                        fout << np << '\t' << sp << '\t' << wp << '\n';
+                    double valp = val;
+                    fin >> name >> s >> w >> val;
+                    if (namep != name)
+                    {
+                        if (node_names.find(namep) != node_names.end())
+                            fout << name << '\t' << s << '\t' << w << '\t' << val << '\n';
+                        else
+                            fout << namep << '\t' << sp << '\t' << wp << '\t' << valp << '\n';
+                    }
                 }
             }
         }

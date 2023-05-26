@@ -40,16 +40,28 @@ struct Edge
     }
 };
 
+struct NameSeq
+{
+    std::string name;
+    std::string seq;
+
+    void readin(std::string file)
+    {
+        std::ifstream fin(file);
+        std::getline(std::getline(fin, name), seq);
+    }
+};
+
 struct EdgeLocal : Edge
 {
-    std::string &seq;
+    NameSeq &nameseq;
     double vfp;
     double ufp;
     double vfm;
     double ufm;
 
-    EdgeLocal(std::string name_, double gamma_[7][7], double ve_, double ue_, double vf_, double uf_, double T_, int n_, std::string &seq_, double vfp_, double ufp_, double vfm_, double ufm_)
-        : Edge(name_, gamma_, ve_, ue_, vf_, uf_, T_, n_), seq(seq_)
+    EdgeLocal(std::string name_, double gamma_[7][7], double ve_, double ue_, double vf_, double uf_, double T_, int n_, NameSeq &nameseq_, double vfp_, double ufp_, double vfm_, double ufm_)
+        : Edge(name_, gamma_, ve_, ue_, vf_, uf_, T_, n_), nameseq(nameseq_)
     {
         vfp = vfp_;
         ufp = ufp_;
@@ -77,7 +89,7 @@ struct EdgeLocalCross : EdgeLocal
     Dot **G;
 
     EdgeLocalCross(EdgeLocal &edge)
-    : EdgeLocal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.seq, edge.vfp, edge.ufp, edge.vfm, edge.ufm)
+    : EdgeLocal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.nameseq, edge.vfp, edge.ufp, edge.vfm, edge.ufm)
     {
         tail=edge.tail;
         head=edge.head;
@@ -95,7 +107,7 @@ struct EdgeLocalCircuit : EdgeLocal
     Dot **DX;
 
     EdgeLocalCircuit(EdgeLocal &edge)
-    : EdgeLocal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.seq, edge.vfp, edge.ufp, edge.vfm, edge.ufm)
+    : EdgeLocal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.nameseq, edge.vfp, edge.ufp, edge.vfm, edge.ufm)
     {
         tail=edge.tail;
         head=edge.head;
@@ -232,7 +244,7 @@ struct Graph
 
     std::list<SCC> sccs;
 
-    Graph(int argc, char **argv, std::map<std::string, std::string> &file2seq, std::map<std::string, BroWheel> &file2browheel)
+    Graph(int argc, char **argv, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel)
     {
         for (int i = 1; i < argc; ++i)
             if (!strcmp(argv[i], "--nodes"))
@@ -263,7 +275,10 @@ struct Graph
                 while (++i < argc && (strlen(argv[i]) < 2 || argv[i][0] != '-' || argv[i][1] != '-'))
                     for (auto &node : nodes)
                         if (node.name == argv[i])
+                        {
                             targets.push_back(&node);
+                            break;
+                        }
                 --i;
             }
             else if (!strcmp(argv[i], "--locals"))
@@ -285,8 +300,8 @@ struct Graph
                         for (int a=0; a<7; ++a)
                             for (int b=0; b<7; ++b)
                                 gamma_[a][b]=str2double(argv[i++]);
-                    locals.emplace_back(argv[i], gamma_, str2double(argv[i + 1]), str2double(argv[i + 2]), str2double(argv[i + 3]), str2double(argv[i + 4]), str2double(argv[i + 5]), n++, file2seq[argv[i + 6]], str2double(argv[i + 7]), str2double(argv[i + 8]), str2double(argv[i + 9]), str2double(argv[i + 10]));
-                    i += 10;
+                    locals.emplace_back(argv[i], gamma_, str2double(argv[i + 1]), str2double(argv[i + 2]), str2double(argv[i + 3]), str2double(argv[i + 4]), str2double(argv[i + 5]), n++, file2seq[argv[i]], str2double(argv[i + 6]), str2double(argv[i + 7]), str2double(argv[i + 8]), str2double(argv[i + 9]));
+                    i += 9;
                     for (auto &node : nodes)
                     {
                         if (node.name == argv[i + 1])
@@ -317,8 +332,8 @@ struct Graph
                         for (int a=0; a<7; ++a)
                             for (int b=0; b<7; ++b)
                                 gamma_[a][b]=str2double(argv[i++]);
-                    globals.emplace_back(argv[i], gamma_, str2double(argv[i + 1]), str2double(argv[i + 2]), str2double(argv[i + 3]), str2double(argv[i + 4]), str2double(argv[i + 5]), n++, file2browheel[argv[i + 6]]);
-                    i += 6;
+                    globals.emplace_back(argv[i], gamma_, str2double(argv[i + 1]), str2double(argv[i + 2]), str2double(argv[i + 3]), str2double(argv[i + 4]), str2double(argv[i + 5]), n++, file2browheel[argv[i]]);
+                    i += 5;
                     for (auto &node : nodes)
                     {
                         if (node.name == argv[i + 1])
@@ -496,7 +511,7 @@ struct Graph
                 DeepFirst(&nodes[n], stack, id, visit, in_stack, disc, low, locals, globals);
     }
 
-    void draw(std::string file)
+    int draw(std::string file)
     {
         std::ofstream fout(file);
         fout << "digraph align_graph\n{\n";
@@ -515,7 +530,7 @@ struct Graph
             fout << '\t' << edge.tail->name << "->" << edge.head->name << "[color=blue,label=\"" << edge.name << "\"]\n";
         fout << "}\n";
         fout.close();
-        system(("dot -Tpdf " + file + " > " + file + ".pdf").c_str());
+        return system(("dot -Tpdf " + file + " > " + file + ".pdf").c_str());
     }
 };
 
