@@ -129,6 +129,8 @@ void load_blocks(std::deque<std::string> read_files, Align &align, size_t block_
         std::queue<std::pair<std::string, std::string>> reads;
         while (reads.size() < block_size && iter != read_files.end())
         {
+            if (reads.size() == 50)// debug
+                int aaa = 3; // debug
             if (std::getline(std::getline(fin, name), read))
             {
                 reads.emplace(name, read);
@@ -348,7 +350,7 @@ void test_RandomReads(std::string argfile, int threads1_sz)
     std::deque<std::string> mg_files = parallel_align(threads1, argc, argv, file2seq, file2browheel, read_files, "Random"); // mt
 
     // std::deque<std::string> read_files = load_index(argc, argv, file2seq, file2browheel); // st
-    // std::string mg_file = single_align(128 * 1024 * 1024, argc, argv, file2seq, file2browheel, read_files, "Random"); // st
+    // std::string mg_file = single_align(argc, argv, file2seq, file2browheel, read_files, "Random"); // st
     // std::deque<std::string> mg_files = {mg_file}; // st
 
     Track track(argc, argv, file2seq, file2browheel);

@@ -88,67 +88,32 @@ struct EdgeLocal : Edge
     }
 };
 
-template <typename T>
-void ptrDelete(T **ptr)
-{
-    if (ptr)
-    {
-        if (*ptr)
-            delete[] * ptr;
-        delete[] ptr;
-    }
-}
-
 struct EdgeLocalCross : EdgeLocal
 {
-    Dot **E;
-    Dot **F;
-    Dot **G;
+    std::unique_ptr<Dot[]> dots;
+    std::unique_ptr<Dot *[]> E, F, G;
 
     EdgeLocalCross(EdgeLocal &edge)
-        : EdgeLocal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.nameseq, edge.vfp, edge.ufp, edge.vfm, edge.ufm), E(NULL), F(NULL), G(NULL)
+        : EdgeLocal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.nameseq, edge.vfp, edge.ufp, edge.vfm, edge.ufm)
     {
         tail = edge.tail;
         head = edge.head;
         global = false;
-    }
-
-    ~EdgeLocalCross()
-    {
-        ptrDelete(E);
-        ptrDelete(F);
-        ptrDelete(G);
     }
 };
 
 struct EdgeLocalCircuit : EdgeLocal
 {
+    std::unique_ptr<Dot[]> dots;
     Dot *D;
-    Dot **E;
-    Dot **F0;
-    Dot **G0;
-    Dot **G;
-    Dot **D0;
-    Dot **DX;
+    std::unique_ptr<Dot *[]> E, F0, G0, G, D0, DX;
 
     EdgeLocalCircuit(EdgeLocal &edge)
-        : EdgeLocal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.nameseq, edge.vfp, edge.ufp, edge.vfm, edge.ufm), D(NULL), E(NULL), F0(NULL), G0(NULL), G(NULL), D0(NULL), DX(NULL)
+        : EdgeLocal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.nameseq, edge.vfp, edge.ufp, edge.vfm, edge.ufm)
     {
         tail = edge.tail;
         head = edge.head;
         global = false;
-    }
-
-    ~EdgeLocalCircuit()
-    {
-        if (D)
-            delete[] D;
-        ptrDelete(E);
-        ptrDelete(F0);
-        ptrDelete(G0);
-        ptrDelete(G);
-        ptrDelete(D0);
-        ptrDelete(DX);
     }
 };
 
@@ -264,24 +229,21 @@ struct SNC
 struct EdgeGlobalCircuit : EdgeGlobal
 {
     std::deque<SNC> sncs;
-    Dot **D0;
+    std::unique_ptr<Dot[]> dots;
+    std::unique_ptr<Dot *[]> D0;
 
     EdgeGlobalCircuit(EdgeGlobal &edge)
-        : EdgeGlobal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.browheel), D0(NULL)
+        : EdgeGlobal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.browheel)
     {
         tail = edge.tail;
         head = edge.head;
         global = true;
     }
-
-    ~EdgeGlobalCircuit()
-    {
-        ptrDelete(D0);
-    }
 };
 
 struct Node
 {
+    int n;
     int scc_id;
     int scc_sz;
     std::string name;
@@ -296,9 +258,10 @@ struct Node
     std::vector<EdgeGlobalCross *> in_global_crosses;
     std::vector<EdgeGlobalCircuit *> in_global_circuits;
     Dot Abar;
-    Dot **A;
+    std::unique_ptr<Dot[]> dots;
+    std::unique_ptr<Dot *[]> A;
     Dot *B;
-    std::deque<Dot *> *AdeltaDot;
+    std::unique_ptr<std::deque<Dot *>[]> AdeltaDot;
 
     struct GlobalSuffix
     {
@@ -312,10 +275,10 @@ struct Node
         }
     };
 
-    std::deque<GlobalSuffix> *AdeltaGlobal;
+    std::unique_ptr<std::deque<GlobalSuffix>[]> AdeltaGlobal;
 
-    Node(std::string name_, double ve_, double ue_)
-        : name(name_), ve(ve_), ue(ue_), A(NULL), B(NULL), AdeltaDot(NULL), AdeltaGlobal(NULL)
+    Node(std::string name_, double ve_, double ue_, int n_)
+        : name(name_), ve(ve_), ue(ue_), n(n_)
     {
     }
 
@@ -355,17 +318,6 @@ struct Node
             AdeltaGlobal[w].clear();
         }
     }
-
-    ~Node()
-    {
-        if (B)
-            delete[] B;
-        ptrDelete(A);
-        if (AdeltaDot)
-            delete[] AdeltaDot;
-        if (AdeltaGlobal)
-            delete[] AdeltaGlobal;
-    }
 };
 
 struct SCC
@@ -381,13 +333,13 @@ struct Graph
 {
     const static int sigma = 6;
 
-    std::vector<Node> nodes;
+    std::deque<Node> nodes;
     std::vector<Node *> roots;
     std::vector<Node *> targets;
-    std::vector<EdgeLocalCross> local_crosses;
-    std::vector<EdgeLocalCircuit> local_circuits;
-    std::vector<EdgeGlobalCross> global_crosses;
-    std::vector<EdgeGlobalCircuit> global_circuits;
+    std::deque<EdgeLocalCross> local_crosses; // cannot be changed to vector, because emplace_back of vector may change the addresses of elements
+    std::deque<EdgeLocalCircuit> local_circuits;
+    std::deque<EdgeGlobalCross> global_crosses;
+    std::deque<EdgeGlobalCircuit> global_circuits;
 
     std::deque<SCC> sccs;
 
@@ -398,7 +350,7 @@ struct Graph
             {
                 while (++i < argc && (strlen(argv[i]) < 2 || argv[i][0] != '-' || argv[i][1] != '-'))
                 {
-                    nodes.emplace_back(argv[i], str2double(argv[i + 1]), str2double(argv[i + 2]));
+                    nodes.emplace_back(argv[i], str2double(argv[i + 1]), str2double(argv[i + 2]), nodes.size());
                     i += 2;
                 }
                 --i;
@@ -494,31 +446,41 @@ struct Graph
         RemoveEdge(roots, false, visit, locals, globals);
         RemoveEdge(targets, true, visit, locals, globals);
         SCCTS(locals, globals);
-        for (auto &edge : local_crosses)
-        {
-            edge.tail->out_local_crosses.push_back(&edge);
-            edge.head->in_local_crosses.push_back(&edge);
-        }
-        for (auto &edge : local_circuits)
-        {
-            edge.tail->out_local_circuits.push_back(&edge);
-            edge.head->in_local_circuits.push_back(&edge);
-        }
-        for (auto &edge : global_crosses)
-        {
-            edge.tail->out_global_crosses.push_back(&edge);
-            edge.head->in_global_crosses.push_back(&edge);
-        }
-        for (auto &edge : global_circuits)
-        {
-            edge.tail->out_global_circuits.push_back(&edge);
-            edge.head->in_global_circuits.push_back(&edge);
-        }
         for (int i = 0; i < sccs.size(); ++i)
             for (auto node : sccs[i].nodes)
             {
                 node->scc_id = i;
                 node->scc_sz = sccs[i].nodes.size();
+            }
+        for (auto &edge : locals)
+            if (edge.tail->scc_id != edge.head->scc_id)
+            {
+                local_crosses.emplace_back(edge);
+                sccs[edge.tail->scc_id].local_crosses.emplace_back(&local_crosses.back());
+                edge.tail->out_local_crosses.emplace_back(&local_crosses.back());
+                edge.head->in_local_crosses.emplace_back(&local_crosses.back());
+            }
+            else
+            {
+                local_circuits.emplace_back(edge);
+                sccs[edge.tail->scc_id].local_circuits.emplace_back(&local_circuits.back());
+                edge.tail->out_local_circuits.emplace_back(&local_circuits.back());
+                edge.head->in_local_circuits.emplace_back(&local_circuits.back());
+            }
+        for (auto &edge : globals)
+            if (edge.tail->scc_id != edge.head->scc_id)
+            {
+                global_crosses.emplace_back(edge);
+                sccs[edge.tail->scc_id].global_crosses.emplace_back(&global_crosses.back());
+                edge.tail->out_global_crosses.emplace_back(&global_crosses.back());
+                edge.head->in_global_crosses.emplace_back(&global_crosses.back());
+            }
+            else
+            {
+                global_circuits.emplace_back(edge);
+                sccs[edge.tail->scc_id].global_circuits.emplace_back(&global_circuits.back());
+                edge.tail->out_global_circuits.emplace_back(&global_circuits.back());
+                edge.head->in_global_circuits.emplace_back(&global_circuits.back());
             }
     }
 
@@ -572,7 +534,7 @@ struct Graph
 
     void DeepFirst(Node *node, std::stack<Node *> &stack, int &id, std::vector<bool> &visit, std::vector<bool> &in_stack, std::vector<int> &disc, std::vector<int> &low, std::list<EdgeLocal> &locals, std::list<EdgeGlobal> &globals)
     {
-        int n = node - nodes.data();
+        int n = node->n;
         visit[n] = true;
         disc[n] = id;
         low[n] = id;
@@ -582,24 +544,24 @@ struct Graph
         for (auto &edge : locals)
             if (edge.tail == node)
             {
-                if (!visit[edge.head - nodes.data()])
+                if (!visit[edge.head->n])
                 {
                     DeepFirst(edge.head, stack, id, visit, in_stack, disc, low, locals, globals);
-                    low[n] = low[n] < low[edge.head - nodes.data()] ? low[n] : low[edge.head - nodes.data()];
+                    low[n] = low[n] < low[edge.head->n] ? low[n] : low[edge.head->n];
                 }
-                else if (in_stack[edge.head - nodes.data()])
-                    low[n] = low[n] < disc[edge.head - nodes.data()] ? low[n] : disc[edge.head - nodes.data()];
+                else if (in_stack[edge.head->n])
+                    low[n] = low[n] < disc[edge.head->n] ? low[n] : disc[edge.head->n];
             }
         for (auto &edge : globals)
             if (edge.tail == node)
             {
-                if (!visit[edge.head - nodes.data()])
+                if (!visit[edge.head->n])
                 {
                     DeepFirst(edge.head, stack, id, visit, in_stack, disc, low, locals, globals);
-                    low[n] = low[n] < low[edge.head - nodes.data()] ? low[n] : low[edge.head - nodes.data()];
+                    low[n] = low[n] < low[edge.head->n] ? low[n] : low[edge.head->n];
                 }
-                else if (in_stack[edge.head - nodes.data()])
-                    low[n] = low[n] < disc[edge.head - nodes.data()] ? low[n] : disc[edge.head - nodes.data()];
+                else if (in_stack[edge.head->n])
+                    low[n] = low[n] < disc[edge.head->n] ? low[n] : disc[edge.head->n];
             }
         if (disc[n] == low[n])
         {
@@ -609,40 +571,9 @@ struct Graph
             {
                 top = stack.top();
                 stack.pop();
-                in_stack[top - nodes.data()] = false;
+                in_stack[top->n] = false;
                 sccs.front().nodes.push_back(top);
             } while (top != node);
-            for (auto nnode : sccs.front().nodes)
-            {
-                for (auto &edge : locals)
-                    if (edge.tail == nnode)
-                    {
-                        if (std::find(sccs.front().nodes.begin(), sccs.front().nodes.end(), edge.head) == sccs.front().nodes.end())
-                        {
-                            local_crosses.emplace_back(edge);
-                            sccs.front().local_crosses.push_back(&local_crosses.back());
-                        }
-                        else
-                        {
-                            local_circuits.emplace_back(edge);
-                            sccs.front().local_circuits.push_back(&local_circuits.back());
-                        }
-                    }
-                for (auto &edge : globals)
-                    if (edge.tail == nnode)
-                    {
-                        if (std::find(sccs.front().nodes.begin(), sccs.front().nodes.end(), edge.head) == sccs.front().nodes.end())
-                        {
-                            global_crosses.emplace_back(edge);
-                            sccs.front().global_crosses.push_back(&global_crosses.back());
-                        }
-                        else
-                        {
-                            global_circuits.emplace_back(edge);
-                            sccs.front().global_circuits.push_back(&global_circuits.back());
-                        }
-                    }
-            }
         }
     }
 
