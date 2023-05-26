@@ -51,7 +51,7 @@ struct Track : Memory, Graph
         globals.resize(max_n + 1, NULL);
     }
 
-    void ReadTrack(std::list<std::string> mg_files, std::list<std::string> read_files, std::string run_name, size_t max_seq, size_t max_track)
+    void ReadTrack(std::deque<std::string> mg_files, std::deque<std::string> read_files, std::string run_name, size_t max_seq, size_t max_track)
     {
         std::vector<std::ifstream> fins;
         for (auto &file : mg_files)
@@ -88,11 +88,8 @@ struct Track : Memory, Graph
             if (std::getline(std::getline(fin_seq, Oname), O))
             {
                 ++seq_num;
-                if ((iter->size() > 3 && iter->substr(iter->size() - 3, 3) == ".fq") || (iter->size() > 6 && iter->substr(iter->size() - 6, 6) == ".fastq"))
-                {
-                    std::string tmp;
-                    std::getline(std::getline(fin_seq, tmp), tmp);
-                }
+                if (Oname[0]=='>')
+                    fin_seq.ignore(std::numeric_limits<size_t>::max(),'\n').ignore(std::numeric_limits<size_t>::max(),'\n');
                 for (size_t f = 0; f < fins.size(); ++f)
                 {
                     if (Onames[f] == Oname)
@@ -118,7 +115,7 @@ struct Track : Memory, Graph
                             }
                         } while (size_t(id) < uid);
 
-                        std::list<Dot *> path;
+                        std::deque<Dot *> path;
                         path.push_front(&dots[0]);
                         BackTrack(fout_track, fout_align, path, max_track, Oname, O);
 
@@ -142,7 +139,7 @@ struct Track : Memory, Graph
         }
     }
 
-    void BackTrack(std::ofstream &fout_track, std::ofstream &fout_align, std::list<Dot *> &path, size_t max_track, std::string &Oname, std::string &O)
+    void BackTrack(std::ofstream &fout_track, std::ofstream &fout_align, std::deque<Dot *> &path, size_t max_track, std::string &Oname, std::string &O)
     {
         size_t track_num = 0;
         while (!path.empty() && track_num < max_track)
@@ -191,7 +188,7 @@ struct Track : Memory, Graph
                     }
                 }
 
-                std::list<std::array<char, 3>> align;
+                std::deque<std::array<char, 3>> align;
                 for (auto it1 = path.begin(), it2 = std::next(it1); it2 != std::prev(path.end()); ++it1, ++it2)
                 {
                     if ((*it2)->w > (*it1)->w && ((*it2)->s > (*it1)->s || ((*it2)->n == (*it1)->n && (*it2)->n >= 0 && globals[(*it2)->n] && (*it2)->lambda > (*it1)->lambda)))

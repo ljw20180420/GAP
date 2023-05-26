@@ -94,7 +94,6 @@ struct Align : Memory, Graph
 {
     const static int ww = 3;
 
-    std::stack<SimNode> simnodes;
     std::string O;
     std::string Oname;
     Dot Q;
@@ -225,7 +224,7 @@ struct Align : Memory, Graph
                                 node->A[0][w].s_sz = 0;
                                 node->AdeltaCross[w].clear();
                             }
-                            node->AdeltaCross[w][edge] = edge->Cdelta[w];
+                            node->AdeltaCross[w].insert_or_assign(edge, std::move(edge->Cdelta[w]));
                         }
                     node->AdeltaCircuit[w].clear();
                     for (auto edge : node->in_global_circuits)
@@ -237,7 +236,7 @@ struct Align : Memory, Graph
                                 node->A[0][w].s_sz = 0;
                                 node->AdeltaCircuit[w].clear();
                             }
-                            node->AdeltaCircuit[w][edge] = edge->Cdelta[w];
+                            node->AdeltaCircuit[w].insert_or_assign(edge, std::move(edge->Cdelta[w]));
                         }
                 }
                 for (size_t l = 1; l < scc.nodes.size(); ++l)
@@ -320,7 +319,7 @@ struct Align : Memory, Graph
     void CrossIterationGlobal(EdgeGlobalCross *edge, int scc_sz)
     {
         Dot **A = edge->tail->A;
-        std::list<SimNode> simnodes;
+        std::deque<SimNode> simnodes;
         simnodes.emplace_front(this, -1, 0, edge->browheel.sequence.size() - 1, O.size() + 1, O.size() + 1);
         auto &simzero = simnodes.back();
         std::vector<Do> E0;
@@ -334,7 +333,7 @@ struct Align : Memory, Graph
             edge->Cdelta[w].clear();
             edge->Cdelta[w].emplace_back(simzero.sr1, simnodes.size() - 1);
         }
-        std::list<SimNode>::iterator simprev = simnodes.begin(), simnode;
+        std::deque<SimNode>::iterator simprev = simnodes.begin(), simnode;
         int c = 1;
         int64_t sr1, sr2;
         do
@@ -402,7 +401,7 @@ struct Align : Memory, Graph
                     do
                     {
                         c = simnodes.front().c;
-                        simnodes.erase(simnodes.begin());
+                        simnodes.pop_front();
                     } while (c == 6 && !simnodes.empty());
                     if (simnodes.empty())
                         break;
@@ -585,7 +584,7 @@ struct Align : Memory, Graph
 
     void GlobalTrack(Dot *M)
     {
-        std::list<Dot *> add_sources;
+        std::deque<Dot *> add_sources;
         for (auto &pair : nodes[-M->n - 4].AdeltaCross[M->w])
         {
             Dot **A = pair.first->tail->A;

@@ -8,7 +8,6 @@
 #include <cstdint>
 #include <fstream>
 #include <tuple>
-#include <list>
 #include <map>
 #include <cctype>
 #include <algorithm>
@@ -836,31 +835,6 @@ struct BroWheel
         return std::make_tuple(name_cumlen[l].first, s);
     }
 };
-
-std::string readin_local(std::list<std::string> files, bool reverse)
-{
-    std::string str, tmp;
-    for (auto &file : files)
-    {
-        std::ifstream fin(file);
-        fin >> tmp;
-        while (fin.good())
-        {
-            str+=tmp;
-            str.push_back('L');
-            fin >> tmp;
-        }
-        if (!empty(str))
-        {
-            str.pop_back();
-            str.push_back('K');
-        }
-    }
-    if (reverse)
-        for (size_t i=0, j=str.size()-2; i<j; ++i, --j)
-            std::swap(str[i],str[j]);
-    return str;
-}
 
 const std::string BroWheel::int2base="KLNACTG";
 

@@ -53,13 +53,13 @@ void process_and_write(std::queue<std::pair<std::string, std::string>> reads, st
     cv.notify_all(); // mt
 }
 
-std::list<std::future<void>> load_blocks(std::list<std::string> read_files, thread_pool &threads1, std::map<std::thread::id, Align> &aligns, size_t max_block, size_t block_size)
+std::deque<std::future<void>> load_blocks(std::deque<std::string> read_files, thread_pool &threads1, std::map<std::thread::id, Align> &aligns, size_t max_block, size_t block_size)
 {
     std::string name;
     std::string read;
     auto iter = read_files.begin();
     std::ifstream fin(*iter);
-    std::list<std::future<void>> futures;
+    std::deque<std::future<void>> futures;
     while (iter != read_files.end())
     {
         std::queue<std::pair<std::string, std::string>> reads;
@@ -68,11 +68,8 @@ std::list<std::future<void>> load_blocks(std::list<std::string> read_files, thre
             if (std::getline(std::getline(fin, name), read))
             {
                 reads.emplace(name, read);
-                if ((iter->size() > 3 && iter->substr(iter->size() - 3, 3) == ".fq") || (iter->size() > 6 && iter->substr(iter->size() - 6, 6) == ".fastq"))
-                {
-                    std::string tmp;
-                    std::getline(std::getline(fin, tmp), tmp);
-                }
+                if (name[0]=='>')
+                    fin.ignore(std::numeric_limits<size_t>::max(),'\n').ignore(std::numeric_limits<size_t>::max(),'\n');
             }
             else
             {
@@ -90,7 +87,7 @@ std::list<std::future<void>> load_blocks(std::list<std::string> read_files, thre
     return futures;
 }
 
-void load_blocks(std::list<std::string> read_files, Align &align, size_t block_size)
+void load_blocks(std::deque<std::string> read_files, Align &align, size_t block_size)
 {
     std::string name;
     std::string read;
@@ -104,11 +101,8 @@ void load_blocks(std::list<std::string> read_files, Align &align, size_t block_s
             if (std::getline(std::getline(fin, name), read))
             {
                 reads.emplace(name, read);
-                if ((iter->size() > 3 && iter->substr(iter->size() - 3, 3) == ".fq") || (iter->size() > 6 && iter->substr(iter->size() - 6, 6) == ".fastq"))
-                {
-                    std::string tmp;
-                    std::getline(std::getline(fin, tmp), tmp);
-                }
+                if (name[0]=='>')
+                    fin.ignore(std::numeric_limits<size_t>::max(),'\n').ignore(std::numeric_limits<size_t>::max(),'\n');
             }
             else
             {
@@ -142,7 +136,7 @@ std::tuple<int, char **> read_argfile(std::string argfile, std::vector<std::stri
     return std::make_tuple(argc, argv);
 }
 
-std::list<std::string> load_index(int argc, char **argv, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel)
+std::deque<std::string> load_index(int argc, char **argv, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel)
 {
     Graph graph(argc, argv, file2seq, file2browheel);
     graph.draw("graph.gv");
@@ -150,7 +144,7 @@ std::list<std::string> load_index(int argc, char **argv, std::map<std::string, N
         pair.second.readin(pair.first);
     for (auto &pair : file2browheel)
         pair.second.loadBroWheel(pair.first);
-    std::list<std::string> read_files;
+    std::deque<std::string> read_files;
     for (int i = 1; i < argc; ++i)
         if (!strcmp(argv[i], "--read_files"))
         {
@@ -162,7 +156,7 @@ std::list<std::string> load_index(int argc, char **argv, std::map<std::string, N
     return read_files;
 }
 
-std::list<std::string> read_reference_and_index(int argc, char **argv, int ll, thread_pool &threads1, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel, bool reverse_complement)
+std::deque<std::string> read_reference_and_index(int argc, char **argv, int ll, thread_pool &threads1, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel, bool reverse_complement)
 {
     Graph graph(argc, argv, file2seq, file2browheel);
     graph.draw("graph.gv");
@@ -176,7 +170,7 @@ std::list<std::string> read_reference_and_index(int argc, char **argv, int ll, t
         pair.second.index(ll, threads1, thread2);
         pair.second.saveBroWheel();
     }
-    std::list<std::string> read_files;
+    std::deque<std::string> read_files;
     for (int i = 1; i < argc; ++i)
         if (!strcmp(argv[i], "--read_files"))
         {
@@ -188,7 +182,7 @@ std::list<std::string> read_reference_and_index(int argc, char **argv, int ll, t
     return read_files;
 }
 
-std::list<std::string> read_reference_and_index(int argc, char **argv, int ll, int threads1_sz, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel, bool reverse_complement)
+std::deque<std::string> read_reference_and_index(int argc, char **argv, int ll, int threads1_sz, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel, bool reverse_complement)
 {
     Graph graph(argc, argv, file2seq, file2browheel);
     graph.draw("graph.gv");
@@ -201,7 +195,7 @@ std::list<std::string> read_reference_and_index(int argc, char **argv, int ll, i
         pair.second.index(ll, threads1_sz);
         pair.second.saveBroWheel();
     }
-    std::list<std::string> read_files;
+    std::deque<std::string> read_files;
     for (int i = 1; i < argc; ++i)
         if (!strcmp(argv[i], "--read_files"))
         {
@@ -213,11 +207,11 @@ std::list<std::string> read_reference_and_index(int argc, char **argv, int ll, i
     return read_files;
 }
 
-std::list<std::string> parallel_align(size_t chunk_sz, thread_pool &threads1, int argc, char **argv, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel, std::list<std::string> read_files, std::string run_name)
+std::deque<std::string> parallel_align(size_t chunk_sz, thread_pool &threads1, int argc, char **argv, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel, std::deque<std::string> read_files, std::string run_name)
 {
     std::map<std::thread::id, Align> aligns;
     auto thread_ids = threads1.get_ids();
-    std::list<std::string> mg_files;
+    std::deque<std::string> mg_files;
     for (size_t i = 0; i < threads1.size(); ++i)
     {
         mg_files.emplace_back(run_name + std::to_string(i) + ".mg");
@@ -225,7 +219,7 @@ std::list<std::string> parallel_align(size_t chunk_sz, thread_pool &threads1, in
     }
 
     size_t block_size = 100, max_block = 2 * threads1.size();
-    std::list<std::future<void>> futures = load_blocks(read_files, threads1, aligns, max_block, block_size); // mt
+    std::deque<std::future<void>> futures = load_blocks(read_files, threads1, aligns, max_block, block_size); // mt
     for (auto &future : futures)                                                                             // mt
         future.wait();                                                                                       // mt
     // load_blocks(read_files, aligns.begin()->second, block_size); // st
@@ -247,9 +241,9 @@ void test_CRISPR(std::string argfile, int threads1_sz);
 
 int main(int argc, char **argv)
 {
-    // test_RandomReads("argfile", 12);
+    test_RandomReads("argfile", 24);
     // index_genome("argfile", 3);
-    test_CRISPR("argfile", 3);
+    // test_CRISPR("argfile", 3);
     return 0;
 }
 
@@ -269,9 +263,9 @@ void test_RandomReads(std::string argfile, int threads1_sz)
     thread_pool threads1(threads1_sz);
     std::map<std::string, NameSeq> file2seq;
     std::map<std::string, BroWheel> file2browheel;
-    std::list<std::string> read_files = read_reference_and_index(argc, argv, 300, threads1, file2seq, file2browheel, false);
+    std::deque<std::string> read_files = read_reference_and_index(argc, argv, 300, threads1, file2seq, file2browheel, false);
 
-    std::list<std::string> mg_files = parallel_align(128 * 1024 * 1024, threads1, argc, argv, file2seq, file2browheel, read_files, "Random");
+    std::deque<std::string> mg_files = parallel_align(128 * 1024 * 1024, threads1, argc, argv, file2seq, file2browheel, read_files, "Random");
 
     Track track(argc, argv, file2seq, file2browheel, 128 * 1024 * 1024);
     track.ReadTrack(mg_files, read_files, "Random", INT64_MAX, 1);
@@ -288,8 +282,8 @@ void index_genome(std::string argfile, int threads1_sz)
     thread_pool threads1(threads1_sz);
     std::map<std::string, NameSeq> file2seq;
     std::map<std::string, BroWheel> file2browheel;
-    std::list<std::string> read_files = read_reference_and_index(argc, argv, 150000000, threads1, file2seq, file2browheel, true);
-    // std::list<std::string> read_files = read_reference_and_index(argc, argv, 150000000, threads1_sz, file2seq, file2browheel, true);
+    std::deque<std::string> read_files = read_reference_and_index(argc, argv, 150000000, threads1, file2seq, file2browheel, true);
+    // std::deque<std::string> read_files = read_reference_and_index(argc, argv, 150000000, threads1_sz, file2seq, file2browheel, true);
 }
 
 void test_CRISPR(std::string argfile, int threads1_sz)
@@ -301,12 +295,12 @@ void test_CRISPR(std::string argfile, int threads1_sz)
 
     std::map<std::string, NameSeq> file2seq;
     std::map<std::string, BroWheel> file2browheel;
-    std::list<std::string> read_files = load_index(argc, argv, file2seq, file2browheel);
+    std::deque<std::string> read_files = load_index(argc, argv, file2seq, file2browheel);
 
     thread_pool threads1(threads1_sz);
-    std::list<std::string> mg_files = parallel_align(128 * 1024 * 1024, threads1, argc, argv, file2seq, file2browheel, read_files, "CRISPR");
+    std::deque<std::string> mg_files = parallel_align(128 * 1024 * 1024, threads1, argc, argv, file2seq, file2browheel, read_files, "CRISPR");
 
-    // std::list<std::string> mg_files;
+    // std::deque<std::string> mg_files;
     // for (size_t i = 0; i < threads1_sz; ++i)
     //     mg_files.emplace_back("CRISPR" + std::to_string(i) + ".mg");
 

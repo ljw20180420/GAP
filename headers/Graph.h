@@ -3,6 +3,7 @@
 
 #include <stack>
 #include <cfloat>
+#include <list>
 #include "BroWheel.h"
 #include "Memory.h"
 
@@ -156,9 +157,9 @@ struct TrackNode
 struct EdgeGlobal : Edge
 {
     BroWheel &browheel;
-    std::vector<double> C;
-    std::vector<std::list<std::pair<size_t, int>>> Cdelta;
-    std::list<TrackNode> tracknodes;
+    std::deque<double> C;
+    std::deque<std::deque<std::pair<size_t, int>>> Cdelta;
+    std::deque<TrackNode> tracknodes;
 
     EdgeGlobal(std::string name_, double gamma_[7][7], double ve_, double ue_, double vf_, double uf_, double T_, int n_, BroWheel &browheel_)
         : Edge(name_, gamma_, ve_, ue_, vf_, uf_, T_, n_), browheel(browheel_)
@@ -180,7 +181,7 @@ struct SNC;
 
 struct EdgeGlobalCircuit : EdgeGlobal
 {
-    std::list<SNC> sncs;
+    std::deque<SNC> sncs;
     std::list<SNC *> vs;
 
     Dot *G;
@@ -210,8 +211,8 @@ struct Node
     Dot Abar;
     Dot **A;
     Dot *B;
-    std::vector<std::map<EdgeGlobalCross *, std::list<std::pair<size_t, int>>>> AdeltaCross;
-    std::vector<std::map<EdgeGlobalCircuit *, std::list<std::pair<size_t, int>>>> AdeltaCircuit;
+    std::vector<std::map<EdgeGlobalCross *, std::deque<std::pair<size_t, int>>>> AdeltaCross;
+    std::vector<std::map<EdgeGlobalCircuit *, std::deque<std::pair<size_t, int>>>> AdeltaCircuit;
 
     Node(std::string name_, double ve_, double ue_)
     {
@@ -237,12 +238,12 @@ struct Graph
     std::vector<Node> nodes;
     std::vector<Node *> roots;
     std::vector<Node *> targets;
-    std::list<EdgeLocalCross> local_crosses;
-    std::list<EdgeLocalCircuit> local_circuits;
-    std::list<EdgeGlobalCross> global_crosses;
-    std::list<EdgeGlobalCircuit> global_circuits;
+    std::deque<EdgeLocalCross> local_crosses;
+    std::deque<EdgeLocalCircuit> local_circuits;
+    std::deque<EdgeGlobalCross> global_crosses;
+    std::deque<EdgeGlobalCircuit> global_circuits;
 
-    std::list<SCC> sccs;
+    std::deque<SCC> sccs;
 
     Graph(int argc, char **argv, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel)
     {
