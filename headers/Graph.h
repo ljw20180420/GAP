@@ -158,7 +158,6 @@ struct EdgeGlobal : Edge
 {
     BroWheel &browheel;
     std::deque<double> C;
-    std::deque<std::deque<std::pair<size_t, int>>> Cdelta;
     std::deque<TrackNode> tracknodes;
 
     EdgeGlobal(std::string name_, double gamma_[7][7], double ve_, double ue_, double vf_, double uf_, double T_, int n_, BroWheel &browheel_)
@@ -288,11 +287,11 @@ struct Graph
                     double gamma_[7][7]={
                         {-inf, -inf, -inf, -inf, -inf, -inf, -inf},
                         {-inf, -inf, -inf, -inf, -inf, -inf, -inf},
-                        {-inf, -inf, -inf, -inf, -inf, -inf, -inf},
-                        {-inf, -inf, -inf, 1, -3, -3, -3},
-                        {-inf, -inf, -inf, -3, 1, -3, -3},
-                        {-inf, -inf, -inf, -3, -3, 1, -3},
-                        {-inf, -inf, -inf, -3, -3, -3, 1}
+                        {-inf, -inf, -3, -3, -3, -3, -3},
+                        {-inf, -inf, -3, 1, -3, -3, -3},
+                        {-inf, -inf, -3, -3, 1, -3, -3},
+                        {-inf, -inf, -3, -3, -3, 1, -3},
+                        {-inf, -inf, -3, -3, -3, -3, 1}
                     };
                     if (!strcmp(argv[i],"default_gamma"))
                         ++i;
@@ -320,11 +319,11 @@ struct Graph
                     double gamma_[7][7]={
                         {-inf, -inf, -inf, -inf, -inf, -inf, -inf},
                         {-inf, -inf, -inf, -inf, -inf, -inf, -inf},
-                        {-inf, -inf, -inf, -inf, -inf, -inf, -inf},
-                        {-inf, -inf, -inf, 1, -3, -3, -3},
-                        {-inf, -inf, -inf, -3, 1, -3, -3},
-                        {-inf, -inf, -inf, -3, -3, 1, -3},
-                        {-inf, -inf, -inf, -3, -3, -3, 1}
+                        {-inf, -inf, -3, -3, -3, -3, -3},
+                        {-inf, -inf, -3, 1, -3, -3, -3},
+                        {-inf, -inf, -3, -3, 1, -3, -3},
+                        {-inf, -inf, -3, -3, -3, 1, -3},
+                        {-inf, -inf, -3, -3, -3, -3, 1}
                     };
                     if (!strcmp(argv[i],"default_gamma"))
                         ++i;

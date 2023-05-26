@@ -29,6 +29,7 @@ void process_and_write_single(std::queue<std::pair<std::string, std::string>> re
     while (!reads.empty())
     {
         align.Oname.swap(reads.front().first);
+        std::cerr << align.Oname << '\n'; // debug
         align.O.swap(reads.front().second);
         align.Mix();
         align.GetMinimalGraph();
@@ -43,13 +44,14 @@ void process_and_write(std::queue<std::pair<std::string, std::string>> reads, st
     while (!reads.empty())
     {
         align.Oname.swap(reads.front().first);
+        std::cerr << align.Oname << '\n'; // debug
         align.O.swap(reads.front().second);
         align.Mix();
         align.GetMinimalGraph();
         reads.pop();
     }
 
-    std::unique_lock lck(mtx); // mt
+    std::unique_lock<std::mutex> lck(mtx); // mt
     --block_num;
     cv.notify_all(); // mt
 }
@@ -78,7 +80,7 @@ std::deque<std::future<void>> load_blocks(std::deque<std::string> read_files, th
                 fin.open(*(++iter));
             }
         }
-        std::unique_lock lck(mtx);
+        std::unique_lock<std::mutex> lck(mtx);
         cv.wait(lck, [max_block]
                 { return block_num < max_block; });
         futures.push_back(threads1.submit(std::bind(process_and_write, std::move(reads), std::ref(aligns))));
@@ -194,11 +196,11 @@ std::deque<std::string> parallel_align(size_t chunk_sz, thread_pool &threads1, i
         aligns.emplace(std::piecewise_construct, std::forward_as_tuple(thread_ids[i]), std::forward_as_tuple(argc, argv, file2seq, file2browheel, chunk_sz, mg_files.back()));
     }
 
-    size_t block_size = 100, max_block = 2 * threads1.size();
-    std::deque<std::future<void>> futures = load_blocks(read_files, threads1, aligns, max_block, block_size); // mt
-    for (auto &future : futures)                                                                             // mt
-        future.wait();                                                                                       // mt
-    // load_blocks(read_files, aligns.begin()->second, block_size); // st
+    size_t block_size = 100;
+    size_t max_block = 2 * threads1.size();
+    std::deque<std::future<void>> futures = load_blocks(read_files, threads1, aligns, max_block, block_size);
+    for (auto &future : futures)                                                                             
+        future.wait();                                                                                       
 
     for (auto &pair : aligns)
     {
@@ -209,6 +211,21 @@ std::deque<std::string> parallel_align(size_t chunk_sz, thread_pool &threads1, i
     }
 
     return mg_files;
+}
+
+std::string single_align(size_t chunk_sz, int argc, char **argv, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel, std::deque<std::string> read_files, std::string run_name)
+{
+    std::string mg_file(run_name + ".mg");
+    Align align(argc, argv, file2seq, file2browheel, chunk_sz, mg_file);
+
+    size_t block_size = 100;                                                                                  
+    load_blocks(read_files, align, block_size);
+
+    if (!align.Oname.empty())
+        align.fout.write((char *)&align.max_id, sizeof(align.max_id));
+    align.fout.close();
+
+    return mg_file;
 }
 
 std::deque<std::string> get_dirs()
@@ -248,7 +265,7 @@ int main(int argc, char **argv)
 {
     // test_RandomReads("argfile", 24);
 
-    chdir("./test_CRISPR_cross");
+    chdir("./test_CRISPR");
     // index_genome("argfile", 3);
     test_CRISPR("argfile", 3);
 
@@ -324,8 +341,11 @@ void test_CRISPR(std::string argfile, int threads1_sz)
     std::map<std::string, BroWheel> file2browheel;
     std::deque<std::string> read_files = load_index(argc, argv, file2seq, file2browheel);
 
-    thread_pool threads1(threads1_sz);
-    std::deque<std::string> mg_files = parallel_align(128 * 1024 * 1024, threads1, argc, argv, file2seq, file2browheel, read_files, "CRISPR");
+    // thread_pool threads1(threads1_sz); // mt
+    // std::deque<std::string> mg_files = parallel_align(128 * 1024 * 1024, threads1, argc, argv, file2seq, file2browheel, read_files, "CRISPR"); // mt
+
+    std::string mg_file = single_align(128 * 1024 * 1024, argc, argv, file2seq, file2browheel, read_files, "CRISPR"); // st
+    std::deque<std::string> mg_files = {mg_file}; // st
 
     Track track(argc, argv, file2seq, file2browheel, 128 * 1024 * 1024);
     track.ReadTrack(mg_files, read_files, "CRISPR", INT64_MAX, 1);

@@ -75,7 +75,7 @@ struct Track : Memory, Graph
                 int Onsz;
                 fins[i].read((char *)&Onsz, sizeof(Onsz));
                 Onames[i].resize(Onsz);
-                fins[i].read(Onames[i].data(), sizeof(char) * Onsz);
+                fins[i].read((char*)Onames[i].data(), sizeof(char) * Onsz);
             }
         }
         std::vector<Dot> dots(max_id + 1);
@@ -125,7 +125,7 @@ struct Track : Memory, Graph
                             int Onsz;
                             fins[f].read((char *)&Onsz, sizeof(Onsz));
                             Onames[f].resize(Onsz);
-                            fins[f].read(Onames[f].data(), sizeof(char) * Onsz);
+                            fins[f].read((char*)Onames[f].data(), sizeof(char) * Onsz);
                         }
                         break;
                     }
