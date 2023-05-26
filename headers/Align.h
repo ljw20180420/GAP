@@ -85,18 +85,8 @@ struct Align : Graph
             double E;
         };
 
-        Do *E0 = NULL, *E = NULL;
-        double *Ethres = NULL;
-
-        ~CrossGlobalData()
-        {
-            if (E0)
-                delete[] E0;
-            if (E)
-                delete[] E;
-            if (Ethres)
-                delete[] Ethres;
-        }
+        std::unique_ptr<Do[]> E0, E;
+        std::unique_ptr<double[]> Ethres;
     };
 
     const static int ww = 3;
@@ -155,9 +145,9 @@ struct Align : Graph
 
     Align(int argc, char **argv, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel, std::string file, int Omax_) : Graph(argc, argv, file2seq, file2browheel), fout(file, std::ifstream::binary), Omax(Omax_)
     {
-        crossglobaldata.E0 = new CrossGlobalData::Do[Omax + 1];
-        crossglobaldata.E = new CrossGlobalData::Do[Omax + 1];
-        crossglobaldata.Ethres = new double[Omax + 1];
+        crossglobaldata.E0.reset(new CrossGlobalData::Do[Omax + 1]);
+        crossglobaldata.E.reset(new CrossGlobalData::Do[Omax + 1]);
+        crossglobaldata.Ethres.reset(new double[Omax + 1]);
 
         for (int i = 0; i < nodes.size(); ++i)
         {
@@ -182,12 +172,11 @@ struct Align : Graph
         {
             int S = edge.nameseq.seq.size();
             int scc_sz = edge.head->scc_sz;
-            dot_initial(edge.dots, {&edge.D}, edge.n, {&edge.E, &edge.F0, &edge.G0, &edge.G, &edge.D0, &edge.DX}, {S, S, S, S, scc_sz - 1, scc_sz - 1}, edge.n);
+            dot_initial(edge.dots, {&edge.D}, edge.n, {&edge.E, &edge.F0, &edge.G0, &edge.G, &edge.D0, &edge.DX}, {S, S, S, S, scc_sz - 2, scc_sz - 2}, edge.n);
         }
         for (auto &edge : global_circuits)
-            dot_initial(edge.dots, {}, -1, {&edge.D0}, {edge.head->scc_sz - 1}, edge.n);
+            dot_initial(edge.dots, {}, -1, {&edge.D0}, {edge.head->scc_sz - 2}, edge.n);
 
-        
         for (auto &edge : local_crosses)
         {
             int S = edge.nameseq.seq.size();
@@ -197,9 +186,9 @@ struct Align : Graph
 
     void Mix()
     {
-        for (int n = 0; n < nodes.size(); ++n)
+        for (int i = 0; i < nodes.size(); ++i)
             for (int w = 0; w <= O.size(); ++w)
-                nodes[n].A[0][w].val = -inf;
+                nodes[i].A[0][w].val = -inf;
         for (auto &scc : sccs)
         {
             for (int64_t w = 0; w <= O.size(); ++w)
@@ -216,17 +205,17 @@ struct Align : Graph
                         node->updateA0(w, node->Abar.val, &node->Abar);
                 }
                 for (auto edge : scc.local_circuits)
-                    CircuitIteration(w, edge, scc.nodes.size());
+                    CircuitIteration(w, edge);
                 for (auto edge : scc.global_circuits)
-                    CircuitIterationGlobal(w, edge, scc.nodes.size());
+                    CircuitIterationGlobal(w, edge);
                 for (int64_t l = 1; l < scc.nodes.size(); ++l)
                 {
                     for (auto edge : scc.global_circuits)
-                        source_max(edge->D0[l][w], {&edge->tail->A[l - 1][w]}, {edge->tail->A[l - 1][w].val + edge->T});
+                        source_max(edge->D0[l - 1][w], {&edge->tail->A[l - 1][w]}, {edge->tail->A[l - 1][w].val + edge->T});
                     for (auto edge : scc.local_circuits)
                     {
-                        source_max(edge->D0[l][w], {&edge->tail->A[l - 1][w]}, {edge->tail->A[l - 1][w].val + edge->T});
-                        source_max(edge->DX[l][w], {&edge->tail->A[l - 1][w], &edge->D0[l][w]}, {edge->tail->A[l - 1][w].val + edge->vfp + (edge->nameseq.seq.size() - 1) * edge->ufp + edge->T, edge->D0[l][w].val + edge->vf + (edge->nameseq.seq.size() - 1) * edge->uf});
+                        source_max(edge->D0[l - 1][w], {&edge->tail->A[l - 1][w]}, {edge->tail->A[l - 1][w].val + edge->T});
+                        source_max(edge->DX[l - 1][w], {&edge->tail->A[l - 1][w], &edge->D0[l - 1][w]}, {edge->tail->A[l - 1][w].val + edge->vfp + (edge->nameseq.seq.size() - 1) * edge->ufp + edge->T, edge->D0[l - 1][w].val + edge->vf + (edge->nameseq.seq.size() - 1) * edge->uf});
                     }
                     for (auto node : scc.nodes)
                     {
@@ -234,24 +223,24 @@ struct Align : Graph
                         std::vector<double> vals{node->A[0][w].val};
                         for (auto edge : node->in_local_circuits)
                         {
-                            adrs.push_back(&edge->D0[l][w]);
-                            vals.push_back(edge->D0[l][w].val + edge->vfm + (edge->nameseq.seq.size() - 1) * edge->ufm);
-                            adrs.push_back(&edge->DX[l][w]);
-                            vals.push_back(edge->DX[l][w].val);
+                            adrs.push_back(&edge->D0[l - 1][w]);
+                            vals.push_back(edge->D0[l - 1][w].val + edge->vfm + (edge->nameseq.seq.size() - 1) * edge->ufm);
+                            adrs.push_back(&edge->DX[l - 1][w]);
+                            vals.push_back(edge->DX[l - 1][w].val);
                         }
                         for (auto edge : node->in_global_circuits)
                         {
-                            adrs.push_back(&edge->D0[l][w]);
-                            vals.push_back(edge->D0[l][w].val);
+                            adrs.push_back(&edge->D0[l - 1][w]);
+                            vals.push_back(edge->D0[l - 1][w].val);
                         }
                         source_max(node->A[l][w], adrs.begin(), vals.begin(), vals.end());
                     }
                 }
             }
             for (auto edge : scc.local_crosses)
-                CrossIteration(edge, scc.nodes.size());
+                CrossIteration(edge);
             for (auto edge : scc.global_crosses)
-                CrossIterationGlobal(edge, scc.nodes.size());
+                CrossIterationGlobal(edge);
         }
         std::vector<Dot *> adrs;
         std::vector<double> vals;
@@ -263,14 +252,14 @@ struct Align : Graph
         source_max(Q, adrs.begin(), vals.begin(), vals.end());
     }
 
-    void CrossIteration(EdgeLocalCross *edge, int scc_sz)
+    void CrossIteration(EdgeLocalCross *edge)
     {
         Dot *A = edge->tail->A[edge->tail->scc_sz - 1];
         std::unique_ptr<Dot *[]> &E = edge->E;
         std::unique_ptr<Dot *[]> &F = edge->F;
         std::unique_ptr<Dot *[]> &G = edge->G;
-        for (int64_t s = 0; s <= edge->nameseq.seq.size(); ++s)
-            for (int64_t w = 0; w <= O.size(); ++w)
+        for (int s = 0; s <= edge->nameseq.seq.size(); ++s)
+            for (int w = 0; w <= O.size(); ++w)
             {
                 if (w == 0)
                     source_max(E[s][w], {}, {});
@@ -288,12 +277,12 @@ struct Align : Graph
             }
     }
 
-    void CrossIterationGlobal(EdgeGlobalCross *edge, int scc_sz)
+    void CrossIterationGlobal(EdgeGlobalCross *edge)
     {
         Dot *A = edge->tail->A[edge->tail->scc_sz - 1];
         std::deque<CrossGlobalData::SimNode> &simnodes = crossglobaldata.simnodes;
-        CrossGlobalData::Do *E0 = crossglobaldata.E0, *E = crossglobaldata.E;
-        double *Ethres = crossglobaldata.Ethres;
+        std::unique_ptr<CrossGlobalData::Do[]> &E0 = crossglobaldata.E0, &E = crossglobaldata.E;
+        std::unique_ptr<double[]> &Ethres = crossglobaldata.Ethres;
         std::deque<CrossGlobalData::Doo> &FG = crossglobaldata.FG;
 
         int c = -1;
@@ -377,7 +366,7 @@ struct Align : Graph
         }
     }
 
-    void CircuitIteration(int64_t w, EdgeLocalCircuit *edge, int scc_sz)
+    void CircuitIteration(int64_t w, EdgeLocalCircuit *edge)
     {
         Dot *A = edge->tail->A[edge->tail->scc_sz - 1];
         Dot *D = edge->D;
@@ -410,7 +399,7 @@ struct Align : Graph
         }
     }
 
-    void CircuitIterationGlobal(int64_t w, EdgeGlobalCircuit *edge, int scc_sz)
+    void CircuitIterationGlobal(int64_t w, EdgeGlobalCircuit *edge)
     {
         if (w == 0)
             return;
@@ -499,39 +488,68 @@ struct Align : Graph
             sncs.clear();
     }
 
+    void outputdot(Dot *M, std::ofstream &fout)
+    {
+        fout.write((char *)&M->n, sizeof(Dot::n));
+        fout.write((char *)&M->s, sizeof(Dot::s));
+        fout.write((char *)&M->w, sizeof(Dot::w));
+        fout.write((char *)&M->val, sizeof(Dot::val));
+        fout.write((char *)&M->s_sz, sizeof(Dot::s_sz));
+        fout.write((char *)&M->lambda, sizeof(Dot::lambda));
+    }
+
+    void arrangesource(Dot *source, std::queue<Dot *> &dotqueue, int64_t &id)
+    {
+        if (!source->visit)
+        {
+            source->id = ++id;
+            source->visit = true;
+            dotqueue.push(source);
+        }
+        fout.write((char *)&source->id, sizeof(source->id));
+    }
+
     void GetMinimalGraph()
     {
         int Onsz = Oname.size();
         fout.write((char *)&Onsz, sizeof(Onsz));
         fout.write(Oname.data(), sizeof(char) * Onsz);
-        std::queue<Dot *> dots;
-        std::queue<Dot *> visits;
+        std::queue<Dot *> dotqueue;
+        std::queue<Dot *> localqueue;
+        std::queue<bool *> visits;
         int64_t id = 0;
         Q.id = id;
         Q.visit = true;
-        dots.push(&Q);
-        while (!dots.empty())
+        dotqueue.push(&Q);
+        while (!dotqueue.empty() || !localqueue.empty())
         {
-            Dot *M = dots.front();
-            dots.pop();
-            visits.push(M);
-            if (M->n < -3 && M->s == 0)
-                GlobalTrack(M);
-            fout.write((char *)&M->n, sizeof(Dot::n));
-            fout.write((char *)&M->s, sizeof(Dot::s));
-            fout.write((char *)&M->w, sizeof(Dot::w));
-            fout.write((char *)&M->val, sizeof(Dot::val));
-            fout.write((char *)&M->s_sz, sizeof(Dot::s_sz));
-            fout.write((char *)&M->lambda, sizeof(Dot::lambda));
-            for (int i = 0; i < M->s_sz; ++i)
+            if (localqueue.empty() || !dotqueue.empty() && dotqueue.front()->id < localqueue.front()->id)
             {
-                if (!sources[M->fs + i]->visit)
+                Dot *M = dotqueue.front();
+                dotqueue.pop();
+                visits.push(&M->visit);
+                if (M->n < -3 && M->s == 0)
+                    GlobalTrack(M, fout, dotqueue, localqueue, id);
+                else
                 {
-                    sources[M->fs + i]->id = ++id;
-                    sources[M->fs + i]->visit = true;
-                    dots.push(sources[M->fs + i]);
+                    outputdot(M, fout);
+                    for (int i = 0; i < M->s_sz; ++i)
+                        arrangesource(sources[M->fs + i], dotqueue, id);
                 }
-                fout.write((char *)&sources[M->fs + i]->id, sizeof(sources[M->fs + i]->id));
+            }
+            else
+            {
+                Dot *M = localqueue.front();
+                localqueue.pop();
+                visits.push(&M->visit);
+                outputdot(M, fout);
+                for (int i = 0; i < M->s_sz; ++i)
+                {
+                    if (sources[M->fs + i]->n < 0)
+                        arrangesource(sources[M->fs + i], dotqueue, id);
+                    else
+                        arrangesource(sources[M->fs + i], localqueue, id);
+                }
             }
         }
         if (id > max_id)
@@ -539,7 +557,7 @@ struct Align : Graph
 
         while (!visits.empty())
         {
-            visits.front()->visit = false;
+            *(visits.front()) = false;
             visits.pop();
         }
         for (auto &edge : global_crosses)
@@ -551,9 +569,14 @@ struct Align : Graph
         sources.clear();
     }
 
-    void GlobalTrack(Dot *M)
+    void GlobalTrack(Dot *M, std::ofstream &fout, std::queue<Dot *> &dotqueue, std::queue<Dot *> &localqueue, int64_t &id)
     {
         auto &node = nodes[Dot::nidx_trans(M->n)];
+        M->s_sz = node.AdeltaGlobal[M->w].size() + node.AdeltaDot[M->w].size();
+        outputdot(M, fout);
+        for (Dot *dot : node.AdeltaDot[M->w])
+            arrangesource(dot, localqueue, id);
+
         for (auto &globalsuffix : node.AdeltaGlobal[M->w])
         {
             EdgeGlobal *edge = globalsuffix.edge;
@@ -603,7 +626,6 @@ struct Align : Graph
                     }
                     tracknodes[tracktree.idx].tau = std::max(tracknodes[tracktree.idx].tau, M->w + 1);
                 }
-                node.AdeltaDot[M->w].emplace_back(&dots[tracktree.shiftG + M->w]);
             }
             else
             {
@@ -644,13 +666,9 @@ struct Align : Graph
                     }
                     tracknodes[tracktree.idx].tau = std::max(tracknodes[tracktree.idx].tau, M->w + 1);
                 }
-                node.AdeltaDot[M->w].emplace_back(&dots[tracktree.shiftG + M->w]);
             }
+            arrangesource(&dots[tracktree.shiftG + M->w], dotqueue, id);
         }
-        M->fs = sources.offset;
-        for (int i = 0; i < node.AdeltaDot[M->w].size(); ++i)
-            sources.emplace_back(node.AdeltaDot[M->w][i]);
-        M->s_sz = sources.offset - M->fs;
     }
 
     void source_max(Dot &dot, std::initializer_list<Dot *> adrs, std::initializer_list<double> vals)
