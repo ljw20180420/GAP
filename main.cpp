@@ -247,11 +247,13 @@ void test_single_double(std::string argfile, int threads1_sz);
 int main(int argc, char **argv)
 {
     // test_RandomReads("argfile", 24);
-    // index_genome("argfile", 3);
-    // test_CRISPR("argfile", 3);
 
-    run_sim("./test_single_cut");
-    run_sim("./test_double_cut");
+    chdir("./test_CRISPR_cross");
+    // index_genome("argfile", 3);
+    test_CRISPR("argfile", 3);
+
+    // run_sim("./test_single_cut");
+    // run_sim("./test_double_cut");
 
     return 0;
 }

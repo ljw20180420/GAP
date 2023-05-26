@@ -469,6 +469,18 @@ struct BroWheel
         std::ofstream fout(file+".idx", std::ios::binary);
         fout.write((char*)&reverse,sizeof(reverse));
         fout.write((char*)&reverse_complement,sizeof(reverse_complement));
+        sequence.saveBinVec(fout);
+
+        int64_t name_cumlen_sz = name_cumlen.size();
+        fout.write((char*)&name_cumlen_sz,sizeof(name_cumlen_sz));
+        for (int i = 0; i < name_cumlen_sz; ++i)
+        {
+            int64_t str_sz = name_cumlen[i].first.size();
+            fout.write((char*)&str_sz,sizeof(str_sz));
+            fout.write(name_cumlen[i].first.data(),str_sz*sizeof(char));
+            fout.write((char*)&name_cumlen[i].second,sizeof(name_cumlen[i].second));
+        }
+
         bwt.saveRankVec(fout);
         fout.write((char*)C.data(),sigma*sizeof(C[0]));
         sra.saveRankVec(fout);
@@ -483,7 +495,21 @@ struct BroWheel
         std::ifstream fin(file+".idx", std::ios::binary);
         fin.read((char*)&reverse,sizeof(reverse));
         fin.read((char*)&reverse_complement,sizeof(reverse_complement));
-        readin();
+        sequence.loadBinVec(fin);
+
+        int64_t name_cumlen_sz;
+        fin.read((char*)&name_cumlen_sz,sizeof(name_cumlen_sz));
+        name_cumlen.resize(name_cumlen_sz);
+        for (int i = 0; i < name_cumlen_sz; ++i)
+        {
+            int64_t str_sz;
+            fin.read((char*)&str_sz,sizeof(str_sz));
+            name_cumlen[i].first.resize(str_sz);
+            fin.read((char*)name_cumlen[i].first.data(),str_sz*sizeof(char));
+            fin.read((char*)&name_cumlen[i].second,sizeof(name_cumlen[i].second));
+        }
+
+        // readin();
         bwt.loadRankVec(fin);
         fin.read((char*)C.data(),sigma*sizeof(C[0]));
         sra.loadRankVec(fin);

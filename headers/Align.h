@@ -159,6 +159,335 @@ struct Align : Memory, Graph
         Q.w = 0;
     }
 
+    void Mix2()
+    {
+        clear();
+        for (auto &scc : sccs)
+        {
+            for (auto node : scc.nodes)
+            {
+                alloc_initial(node->A, nodes.data() - node - 4, scc.nodes.size() - 1);
+                alloc_initial(node->B, -1, 0);
+                node->AdeltaCross.resize(O.size() + 1);
+                node->AdeltaCircuit.resize(O.size() + 1);
+            }
+            for (auto edge : scc.local_circuits)
+            {
+                alloc_initial(edge->D, edge->n, 0);
+                alloc_initial(edge->E, edge->n, edge->nameseq.seq.size());
+                alloc_initial(edge->F0, edge->n, edge->nameseq.seq.size());
+                alloc_initial(edge->G0, edge->n, edge->nameseq.seq.size());
+                alloc_initial(edge->G, edge->n, edge->nameseq.seq.size());
+                alloc_initial(edge->D0, edge->n, scc.nodes.size() - 1);
+                alloc_initial(edge->DX, edge->n, scc.nodes.size() - 1);
+            }
+            for (auto edge : scc.global_circuits)
+            {
+                alloc_initial(edge->D0, edge->n, scc.nodes.size() - 1);
+                edge->C.resize(O.size() + 1);
+                edge->Cdelta.resize(O.size() + 1);
+            }
+            for (size_t w = 0; w <= O.size(); ++w)
+            {
+                for (auto node : scc.nodes)
+                    if (w == 0)
+                        source_max(node->B[w], {}, {});
+                    else
+                        source_max(node->B[w], {&node->B[w - 1], &node->A[scc.nodes.size() - 1][w - 1]}, {node->B[w - 1].val + node->ue, node->A[scc.nodes.size() - 1][w - 1].val + node->ve});
+                for (auto edge : scc.local_circuits)
+                    CircuitIteration(w, edge, scc.nodes.size());
+                for (auto edge : scc.global_circuits)
+                    CircuitIterationGlobal(w, edge, scc.nodes.size());
+                for (auto node : scc.nodes)
+                {
+                    std::vector<Dot *> adrs{&node->B[w]};
+                    std::vector<double> vals{node->B[w].val};
+                    for (auto edge : node->in_local_crosses)
+                        for (size_t s = 0; s <= edge->nameseq.seq.size(); ++s)
+                        {
+                            adrs.push_back(&edge->G[s][w]);
+                            vals.push_back(edge->G[s][w].val + (s == edge->nameseq.seq.size() ? 0 : edge->vfm + (edge->nameseq.seq.size() - s - 1) * edge->ufm));
+                        }
+                    for (auto edge : node->in_local_circuits)
+                        for (size_t s = 0; s <= edge->nameseq.seq.size(); ++s)
+                        {
+                            adrs.push_back(&edge->G0[s][w]);
+                            vals.push_back(edge->G0[s][w].val + (s == edge->nameseq.seq.size() ? 0 : edge->vfm + (edge->nameseq.seq.size() - s - 1) * edge->ufm));
+                        }
+                    if (w == 0)
+                    {
+                        adrs.push_back(&node->Abar);
+                        vals.push_back(node->Abar.val);
+                    }
+                    source_max(node->A[0][w], adrs.begin(), vals.begin(), vals.end());
+                    node->AdeltaCross[w].clear();
+                    for (auto edge : node->in_global_crosses)
+                        if (edge->C[w] >= node->A[0][w].val)
+                        {
+                            if (edge->C[w] > node->A[0][w].val)
+                            {
+                                node->A[0][w].val = edge->C[w];
+                                node->A[0][w].s_sz = 0;
+                                node->AdeltaCross[w].clear();
+                            }
+                            node->AdeltaCross[w].insert_or_assign(edge, std::move(edge->Cdelta[w]));
+                        }
+                    node->AdeltaCircuit[w].clear();
+                    for (auto edge : node->in_global_circuits)
+                        if (edge->C[w] >= node->A[0][w].val)
+                        {
+                            if (edge->C[w] > node->A[0][w].val)
+                            {
+                                node->A[0][w].val = edge->C[w];
+                                node->A[0][w].s_sz = 0;
+                                node->AdeltaCircuit[w].clear();
+                            }
+                            node->AdeltaCircuit[w].insert_or_assign(edge, std::move(edge->Cdelta[w]));
+                        }
+                }
+                for (size_t l = 1; l < scc.nodes.size(); ++l)
+                {
+                    for (auto edge : scc.global_circuits)
+                        source_max(edge->D0[l][w], {&edge->tail->A[l - 1][w]}, {edge->tail->A[l - 1][w].val + edge->T});
+                    for (auto edge : scc.local_circuits)
+                    {
+                        source_max(edge->D0[l][w], {&edge->tail->A[l - 1][w]}, {edge->tail->A[l - 1][w].val + edge->T});
+                        source_max(edge->DX[l][w], {&edge->tail->A[l - 1][w], &edge->D0[l][w]}, {edge->tail->A[l - 1][w].val + edge->vfp + (edge->nameseq.seq.size() - 1) * edge->ufp + edge->T, edge->D0[l][w].val + edge->vf + (edge->nameseq.seq.size() - 1) * edge->uf});
+                    }
+                    for (auto node : scc.nodes)
+                    {
+                        std::vector<Dot *> adrs{&node->A[0][w]};
+                        std::vector<double> vals{node->A[0][w].val};
+                        for (auto edge : node->in_local_circuits)
+                        {
+                            adrs.push_back(&edge->D0[l][w]);
+                            vals.push_back(edge->D0[l][w].val + edge->vfm + (edge->nameseq.seq.size() - 1) * edge->ufm);
+                            adrs.push_back(&edge->DX[l][w]);
+                            vals.push_back(edge->DX[l][w].val);
+                        }
+                        for (auto edge : node->in_global_circuits)
+                        {
+                            adrs.push_back(&edge->D0[l][w]);
+                            vals.push_back(edge->D0[l][w].val);
+                        }
+                        source_max(node->A[l][w], adrs.begin(), vals.begin(), vals.end());
+                    }
+                }
+            }
+            for (auto edge : scc.local_crosses)
+            {
+                alloc_initial(edge->E, edge->n, edge->nameseq.seq.size());
+                alloc_initial(edge->F, edge->n, edge->nameseq.seq.size());
+                alloc_initial(edge->G, edge->n, edge->nameseq.seq.size());
+                CrossIteration(edge, scc.nodes.size());
+            }
+            for (auto edge : scc.global_crosses)
+            {
+                edge->C.resize(O.size() + 1);
+                edge->Cdelta.resize(O.size() + 1);
+                CrossIterationGlobal2(edge, scc.nodes.size());
+            }
+        }
+        std::vector<Dot *> adrs;
+        std::vector<double> vals;
+        for (size_t n = 0; n < targets.size(); ++n)
+        {
+            adrs.push_back(&targets[n]->A[target_scc_szes[n] - 1][O.size()]);
+            vals.push_back(targets[n]->A[target_scc_szes[n] - 1][O.size()].val);
+        }
+        source_max(Q, adrs.begin(), vals.begin(), vals.end());
+    }
+
+    void CrossIterationGlobal2(EdgeGlobalCross *edge, int scc_sz)
+    {
+        Dot *A = edge->tail->A[scc_sz - 1];
+        std::deque<SimNode> simnodes;
+        simnodes.emplace_front(this, -1, 0, edge->browheel.sequence.size() - 1, O.size() + 1, O.size() + 1);
+        auto &simzero = simnodes.back();
+        std::vector<Do> E0;
+        for (size_t w = 0; w <= O.size(); ++w)
+        {
+            E0.emplace_back(w, w > 0 ? std::max(E0[w - 1].E + edge->ue, simzero.FG[w - 1].G + edge->ve) : -inf);
+            simzero.FG[w].w = w;
+            simzero.FG[w].F = -inf;
+            simzero.FG[w].G = std::max(std::max(E0[w].E, simzero.FG[w].F), A[w].val + edge->T);
+            edge->C[w] = simzero.FG[w].G;
+            edge->Cdelta[w].clear();
+            edge->Cdelta[w].emplace_back(simzero.sr1, simnodes.size() - 1);
+        }
+        std::deque<SimNode>::iterator simprev = simnodes.begin(), simnode;
+        int c = 1;
+        int64_t sr1, sr2;
+        do
+        {
+            ++c;
+            sr1 = simprev->sr1;
+            sr2 = simprev->sr2;
+            edge->browheel.PreRange(sr1, sr2, c);
+        } while (sr1 > sr2 && c + 1 < 7);
+        if (sr1 > sr2)
+            simnodes.clear();
+        else
+        {
+            simnodes.emplace_front(this, c, sr1, sr2, simprev->sz, O.size() + 1 - simprev->FG[0].w);
+            simnode = simnodes.begin();
+        }
+        while (!simnodes.empty())
+        {
+            std::vector<Do> E;
+            for (int i = 0, j = 0, w = simprev->FG[j].w;;)
+            {
+                double E_val = std::max((!E.empty() && E.back().w == w - 1) ? E.back().E + edge->ue : -inf, (i > 0 && simnode->FG[i - 1].w == w - 1) ? simnode->FG[i - 1].G + edge->ve : -inf);
+                double G_val = j > 0 && simprev->FG[j - 1].w == w - 1 ? simprev->FG[j - 1].G + edge->gamma[simnode->c][BroWheel::base2int(O[w - 1])] : -inf;
+                if (E_val >= std::max(E0[w].E, simzero.FG[w].G + (O.size() - w) * edge->tail->ve))
+                {
+                    E.emplace_back(w, E_val);
+                    G_val = E_val > G_val ? E_val : G_val;
+                }
+                double F_val = j < simprev->sz && simprev->FG[j].w == w ? std::max(simprev->FG[j].F + edge->uf, simprev->FG[j].G + edge->vf) : -inf;
+                G_val = F_val > G_val ? F_val : G_val;
+                if (G_val >= simzero.FG[w].G)
+                {
+                    simnode->FG[i].w = w;
+                    simnode->FG[i].F = F_val;
+                    simnode->FG[i].G = G_val;
+                    if (G_val >= edge->C[w])
+                    {
+                        if (G_val > edge->C[w])
+                        {
+                            edge->C[w] = G_val;
+                            edge->Cdelta[w].clear();
+                        }
+                        edge->Cdelta[w].emplace_back(simnode->sr1, simnodes.size() - 1);
+                    }
+                    ++i;
+                }
+                while (j < simprev->sz && simprev->FG[j].w <= w)
+                    ++j;
+                if (w < O.size() && (simprev->FG[j - 1].w == w || (i > 0 && simnode->FG[i - 1].w == w) || (!E.empty() && E.back().w == w)))
+                    ++w;
+                else if (j < simprev->sz)
+                    w = simprev->FG[j].w;
+                else
+                {
+                    simnode->sz = i;
+                    break;
+                }
+            }
+            do
+            {
+                if (simnode->sr1 <= simnode->sr2 && simnode->sz > 0)
+                    c = 1;
+                else
+                {
+                    do
+                    {
+                        c = simnodes.front().c;
+                        simnodes.pop_front();
+                    } while (c == 6 && !simnodes.empty());
+                    if (simnodes.empty())
+                        break;
+                }
+                simprev = simnodes.begin();
+                do
+                {
+                    ++c;
+                    sr1 = simprev->sr1;
+                    sr2 = simprev->sr2;
+                    edge->browheel.PreRange(sr1, sr2, c);
+                } while (sr1 > sr2 && c + 1 < 7);
+                if (sr1 <= sr2)
+                    simnodes.emplace_front(this, c, sr1, sr2, simprev->sz, O.size() + 1 - simprev->FG[0].w);
+                else
+                    simprev->sz=0;
+                simnode = simnodes.begin();
+            } while (sr1 > sr2);
+        }
+    }
+
+    void CircuitIterationGlobal2(size_t w, EdgeGlobalCircuit *edge, int scc_sz)
+    {
+        Dot **A = edge->tail->A;
+        if (w == 0)
+        {
+            edge->sncs.emplace_back(-inf, -inf, -inf, -inf, 0, 5, 0, 0, edge->browheel.sequence.size() - 1, 1, (SNC *)NULL, (SNC *)NULL);
+            for (int c = 2; c <= 6; ++c)
+            {
+                int64_t sr1 = edge->sncs.front().sr1;
+                int64_t sr2 = edge->sncs.front().sr2;
+                edge->browheel.PreRange(sr1, sr2, c);
+                edge->sncs.emplace_back(-inf, -inf, -inf, -inf, c, 0, 1, sr1, sr2, 0, &edge->sncs.front(), edge->sncs.front().jump);
+                edge->sncs.front().jump=&edge->sncs.back();
+            }
+            edge->C[0] = -inf;
+            edge->Cdelta[0].clear();
+            return;
+        }
+        edge->sncs.front().hatG = std::max(edge->sncs.front().G0, A[scc_sz - 1][w - 1].val + edge->T);
+        for (auto prejump = &edge->sncs.front(), jump = prejump->jump; jump; jump = prejump->jump)
+        {
+            jump->hatG = jump->G0;
+            if (jump->itp != &edge->sncs.front() && jump->itp->hatG == -inf && jump->hatG == -inf)
+                prejump->jump=jump->jump;
+            else
+                prejump=jump;
+        }
+        edge->sncs.front().E = std::max(edge->sncs.front().hatG + edge->ve, edge->sncs.front().E + edge->ue);
+        edge->sncs.front().F0 = -inf;
+        edge->sncs.front().G0 = std::max(edge->sncs.front().E, edge->sncs.front().F0);
+        edge->C[w] = edge->sncs.front().G0;
+        edge->Cdelta[w].clear();
+        edge->Cdelta[w].emplace_back(edge->sncs.front().sr1, 0);
+
+        for (auto jump = edge->sncs.front().jump; jump; jump = jump->jump)
+        {
+            jump->E = std::max(jump->hatG + edge->ve, jump->E + edge->ue);
+            jump->F0 = std::max(jump->itp->G0 + edge->vf, jump->itp->F0 + edge->uf);
+            jump->G0 = std::max(std::max(jump->E, jump->F0), jump->itp->hatG + edge->gamma[jump->c][BroWheel::base2int(O[w - 1])]);
+            if (jump->G0 < edge->sncs.front().G0)
+            {
+                jump->E = -inf;
+                jump->F0 = -inf;
+                jump->G0 = -inf;
+            }
+            if (jump->G0 >= edge->C[w])
+            {
+                if (jump->G0 > edge->C[w])
+                {
+                    edge->C[w] = jump->G0;
+                    edge->Cdelta[w].clear();
+                }
+                edge->Cdelta[w].emplace_back(jump->sr1, jump->lambda);
+            }
+            if (jump->G0 != -inf && jump->hatG == -inf)
+            {
+                if (jump->cid == 0)
+                {
+                    jump->cid=edge->sncs.size();
+                    for (int c = 2; c <= 6; ++c)
+                    {
+                        int64_t sr1 = jump->sr1;
+                        int64_t sr2 = jump->sr2;
+                        edge->browheel.PreRange(sr1, sr2, c);
+                        if (sr1 <= sr2)
+                        {
+                            edge->sncs.emplace_back(-inf, -inf, -inf, -inf, c, 0, jump->lambda+1, sr1, sr2, 0, jump, (SNC *)NULL);
+                            ++jump->idl;
+                        }
+                    }   
+                }
+                for (int idi=0; idi<jump->idl; ++idi)
+                    if (edge->sncs[jump->cid+idi].hatG == -inf)
+                    {
+                        edge->sncs[jump->cid+idi].jump=jump->jump;
+                        jump->jump=&edge->sncs[jump->cid+idi];
+                    }
+            }
+        }
+        if (w == O.size())
+            edge->sncs.clear();
+    }
+
     void Mix()
     {
         clear();
@@ -358,16 +687,16 @@ struct Align : Memory, Graph
         while (!simnodes.empty())
         {
             std::vector<Do> E;
-            for (size_t i = 0, j = 0, w = simprev->FG[j].w;;)
+            for (int i = 0, j = 0, w = simprev->FG[j].w;;)
             {
-                double E_val = std::max((!E.empty() && size_t(E.back().w) == w - 1) ? E.back().E + edge->ue : -inf, (i > 0 && size_t(simnode->FG[i - 1].w) == w - 1) ? simnode->FG[i - 1].G + edge->ve : -inf);
-                double G_val = j > 0 && size_t(simprev->FG[j - 1].w) == w - 1 ? simprev->FG[j - 1].G + edge->gamma[simnode->c][BroWheel::base2int(O[w - 1])] : -inf;
+                double E_val = std::max((!E.empty() && E.back().w == w - 1) ? E.back().E + edge->ue : -inf, (i > 0 && simnode->FG[i - 1].w == w - 1) ? simnode->FG[i - 1].G + edge->ve : -inf);
+                double G_val = j > 0 && simprev->FG[j - 1].w == w - 1 ? simprev->FG[j - 1].G + edge->gamma[simnode->c][BroWheel::base2int(O[w - 1])] : -inf;
                 if (E_val >= std::max(E0[w].E, simzero.FG[w].G + (O.size() - w) * edge->tail->ve))
                 {
                     E.emplace_back(w, E_val);
                     G_val = E_val > G_val ? E_val : G_val;
                 }
-                double F_val = j < size_t(simprev->sz) && size_t(simprev->FG[j].w) == w ? std::max(simprev->FG[j].F + edge->uf, simprev->FG[j].G + edge->vf) : -inf;
+                double F_val = j < simprev->sz && simprev->FG[j].w == w ? std::max(simprev->FG[j].F + edge->uf, simprev->FG[j].G + edge->vf) : -inf;
                 G_val = F_val > G_val ? F_val : G_val;
                 if (G_val >= simzero.FG[w].G)
                 {
@@ -385,11 +714,11 @@ struct Align : Memory, Graph
                     }
                     ++i;
                 }
-                while (size_t(simprev->FG[j].w) <= w && j + 1 < size_t(simprev->sz))
+                while (j < simprev->sz && simprev->FG[j].w <= w)
                     ++j;
-                if (w < O.size() && (size_t(simprev->FG[j - 1].w) == w || size_t(simprev->FG[j].w) == w || (i > 0 && size_t(simnode->FG[i - 1].w) == w) || (!E.empty() && size_t(E.back().w) == w)))
+                if (w < O.size() && (simprev->FG[j - 1].w == w || (i > 0 && simnode->FG[i - 1].w == w) || (!E.empty() && E.back().w == w)))
                     ++w;
-                else if (size_t(simprev->FG[j].w) > w)
+                else if (j < simprev->sz)
                     w = simprev->FG[j].w;
                 else
                 {
