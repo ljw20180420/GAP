@@ -14,15 +14,17 @@ struct Track : Graph
         std::pair<double, double> valrange;
     };
 
-    struct MegaDot
+    struct MegaRange
     {
-        Dot *pdot;
         int fs;
         int s_sz;
     };
 
+    std::vector<Dot> dots;
     MonoDeque<Dot *> sources;
-    MonoDeque<std::pair<MegaDot *, std::deque<Dot *>>> mega_sources;
+    std::map<Dot *, MegaRange> megadots_head;
+    std::map<Dot *, MegaRange> megadots_tail;
+    std::deque<std::pair<Dot *, std::deque<Dot *>>> megasources;
 
     Track(int argc, char **argv, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel) : Graph(argc, argv, file2seq, file2browheel)
     {
@@ -54,7 +56,7 @@ struct Track : Graph
                 fins[i].read((char *)Onames[i].data(), sizeof(char) * Onsz);
             }
         }
-        std::vector<Dot> dots(max_id + 1);
+        dots.resize(max_id + 1);
         int64_t seq_num = 0;
         std::string Oname, O, plr, quality;
         auto iter = read_files.begin();
@@ -113,8 +115,13 @@ struct Track : Graph
         }
     }
 
-    void BackTrack(std::ofstream &fout_track, std::ofstream &fout_align, std::ofstream &fout_extract, std::ofstream &fout_fail, Dot *pQ, int64_t max_track, int64_t max_extract, std::string &Oname, std::string &O, std::string &plr, std::string &quality)
+    void BackTrack(std::ofstream &fout_track, std::ofstream &fout_align, std::ofstream &fout_extract, std::ofstream &fout_fail, Dot *pQ, int64_t max_extract, std::string &Oname, std::string &O, std::string &plr, std::string &quality)
     {
+        for (int i = 0; i < pQ->s_sz; ++i)
+            megasources.emplace_back(sources[pQ->fs + i], std::deque<Dot *>());
+        for (int64_t i = 0; i < megasources.size(); ++i)
+            source_until(megasources[i]);
+
         std::deque<std::deque<Peak>> extracts;
         std::deque<Peak> extract;
         Peak peak;
@@ -244,97 +251,6 @@ struct Track : Graph
                       << quality << '\n';
     }
 
-    bool next_dot(std::deque<Dot *> &path, Peak &peak, std::deque<Peak> &extract, std::deque<std::deque<Peak>> &extracts)
-    {
-        int is = 0;
-        while (!path.empty())
-        {
-            for (int i = is; i < path[0]->s_sz; ++i)
-            {
-                Dot *dotp = sources[path[0]->fs + i];
-                if (dotp->n >= 0 && path[0]->n < 0)
-                {
-                    peak.n = dotp->n;
-                    if (edges[dotp->n]->global)
-                    {
-                        BroWheel *pbrowheel = static_cast<EdgeGlobal *>(edges[dotp->n])->pbrowheel;
-                        int64_t sr1 = 0, sr2 = pbrowheel->sequence.size() - 1;
-                        for (int64_t s = pbrowheel->sequence.size() - dotp->s + dotp->lambda - 2; s >= pbrowheel->sequence.size() - 1 - dotp->s; --s)
-                            pbrowheel->PreRange(sr1, sr2, pbrowheel->sequence(s));
-                        peak.sranges.clear();
-                        for (int64_t sx = sr1; sx <= sr2; ++sx)
-                        {
-                            int64_t s = pbrowheel->SimSuffix(sx);
-                            int64_t l = 0, r = pbrowheel->name_cumlen.size();
-                            while (r - l > 1)
-                            {
-                                int64_t m = (l + r) / 2;
-                                if (pbrowheel->name_cumlen[m].second > s)
-                                    r = m;
-                                else
-                                    l = m;
-                            }
-                            if (sx == sr1)
-                                peak.seqname = pbrowheel->name_cumlen[l].first;
-                            if (r < pbrowheel->name_cumlen.size())
-                                s = pbrowheel->name_cumlen[r].second - 1 - s;
-                            else
-                                s = pbrowheel->sequence.size() - 1 - s;
-                            peak.sranges.emplace_back(s - dotp->lambda, s);
-                        }
-                        filter_sranges(peak, extract, extracts, edges[dotp->n]->diffseg);
-                        if (peak.sranges.empty())
-                            continue;
-                        if (!legal_circle(peak, extract))
-                            continue;
-                    }
-                    else
-                    {
-                        peak.seqname.clear();
-                        peak.sranges.resize(1);
-                        peak.sranges[0].second = dotp->s;
-                    }
-                    peak.wrange.second = dotp->w;
-                    peak.valrange.second = dotp->val;
-                }
-                if (dotp->n < 0 && path[0]->n >= 0)
-                {
-                    if (!edges[path[0]->n]->global)
-                    {
-                        peak.sranges[0].first = path[0]->s;
-                        filter_sranges(peak, extract, extracts, edges[path[0]->n]->diffseg);
-                        if (peak.sranges.empty())
-                            continue;
-                        if (!legal_circle(peak, extract))
-                            continue;
-                    }
-                    peak.wrange.first = path[0]->w;
-                    peak.valrange.first = path[0]->val;
-                    extract.push_front(peak);
-                }
-                path.push_front(dotp);
-                return true;
-            }
-            if (path.size() > 1)
-            {
-                for (is = 0; is < path[1]->s_sz; ++is)
-                    if (sources[path[1]->fs + is] == path[0])
-                    {
-                        ++is;
-                        break;
-                    }
-                if (path[0]->n < 0 && path[1]->n >= 0)
-                {
-                    peak = extract[0];
-                    extract.pop_front();
-                }
-            }
-            path.pop_front();
-        }
-
-        return false;
-    }
-
     void filter_sranges(Peak &peak, std::deque<Peak> &extract, std::deque<std::deque<Peak>> &extracts, int64_t diffseg)
     {
         std::deque<std::pair<int64_t, int64_t>> sranges;
@@ -378,29 +294,92 @@ struct Track : Graph
         }
     }
 
-    bool legal_circle(Peak &peak, std::deque<Peak> &extract)
+    bool legal_circle(Dot *pdot, std::deque<Dot *> &extract)
     {
-        double summinScore = edges[peak.n]->minScore;
-        double sumdiffval = peak.valrange.second - peak.valrange.first;
-        Node *new_node = edges[peak.n]->tail;
-        if (new_node == edges[peak.n]->head && sumdiffval < summinScore)
+        if (extract.size() % 2 == 0)
+            return true;
+        double summinScore = edges[pdot->n]->minScore;
+        double sumdiffval = extract[0]->val - pdot->val;
+        Node *new_node = edges[pdot->n]->tail;
+        if (new_node == edges[pdot->n]->head && sumdiffval < summinScore)
             return false;
-        for (Peak &peak_pre : extract)
+        for (int i = 1; i < extract.size(); i += 2)
         {
-            summinScore += edges[peak_pre.n]->minScore;
-            sumdiffval += peak_pre.valrange.second - peak_pre.valrange.first;
-            if (new_node == edges[peak_pre.n]->head && sumdiffval < summinScore)
+            summinScore += edges[extract[i]->n]->minScore;
+            sumdiffval += extract[i + 1]->val - extract[i]->val;
+            if (new_node == edges[extract[i]->n]->head && sumdiffval < summinScore)
                 return false;
         }
         return true;
     }
 
-    void source_until(Dot *pdot, std::string mode)
+    void source_until(std::pair<Dot *, std::deque<Dot *>> &megasource)
     {
+        bool to_tail = megasource.second.empty();
+        std::pair<std::map<Dot *, MegaRange>::iterator, bool> insertpair;
+        if (to_tail)
+            insertpair = megadots_head.emplace(megasource.first, MegaRange());
+        else
+            insertpair = megadots_tail.emplace(megasource.first, MegaRange());
+        if (!insertpair.second)
+            return;
+        insertpair.first->second.fs = megasources.size();
+
         std::deque<Dot *> path;
         std::queue<Dot *> visited;
-        pdot->visit = true;
-        
+        megasource.first->visit = true;
+        visited.push(megasource.first);
+        path.push_back(megasource.first);
+        do
+        {
+            if (to_tail)
+            {
+                for (int i = 0; i < path[0]->s_sz; ++i)
+                    if (sources[path[0]->fs + i]->n < 0)
+                    {
+                        megasources.emplace_back(path[0], path);
+                        break;
+                    }
+            }
+            else if (path[0]->n >= 0 && path[0] != megasource.first)
+                megasources.emplace_back(path[0], std::deque<Dot *>());
+        } while (next_dot(path, visited, to_tail));
+        insertpair.first->second.s_sz = megasources.size() - insertpair.first->second.fs;
+
+        while (!visited.empty())
+        {
+            visited.front()->visit = false;
+            visited.pop();
+        }
+    }
+
+    bool next_dot(std::deque<Dot *> &path, std::queue<Dot *> &visited, bool to_tail)
+    {
+        int is = 0;
+        while (!path.empty())
+        {
+            for (int i = is; i < path[0]->s_sz; ++i)
+            {
+                Dot *pdot = sources[path[0]->fs + i];
+                if (pdot->visit || to_tail == (pdot->n < 0 || path[0]->n < 0))
+                    continue;
+                pdot->visit = true;
+                visited.push(pdot);
+                path.push_front(pdot);
+                return true;
+            }
+            if (path.size() > 1)
+            {
+                for (is = 0; is < path[1]->s_sz; ++is)
+                    if (sources[path[1]->fs + is] == path[0])
+                    {
+                        ++is;
+                        break;
+                    }
+            }
+            path.pop_front();
+        }
+        return false;
     }
 };
 
