@@ -111,6 +111,16 @@ struct SNC
     typename std::list<SNC<T>>::iterator itj;
 };
 
+template <typename T>
+struct Node
+{
+    int tAsz=0;
+    double tve;
+    double tue;
+    int scc;
+    std::vector<double> ge;
+};
+
 template <typename U>
 struct EdgeLocal
 {
@@ -126,16 +136,6 @@ struct EdgeLocal
     std::vector<double> vf;
     std::vector<double> uf;
     double gamma[7][7];
-    double gamma_max;
-    Dot<U>** A=NULL;
-    Dot<U>* B;
-    Dot<U>** E;
-    Dot<U>** F;
-    Dot<U>** G;
-    Dot<U>** H1a=NULL;
-    Dot<U>** H1b;
-    Dot<U>** H2;
-    Dot<U>** C;
     
     void readin(std::string local_file, std::string score_file)
     {
@@ -163,21 +163,15 @@ struct EdgeLocal
             gfp[i]=gfp[i-1]+tufp, gfm[j]=gfm[j+1]+tufm;
         getlineDoubles(vf, fin);
         getlineDoubles(uf, fin);
-        gamma_max=-inf;
         for(int i=2; i<7; ++i)
             for(int j=2; j<7; ++j)
-            {
                 fin >> gamma[i][j];
-                gamma_max=std::max(gamma_max,gamma[i][j]);
-            }
         fin.close();
     }
     
     ~EdgeLocal()
     {
         delete[] ve;
-        delete[] A;
-        delete[] H1a;
     }
 };
 
@@ -195,12 +189,6 @@ struct EdgeGlobal
     std::vector<double> vf;
     std::vector<double> uf;
     double gamma[7][7];
-    double gamma_max;
-    std::vector<std::vector<U>> boxes;
-    Dot<U>** A=NULL;
-    Dot<U>* B;
-    Dot<U>** H1=NULL;
-    std::list<SNC<U>> sncs;
     
     void readin_and_index(std::string index_file, std::string score_file)
     {
@@ -208,41 +196,11 @@ struct EdgeGlobal
         fin >> ve >> ue >> T >> std::ws;
         getlineDoubles(vf, fin);
         getlineDoubles(uf, fin);
-        gamma_max=-inf;
         for(int i=2; i<7; ++i)
             for(int j=2; j<7; ++j)
-            {
                 fin >> gamma[i][j];
-                gamma_max=std::max(gamma_max,gamma[i][j]);
-            }
         fin.close();
         Bro.reindex(G, index_file);
-    }
-    
-    ~EdgeGlobal()
-    {
-        delete[] A;
-        delete[] H1;
-    }
-};
-
-template <typename T>
-struct Node
-{
-    int tAsz=0;
-    Dot<T>** tildeA=NULL;
-    double tve;
-    double tue;
-    std::vector<Dot<T>**> ciptr;
-    int cid_now=0;
-    std::vector<Dot<T>**> siptr;
-    Dot<T>* barA=NULL;
-    int scc;
-    std::vector<double> ge;
-    
-    ~Node()
-    {
-        delete[] tildeA;
     }
 };
 
@@ -311,28 +269,21 @@ struct Graph
                 locals[l].tail=edges[e].tail;
                 locals[l].head=edges[e].head;
                 locals[l].readin(edges[e].files.front(),edges[e].files.back());
-                gamma_max=std::max(gamma_max,locals[l].gamma_max);
-                int EFGsz=locals[l].seq.size()+1;
-                locals[l].A=new Dot<T>*[tAsz[i]+3*EFGsz];
-                locals[l].E=locals[l].A+tAsz[i];
-                locals[l].F=locals[l].E+EFGsz;
-                locals[l].G=locals[l].F+EFGsz;
+                
+                for(int ii=2; ii<7; ++ii)
+                    for(int jj=2; jj<7; ++jj)
+                        gamma_max=std::max(gamma_max,locals[l].gamma[ii][jj]);
+                
                 if(nodes[locals[l].tail].tAsz<tAsz[i])
                     nodes[locals[l].tail].tAsz=tAsz[i];
                 if(local_C[i]==1 && global_C[i]==0 && locals[l].tail!=locals[l].head)
                 {
-                    nodes[locals[l].head].ciptr.push_back(locals[l].A);
                     cross[locals[l].id]=true;
                 }
                 else
                 {
-                    nodes[locals[l].head].siptr.push_back(locals[l].A);
                     cross[locals[l].id]=false;
                     nodes[locals[l].head].scc=i;
-                    locals[l].H1a=new Dot<T>*[2*EFGsz+2*(tAsz[i]-1)];
-                    locals[l].H1b=locals[l].H1a+tAsz[i]-1;
-                    locals[l].H2=locals[l].H1b+tAsz[i]-1;
-                    locals[l].C=locals[l].H2+EFGsz;
                 }
             }
             for(int j=0; j<global_C[i]; ++j,++e,++g)
@@ -341,21 +292,21 @@ struct Graph
                 globals[g].tail=edges[e].tail;
                 globals[g].head=edges[e].head;
                 globals[g].readin_and_index(edges[e].files.front(),edges[e].files.back());
-                gamma_max=std::max(gamma_max,globals[g].gamma_max);
-                globals[g].A=new Dot<T>*[tAsz[i]];
+                
+                for(int ii=2; ii<7; ++ii)
+                    for(int jj=2; jj<7; ++jj)
+                        gamma_max=std::max(gamma_max,globals[g].gamma[ii][jj]);
+                
                 if(nodes[globals[g].tail].tAsz<tAsz[i])
                     nodes[globals[g].tail].tAsz=tAsz[i];
                 if(local_C[i]==0 && global_C[i]==1 && globals[g].tail!=globals[g].head)
                 {
-                    nodes[globals[g].head].ciptr.push_back(globals[g].A);
                     cross[globals[g].id]=true;
                 }
                 else
                 {
-                    nodes[globals[g].head].siptr.push_back(globals[g].A);
                     cross[globals[g].id]=false;
                     nodes[globals[g].head].scc=i;
-                    globals[g].H1=new Dot<T>*[tAsz[i]-1];
                 }
                 eid2globals[globals[g].id]=&globals[g];
             }
@@ -367,7 +318,6 @@ struct Graph
         for(int i=0; i<n_sz; ++i)
             if(nodes[i].tAsz>0)
             {
-                nodes[i].tildeA=new Dot<T>*[nodes[i].tAsz];
                 nodes[i].ge.push_back(0);
                 nodes[i].ge.push_back(nodes[i].tve);
             }
@@ -597,6 +547,121 @@ struct Graph
         for(int i : lists[edges[now].head])
             if(!edges[i].visit)
                 DeepFirst(i, edges, e_sz, lists);
+    }
+};
+
+template <typename T>
+struct NodeCopy
+{
+    Dot<T>** tildeA=NULL;
+    std::vector<Dot<T>**> ciptr;
+    int cid_now=0;
+    std::vector<Dot<T>**> siptr;
+    Dot<T>* barA=NULL;
+    
+    ~NodeCopy()
+    {
+        delete[] tildeA;
+    }
+};
+
+template <typename U>
+struct EdgeLocalCopy
+{
+    Dot<U>** A=NULL;
+    Dot<U>* B;
+    Dot<U>** E;
+    Dot<U>** F;
+    Dot<U>** G;
+    Dot<U>** H1a=NULL;
+    Dot<U>** H1b;
+    Dot<U>** H2;
+    Dot<U>** C;
+    
+    ~EdgeLocalCopy()
+    {
+        delete[] A;
+        delete[] H1a;
+    }
+};
+
+template <typename U>
+struct EdgeGlobalCopy
+{
+    std::vector<std::vector<U>> boxes;
+    Dot<U>** A=NULL;
+    Dot<U>* B;
+    Dot<U>** H1=NULL;
+    std::list<SNC<U>> sncs;
+    
+    ~EdgeGlobalCopy()
+    {
+        delete[] A;
+        delete[] H1;
+    }
+};
+
+template <typename T>
+struct GraphCopy
+{
+    NodeCopy<T>* nodecopys=NULL;
+    EdgeLocalCopy<T>* localcopys=NULL;
+    EdgeGlobalCopy<T>* globalcopys=NULL;
+    
+    ~GraphCopy()
+    {
+        delete[] nodecopys;
+        delete[] localcopys;
+        delete[] globalcopys;
+    }
+    
+    void GetCopy(Graph<T> & graph)
+    {
+        delete[] nodecopys;
+        nodecopys=new NodeCopy<T>[graph.n_sz];
+        delete[] localcopys;
+        localcopys=new EdgeLocalCopy<T>[graph.l_sz];
+        delete[] globalcopys;
+        globalcopys=new EdgeGlobalCopy<T>[graph.g_sz];
+        for(int i=0, e=0, l=0, g=0; i<graph.scc_n; ++i)
+        {
+            for(int j=0; j<graph.local_C[i]; ++j,++e,++l)
+            {
+                int EFGsz=graph.locals[l].seq.size()+1;
+                localcopys[l].A=new Dot<T>*[graph.tAsz[i]+3*EFGsz];
+                localcopys[l].E=localcopys[l].A+graph.tAsz[i];
+                localcopys[l].F=localcopys[l].E+EFGsz;
+                localcopys[l].G=localcopys[l].F+EFGsz;
+                if(graph.local_C[i]==1 && graph.global_C[i]==0 && graph.locals[l].tail!=graph.locals[l].head)
+                {
+                    nodecopys[graph.locals[l].head].ciptr.push_back(localcopys[l].A);
+                }
+                else
+                {
+                    nodecopys[graph.locals[l].head].siptr.push_back(localcopys[l].A);
+                    localcopys[l].H1a=new Dot<T>*[2*EFGsz+2*(graph.tAsz[i]-1)];
+                    localcopys[l].H1b=localcopys[l].H1a+graph.tAsz[i]-1;
+                    localcopys[l].H2=localcopys[l].H1b+graph.tAsz[i]-1;
+                    localcopys[l].C=localcopys[l].H2+EFGsz;
+                }
+            }
+            for(int j=0; j<graph.global_C[i]; ++j,++e,++g)
+            {
+                globalcopys[g].A=new Dot<T>*[graph.tAsz[i]];
+                if(graph.local_C[i]==0 && graph.global_C[i]==1 && graph.globals[g].tail!=graph.globals[g].head)
+                {
+                    nodecopys[graph.globals[g].head].ciptr.push_back(globalcopys[g].A);
+                }
+                else
+                {
+                    nodecopys[graph.globals[g].head].siptr.push_back(globalcopys[g].A);
+                    globalcopys[g].H1=new Dot<T>*[graph.tAsz[i]-1];
+                }
+            }
+        }
+        for(int i=0; i<graph.n_sz; ++i)
+            if(graph.nodes[i].tAsz>0)
+                nodecopys[i].tildeA=new Dot<T>*[graph.nodes[i].tAsz];
     }
 };
 

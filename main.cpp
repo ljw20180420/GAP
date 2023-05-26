@@ -13,7 +13,7 @@ typedef int temp_type;
 int main(int argc, char **argv) 
 {
     bool acyclic=false;
-    int n_sz=6, r_sz=2, lseqlb=100, lsequb=200, gseqlb=10000, gsequb=20000, aseqlb=50, asequb=100, seq_num=100, head_in=10, tail_in=10, ll=300, max_num=1, max_glo=3;
+    int n_sz=5, r_sz=2, lseqlb=100, lsequb=200, gseqlb=10000, gsequb=20000, aseqlb=50, asequb=100, seq_num=100, head_in=10, tail_in=10, ll=300, max_num=1, max_glo=3;
     double gpro=0.5, rpro=0, tve=-(1e-6), tue=0, ve=-5, ue=-2, vf=-5, uf=-2, T=-10, tvf=-(1e-6), tuf=0, mat=1, mis=-3, indel_rate=0.005, mut_rate=0.005, apro=0.5;
     std::string graph_file("graph_file"), local_file("local_file"), local_file_score("local_file_score"), index_file("index_file"), global_file("global_file"), global_file_score("global_file_score"), index_information("index_information"), read_file("read_file"), truth_file("truth_file"), min_graph_file("min_graph_file"), path_file("path_file"), predict_file("predict_file");
     random_DG(n_sz, r_sz, gpro, rpro, tve, tue, graph_file, local_file, local_file_score, index_file, global_file, global_file_score, lseqlb, lsequb, gseqlb, gsequb, index_information, ve, ue, vf, uf, T, tvf, tuf, mat, mis, aseqlb, asequb, seq_num, read_file, truth_file, indel_rate, mut_rate, head_in, tail_in, acyclic, apro);
