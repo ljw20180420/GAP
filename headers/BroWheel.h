@@ -77,7 +77,8 @@ struct BinWord
     static const int ww=3;
     static const int r=(sizeof(T)*8-2)/ww;
     static const int bsf=(r-1)*ww;
-    
+    static const int block_size=64*1024;
+
     std::vector<bool> BV;
     
     void readin(std::list<std::string> & files, bool reverse)
@@ -89,7 +90,6 @@ struct BinWord
         BV.clear();
         BV.reserve(G_sz*ww);
         
-        const int block_size=64*1024;
         char* str=new char[block_size];
         for(auto file : files)
         {
@@ -132,7 +132,7 @@ struct BinWord
         BV.back()=0;
         BV.shrink_to_fit();
         if(reverse)
-            for(int i=0,j=BV.size()-6; i<j; j-=6)
+            for(T i=0,j=BV.size()-6; i<j; j-=6)
             {
                 std::swap(BV[i++],BV[j++]);
                 std::swap(BV[i++],BV[j++]);
@@ -182,32 +182,25 @@ struct BinWord
     
     void to_chars(char* bytes)
     {
-        T sz=(BV.size()+7)/8;
+        T sz=(BV.size()+sizeof(char)-1)/sizeof(char);
         T j=0;
-        for(T i=0; i<sz-1; ++i)
-            for(T k=7; k>-1; --k,++j)
-                if(BV[j])
-                    bytes[i]|= 1UL<<k;
-                else
-                    bytes[i]&= ~(1UL<<k);
-        for(T k=7; j<BV.size(); --k,++j)
-            if(BV[j])
-                bytes[sz-1]|= 1UL<<k;
-            else
-                bytes[sz-1]&= ~(1UL<<k);
+        for(T i=0; i<sz; ++i)
+        {
+            bytes[i]=0;
+            for(T k=sizeof(char)-1; (k>-1)&&(j<BV.size()); --k,++j)
+                bytes[i]|= BV[j]<<k;
+        }
     }
     
     void from_chars(char* bytes, T BV_sz)
     {
         BV.resize(BV_sz);
         BV.shrink_to_fit();
-        T sz=(BV.size()+7)/8;
+        T sz=(BV.size()+sizeof(char)-1)/sizeof(char);
         T j=0;
-        for(T i=0; i<sz-1; ++i)
-            for(T k=7; k>-1; --k,++j)
+        for(T i=0; i<sz; ++i)
+            for(T k=7; (k>-1)&&(j<BV.size()); --k,++j)
                 BV[j]=bytes[i] & 1UL<<k;
-        for(T k=7; j<BV.size(); --k,++j)
-            BV[j]=bytes[sz-1] & 1UL<<k;
     }
 };
 

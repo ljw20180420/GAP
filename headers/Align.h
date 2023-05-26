@@ -10,6 +10,43 @@
 #include <typeinfo>
 #include "Graph.h"
 
+void to_gv(std::string graph_file)
+{
+    std::ifstream fin(graph_file);
+    std::ofstream fout(graph_file+".gv");
+    fout << "digraph align_graph\n{\n";
+    fout << "\tnode[shape=circle]\n";
+    int n_sz, r_sz, t_sz, l_sz, g_sz;
+    fin >> n_sz >> r_sz >> t_sz >> l_sz >> g_sz;
+    std::string st;
+    for(int i=0; i<n_sz*2; ++i)
+        fin >> st;
+    int node;
+    for(int i=0; i<r_sz; ++i)
+    {
+        fin >> node;
+        fout << '\t' << node << "[shape=square]\n";
+    }
+    for(int i=0; i<t_sz; ++i)
+    {
+        fin >> node;
+        fout << '\t' << node << "[shape=diamond]\n";
+    }
+    for(int i=0,tail,head; i<l_sz+g_sz; ++i)
+    {
+        fin >> tail >> head >> st >> st;
+        fout << '\t' << tail << "->" << head;
+        if(i<l_sz)
+            fout << "[color=black,label=\""+std::to_string(i)+"\"]\n";
+        else
+            fout << "[color=red,label=\""+std::to_string(i)+"\"]\n";
+    }
+    fout << "}\n";
+    fin.close();
+    fout.close();
+    system(("dot -Tpdf "+graph_file+".gv > "+graph_file+".pdf").c_str());
+}
+
 template <typename T>
 struct Truther
 {
@@ -74,7 +111,7 @@ struct Tracker
     {
         int nt;
         fin.read((char*)&nt,sizeof(int));
-        if(!fin.good())
+        if(fin.fail())
             return std::tuple<int,int*,Dot<T>*,T*,Dot<T>**>();
         int* tids=new int[nt];
         fin.read((char*)tids,nt*sizeof(int));
@@ -158,16 +195,14 @@ struct Tracker
         }
     }
 
-    void ReadAndExploreAll(std::string file, std::string out_file, int max_num, int max_glo, Graph<T> & graph)
+    void ReadAndExploreAll(std::string file, size_t bi, std::ofstream & fout, int max_num, int max_glo, Graph<T> & graph, size_t & read_num)
     {
-        std::ifstream fin(file,std::ifstream::binary);
-        std::ofstream fout(out_file);
-        fout << std::setprecision(10);
+        std::ifstream fin(file+std::to_string(bi),std::ifstream::binary);
         int nt, *tids;
         Dot<T> *VV, **sources;
         T* ranges;
         std::tie(nt,tids,VV,ranges,sources)=ReadMinimalGraph(fin);
-        for(int read_num=0; fin.good(); ++read_num)
+        while(!fin.fail())
         {
             for(int target_num=0; target_num<nt; ++target_num)
                 ExplorePath(&VV[tids[target_num]], read_num, target_num, max_num, max_glo, graph, fout);
@@ -175,10 +210,10 @@ struct Tracker
             delete[] VV;
             delete[] ranges;
             delete[] sources;
+            ++read_num;
             std::tie(nt,tids,VV,ranges,sources)=ReadMinimalGraph(fin);
         }
         fin.close();
-        fout.close();
     }
 };
 
@@ -221,11 +256,13 @@ struct Align : Memory, GraphCopy<U>
     std::ofstream MGout;
     std::stack<TrieState<U>> triestates;
     std::stack<SimNode<U>> simnodes;
+    Memory memtree;
     
-    Align(Graph<U> & graph_v, size_t chunk_sz_) : graph(graph_v)
+    Align(Graph<U> & graph_v, size_t chunk_sz_, size_t chunk_sz_2) : graph(graph_v)
     {
         this->GetCopy(graph_v);
         Initial(chunk_sz_);
+        memtree.Initial(chunk_sz_2);
     }
     
     void CallGetMinimalGraph(int W,std::string & O)
@@ -283,7 +320,8 @@ struct Align : Memory, GraphCopy<U>
         EdgeGlobal<U>* global=graph.eid2globals[target->eid];
         if(!global)
             return;
-        auto & box=this->globalcopys[global-graph.globals].boxes[target->w];
+        EdgeGlobalCopy<U> & globalcopy=this->globalcopys[global-graph.globals];
+        auto & box=globalcopy.boxes[target->w];
         if(box.empty())
             return;
         U** robs=heap_alloc<U*>(box.size()/3);
@@ -313,7 +351,7 @@ struct Align : Memory, GraphCopy<U>
                 SetRob(target->w,G,seq.size(),robs,rr,box.size()/3);
                 CrossInitial(target->w,E,F,G,global->ve,global->ue,*global);
                 for(size_t s=1; s<=seq.size(); ++s)
-                    CrossBody(seq,O,s,target->w,E,F,G,global->ve,global->ue,*global,0);
+                    CrossBody(seq,O,s,target->w,E,F,G,global->ve,global->ue,*global,globalcopy,0);
             }
             else
             {
@@ -328,7 +366,7 @@ struct Align : Memory, GraphCopy<U>
                 {
                     CircuitInitial(wp,C,E,F,G,H,global->ve,global->ue,*global);
                     for(size_t s=1; s<=seq.size(); ++s)
-                        CircuitBody(seq,O,wp,s,C,E,F,G,H,global->ve,global->ue,*global,0);
+                        CircuitBody(seq,O,wp,s,C,E,F,G,H,global->ve,global->ue,*global,globalcopy,0);
                 }
             }
             adrs.push_back(&G[seq.size()][target->w]);
@@ -422,10 +460,10 @@ struct Align : Memory, GraphCopy<U>
     template <typename TP, typename TPC>
     void EdgeAllocSpace(TP & edge, TPC & edgecopy, size_t W, int tAsz)
     {
-        if(edge.vf.size()<W+1)
+        if(edgecopy.vf.size()<W+1)
         {
-            edge.vf.resize(W+1,edge.vf.back());
-            edge.uf.resize(W+1,edge.uf.back());
+            edgecopy.vf.resize(W+1,edgecopy.vf.back());
+            edgecopy.uf.resize(W+1,edgecopy.uf.back());
         }
         for(int a=0; a<tAsz; ++a)
             edgecopy.A[a]=alloc_initial(edge.id, W, a==0?-1:-2);
@@ -443,7 +481,7 @@ struct Align : Memory, GraphCopy<U>
         CrossInitial(O.size(),edgecopy.E,edgecopy.F,edgecopy.G,edge.ve[0],edge.ue[0],edge);
         for(size_t s=1; s<=edge.seq.size(); ++s)
         {
-            CrossBody(edge.seq,O,s,O.size(),edgecopy.E,edgecopy.F,edgecopy.G,edge.ve[s],edge.ue[s],edge,edge.gfp[s]);
+            CrossBody(edge.seq,O,s,O.size(),edgecopy.E,edgecopy.F,edgecopy.G,edge.ve[s],edge.ue[s],edge,edgecopy,edge.gfp[s]);
         }
         edgecopy.B[0].val=-inf;
         adrs.clear();
@@ -487,12 +525,12 @@ struct Align : Memory, GraphCopy<U>
         }
     }
     
-    template <typename Y>
-    void CrossBody(std::string & seq, std::string & O, int s, int W, Dot<U>** E, Dot<U>** F, Dot<U>** G, double ve, double ue, Y & edge, double gfps)
+    template <typename Y, typename Z>
+    void CrossBody(std::string & seq, std::string & O, int s, int W, Dot<U>** E, Dot<U>** F, Dot<U>** G, double ve, double ue, Y & edge, Z & edgecopy, double gfps)
     {
         Dot<U>* tildeANT=this->nodecopys[edge.tail].tildeA[graph.nodes[edge.tail].tAsz-1];
         for(int w=0; w<=W; ++w)
-            source_max(F[s][w],{&F[s-1][w],&G[s-1][w]},{F[s-1][w].val+edge.uf[w],G[s-1][w].val+edge.vf[w]});
+            source_max(F[s][w],{&F[s-1][w],&G[s-1][w]},{F[s-1][w].val+edgecopy.uf[w],G[s-1][w].val+edgecopy.vf[w]});
         E[s][0].val=-inf;
         source_max(G[s][0],{&F[s][0],&tildeANT[0]},{F[s][0].val,tildeANT[0].val+gfps+edge.T});
         for(int w=1; w<=W; ++w)
@@ -622,10 +660,10 @@ struct Align : Memory, GraphCopy<U>
         for(int g=0,f=0; g<ts.Ffn; ++g)
         {
             int w=ts.F[g].w=tsp.G[g].w;
-            ts.F[g].val=tsp.G[g].val+edge.vf[w];
+            ts.F[g].val=tsp.G[g].val+edgecopy.vf[w];
             if(f<tsp.Ffn && w==tsp.F[f].w)
             {
-                ts.F[g].val=std::max(ts.F[g].val,tsp.F[f].val+edge.uf[w]);
+                ts.F[g].val=std::max(ts.F[g].val,tsp.F[f].val+edgecopy.uf[w]);
                 ++f;
             }
         }
@@ -723,6 +761,7 @@ struct Align : Memory, GraphCopy<U>
     
     void CircuitIteration(int l, int g, int scc, std::string & O)
     {
+        memtree.clear();
         int tAsz=graph.tAsz[scc];
         {
             int i;
@@ -772,7 +811,7 @@ struct Align : Memory, GraphCopy<U>
                     source_max(edgecopy.H1a[a-1][w],{&NTCP.tildeA[a-1][w]},{NTCP.tildeA[a-1][w].val+edge.T});
                     double gfwX=0;
                     if(edge.seq.size()>0)
-                        gfwX=edge.uf[w]*(edge.seq.size()-1)+edge.vf[w];
+                        gfwX=edgecopy.uf[w]*(edge.seq.size()-1)+edgecopy.vf[w];
                     source_max(edgecopy.H1b[a-1][w],{&edgecopy.H1a[a-1][w],&NTCP.tildeA[a-1][w]},{edgecopy.H1a[a-1][w].val+gfwX,NTCP.tildeA[a-1][w].val+edge.gfp[edge.seq.size()]+edge.T});
                     source_max(edgecopy.A[a][w],{&edgecopy.H1a[a-1][w],&edgecopy.H1b[a-1][w],&edgecopy.A[0][w]},{edgecopy.H1a[a-1][w].val+edge.gfm[0],edgecopy.H1b[a-1][w].val,edgecopy.A[0][w].val});
                 }
@@ -864,7 +903,7 @@ struct Align : Memory, GraphCopy<U>
             CircuitInitial(w,C,E,F,G,H,ve[0],ue[0],edge);
             for(size_t s=1; s<=seq.size(); ++s)
             {
-                CircuitBody(seq,O,w,s,C,E,F,G,H,ve[s],ue[s],edge,edge.gfp[s]);
+                CircuitBody(seq,O,w,s,C,E,F,G,H,ve[s],ue[s],edge,edgecopy,edge.gfp[s]);
             }
             adrs.clear();
             vals.clear();
@@ -903,14 +942,14 @@ struct Align : Memory, GraphCopy<U>
         source_max(G[0][w],{&E[0][w]},{E[0][w].val});
     }
     
-    template <typename Y>
-    void CircuitBody(std::string & seq, std::string & O, int w, int s, Dot<U>** C, Dot<U>** E, Dot<U>** F, Dot<U>** G, Dot<U>** H, double ve, double ue, Y & edge, double gfps)
+    template <typename Y, typename Z>
+    void CircuitBody(std::string & seq, std::string & O, int w, int s, Dot<U>** C, Dot<U>** E, Dot<U>** F, Dot<U>** G, Dot<U>** H, double ve, double ue, Y & edge, Z & edgecopy, double gfps)
     {
         Dot<U>* tildeANT=this->nodecopys[edge.tail].tildeA[graph.nodes[edge.tail].tAsz-1];
-        source_max(C[s][w-1],{&C[s-1][w-1],&H[s-1][w-1]},{C[s-1][w-1].val+edge.uf[w-1],H[s-1][w-1].val+edge.vf[w-1]});
+        source_max(C[s][w-1],{&C[s-1][w-1],&H[s-1][w-1]},{C[s-1][w-1].val+edgecopy.uf[w-1],H[s-1][w-1].val+edgecopy.vf[w-1]});
         source_max(H[s][w-1],{&C[s][w-1],&tildeANT[w-1]},{C[s][w-1].val,tildeANT[w-1].val+gfps+edge.T});
         source_max(E[s][w],{&G[s][w-1],&E[s][w-1],&H[s][w-1]},{G[s][w-1].val+ve,E[s][w-1].val+ue,H[s][w-1].val+ve});
-        source_max(F[s][w],{&G[s-1][w],&F[s-1][w]},{G[s-1][w].val+edge.vf[w],F[s-1][w].val+edge.uf[w]});
+        source_max(F[s][w],{&G[s-1][w],&F[s-1][w]},{G[s-1][w].val+edgecopy.vf[w],F[s-1][w].val+edgecopy.uf[w]});
         double gm=edge.gamma[int(seq[s-1])][int(O[w-1])];
         source_max(G[s][w],{&E[s][w],&F[s][w],&G[s-1][w-1],&H[s-1][w-1]},{E[s][w].val,F[s][w].val,G[s-1][w-1].val+gm,H[s-1][w-1].val+gm});
     }
@@ -921,26 +960,29 @@ struct Align : Memory, GraphCopy<U>
         EdgeGlobalCopy<U> & edgecopy=this->globalcopys[g];
         NodeCopy<U> & NTCP=this->nodecopys[edge.tail];
         NodeCopy<U> & NHCP=this->nodecopys[edge.head];
-        std::list<SNC<U>> &sncs=edgecopy.sncs;
+        std::forward_list<SNC<U>*> &sncs=edgecopy.sncs;
         Dot<U> *B=edgecopy.B, **A=edgecopy.A;
         BroWheel<U> & Bro=edge.Bro;
         double T=edge.T, ue=edge.ue, ve=edge.ve;
-        std::vector<double> &uf=edge.uf, &vf=edge.vf;
+        std::vector<double> &uf=edgecopy.uf, &vf=edgecopy.vf;
         std::vector<std::vector<U>> &boxes=edgecopy.boxes;
         if(w==0)
         {
-            sncs.emplace_back();
-            sncs.back().E=sncs.back().F=sncs.back().G=-inf;
-            sncs.back().sr1=0, sncs.back().sr2=Bro.size()-1;
-            sncs.back().s=0;
-            sncs.back().itd=sncs.end();
+            sncs.emplace_front();
+            sncs.front()=memtree.heap_alloc<SNC<U>>(1);
+            sncs.front()->E=sncs.front()->F=sncs.front()->G=-inf;
+            sncs.front()->s=0;
+            sncs.front()->sr1=0;
+            sncs.front()->sr2=Bro.size()-1;
+            sncs.front()->itcs=NULL;
             B[0].val=-inf;
             A[0][w].val=-inf;
         }
         else
         {
             double H=NTCP.tildeA[graph.nodes[edge.tail].tAsz-1][w-1].val+T;
-            auto it=sncs.begin();
+            auto lit=sncs.begin();
+            SNC<U>* it=*lit;
             it->Gp=it->G;
             it->F=-inf;
             A[0][w].val=it->G=it->E=std::max(it->E+ue,H+ve);
@@ -948,9 +990,10 @@ struct Align : Memory, GraphCopy<U>
             boxes[w].push_back(it->sr1);
             boxes[w].push_back(it->sr2);
             boxes[w].push_back(it->s);
-            it=InsertSNC(it,sncs,edge);
-            while(it!=sncs.end())
+            InsertSNC(lit,sncs,edge);
+            while(lit!=sncs.end())
             {
+                it=*lit;
                 it->Gp=it->G;
                 it->E=std::max(it->G+ve,it->E+ue);
                 it->F=std::max(it->itp->G+vf[w],it->itp->F+uf[w]);
@@ -973,22 +1016,24 @@ struct Align : Memory, GraphCopy<U>
                     boxes[w].push_back(it->sr2);
                     boxes[w].push_back(it->s);
                 }
-                it=InsertSNC(it,sncs,edge);
+                InsertSNC(lit,sncs,edge);
             }
             if(size_t(w)==O.size())
                 sncs.clear();
             else
             {
-                it=sncs.begin();
-                while(it->itd!=sncs.end())
+                auto lit=sncs.begin(),nlit=std::next(lit);
+                while(nlit!=sncs.end())
                 {
-                    if(it->itd->G==-inf && it->itd->E==-inf && it->itd->itp->G==-inf)
+                    SNC<U>* nit=*nlit;
+                    if(nit->G==-inf && nit->E==-inf && nit->itp->G==-inf)
                     {
-                        it->itd->Gp=-inf;
-                        it->itd=it->itd->itd;
+                        nit->Gp=-inf;
+                        sncs.erase_after(lit);
                     }
                     else
-                        it=it->itd;
+                        ++lit;
+                    nlit=std::next(lit);
                 }
             }
             if(B[w].val>=A[0][w].val)
@@ -1015,65 +1060,82 @@ struct Align : Memory, GraphCopy<U>
         }
     }
     
-    typename std::list<SNC<U>>::iterator InsertSNC(typename std::list<SNC<U>>::iterator it, std::list<SNC<U>> & sncs, EdgeGlobal<U> & edge)
+    void InsertSNC(typename std::forward_list<SNC<U>*>::iterator & lit, std::forward_list<SNC<U>*> & sncs, EdgeGlobal<U> & edge)
     {
+        SNC<U>* it=*lit;
         if(it->G!=-inf && it->Gp==-inf)
         {
-            if(it->itcs.size()==0)
+            if(it->itcs==NULL)
             {
-                auto itn=std::next(it);
                 if(it->sr1==it->sr2)
                 {
                     if(it->itp->sr1<it->itp->sr2)
-                        it->os=edge.Bro.SimSuffix(it->sr1);
-                    if(it->os>0)
+                        it->itcs_sz=edge.Bro.SimSuffix(it->sr1);
+                    if(it->itcs_sz>0)
                     {
-                        SNC<U> snc;
-                        snc.os=it->os-1;
-                        snc.s=it->s+1;
-                        snc.letter=edge.G(snc.os);
-                        snc.sr1=snc.sr2=edge.Bro.C[snc.letter-1]+edge.Bro.GetOcc(it->sr1,snc.letter);
-                        snc.E=snc.F=snc.G=-inf;
-                        snc.itp=it;
-                        sncs.insert(itn,snc);
-                        it->itcs.push_back(std::prev(itn));
+                        SNC<U>* nit=memtree.heap_alloc<SNC<U>>(1);
+                        nit->itcs_sz=it->itcs_sz-1;
+                        nit->s=it->s+1;
+                        nit->letter=edge.G(nit->itcs_sz);
+                        nit->sr1=nit->sr2=edge.Bro.C[nit->letter-1]+edge.Bro.GetOcc(it->sr1,nit->letter);
+                        nit->E=nit->F=nit->G=-inf;
+                        nit->itp=it;
+                        nit->itcs=NULL;
+                        it->itcs=memtree.heap_alloc<SNC<U>*>(1);
+                        it->itcs[0]=nit;
                     }
+                    else
+                        it->itcs=(SNC<U>**)(memtree.now);
                 }
                 else
                 {
                     U left=it->sr2-it->sr1+1;
+                    std::queue<SNC<U>*> itcs;
                     for(U letter=2; letter<7; ++letter)
                     {
-                        SNC<U> snc;
-                        snc.sr1=it->sr1;
-                        snc.sr2=it->sr2;
-                        edge.Bro.PreRange(snc.sr1, snc.sr2, letter);
-                        if(snc.sr1<=snc.sr2)
+                        U sr1=it->sr1, sr2=it->sr2;
+                        edge.Bro.PreRange(sr1,sr2,letter);
+                        if(sr1<=sr2)
                         {
-                            snc.s=it->s+1;
-                            snc.letter=letter;
-                            snc.E=snc.F=snc.G=-inf;
-                            snc.itp=it;
-                            sncs.insert(itn,snc);
-                            it->itcs.push_back(std::prev(itn));
-                            left-=snc.sr2-snc.sr1+1;
+                            SNC<U>* nit=memtree.heap_alloc<SNC<U>>(1);
+                            itcs.push(nit);
+                            nit->sr1=sr1;
+                            nit->sr2=sr2;
+                            nit->s=it->s+1;
+                            nit->letter=letter;
+                            nit->E=nit->F=nit->G=-inf;
+                            nit->itp=it;
+                            nit->itcs=NULL;
+                            left-=nit->sr2-nit->sr1+1;
+                            if(left==0)
+                                break;
                         }
-                        if(left==0)
-                            break;
+                    }
+                    it->itcs_sz=itcs.size();
+                    it->itcs=memtree.heap_alloc<SNC<U>*>(it->itcs_sz);
+                    for(int i=0; i<it->itcs_sz; ++i)
+                    {
+                        it->itcs[i]=itcs.front();
+                        itcs.pop();
                     }
                 }
-                if(it->itcs.size()==0)
-                    it->itcs.push_back(sncs.end());
             }
-            if(it->itcs[0]!=sncs.end())
-                for(auto itc : it->itcs)
+            if(it->itcs_sz!=0)
+            {
+                size_t sz;
+                if(it->sr1==it->sr2)
+                    sz=1;
+                else
+                    sz=it->itcs_sz;
+                for(size_t i=0; i<sz; ++i)
+                {
+                    SNC<U>* itc=it->itcs[i];
                     if(itc->E==-inf && itc->G==-inf)
-                    {
-                        itc->itd=it->itd;
-                        it->itd=itc;
-                    }
+                        sncs.emplace_after(lit,itc);
+                }
+            }
         }
-        return it->itd;
+        ++lit;
     }
     
     void update_cross(NodeCopy<U> & nodecopy, int W)

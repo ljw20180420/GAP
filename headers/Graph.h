@@ -7,6 +7,7 @@
 #include <cfloat>
 #include <sstream>
 #include "BroWheel.h"
+#include <forward_list>
 
 constexpr static const double inf=std::numeric_limits<double>::infinity();
 
@@ -102,13 +103,12 @@ struct SNC
     double G;
     double Gp;
     T letter;
+    T s;
     T sr1;
     T sr2;
-    T s;
-    T os;
-    typename std::list<SNC<T>>::iterator itp;
-    std::vector<typename std::list<SNC<T>>::iterator> itcs;
-    typename std::list<SNC<T>>::iterator itd;
+    SNC* itp;
+    SNC** itcs; // NULL means children are not added to the tree yet
+    int itcs_sz; // If sr1=sr2, itcs_sz is used to save os (the offset of the unique occurrence in genome)
 };
 
 template <typename T>
@@ -560,6 +560,8 @@ struct EdgeLocalCopy
     Dot<U>** H1b;
     Dot<U>** H;
     Dot<U>** C;
+    std::vector<double> vf;
+    std::vector<double> uf;
     
     ~EdgeLocalCopy()
     {
@@ -575,7 +577,9 @@ struct EdgeGlobalCopy
     Dot<U>** A=NULL;
     Dot<U>* B;
     Dot<U>** H1=NULL;
-    std::list<SNC<U>> sncs;
+    std::forward_list<SNC<U>*> sncs;
+    std::vector<double> vf;
+    std::vector<double> uf;
     
     ~EdgeGlobalCopy()
     {
@@ -610,15 +614,15 @@ struct GraphCopy
         {
             for(int j=0; j<graph.local_C[i]; ++j,++e,++l)
             {
+                localcopys[l].vf=graph.locals[l].vf;
+                localcopys[l].uf=graph.locals[l].uf;
                 int EFGsz=graph.locals[l].seq.size()+1;
                 localcopys[l].A=new Dot<T>*[graph.tAsz[i]+3*EFGsz];
                 localcopys[l].E=localcopys[l].A+graph.tAsz[i];
                 localcopys[l].F=localcopys[l].E+EFGsz;
                 localcopys[l].G=localcopys[l].F+EFGsz;
                 if(graph.local_C[i]==1 && graph.global_C[i]==0 && graph.locals[l].tail!=graph.locals[l].head)
-                {
                     nodecopys[graph.locals[l].head].ciptr.push_back(localcopys[l].A);
-                }
                 else
                 {
                     nodecopys[graph.locals[l].head].siptr.push_back(localcopys[l].A);
@@ -630,11 +634,11 @@ struct GraphCopy
             }
             for(int j=0; j<graph.global_C[i]; ++j,++e,++g)
             {
+                globalcopys[g].vf=graph.globals[g].vf;
+                globalcopys[g].uf=graph.globals[g].uf;
                 globalcopys[g].A=new Dot<T>*[graph.tAsz[i]];
                 if(graph.local_C[i]==0 && graph.global_C[i]==1 && graph.globals[g].tail!=graph.globals[g].head)
-                {
                     nodecopys[graph.globals[g].head].ciptr.push_back(globalcopys[g].A);
-                }
                 else
                 {
                     nodecopys[graph.globals[g].head].siptr.push_back(globalcopys[g].A);

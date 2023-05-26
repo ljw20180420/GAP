@@ -241,41 +241,4 @@ void random_DG(int n_sz, int r_sz, double gpro, double rpro, double tve, double 
     fout2.close();
 }
 
-void to_gv(std::string graph_file)
-{
-    std::ifstream fin(graph_file);
-    std::ofstream fout(graph_file+".gv");
-    fout << "digraph align_graph\n{\n";
-    fout << "\tnode[shape=circle]\n";
-    int n_sz, r_sz, t_sz, l_sz, g_sz;
-    fin >> n_sz >> r_sz >> t_sz >> l_sz >> g_sz;
-    std::string st;
-    for(int i=0; i<n_sz*2; ++i)
-        fin >> st;
-    int node;
-    for(int i=0; i<r_sz; ++i)
-    {
-        fin >> node;
-        fout << '\t' << node << "[shape=square]\n";
-    }
-    for(int i=0; i<t_sz; ++i)
-    {
-        fin >> node;
-        fout << '\t' << node << "[shape=diamond]\n";
-    }
-    for(int i=0,tail,head; i<l_sz+g_sz; ++i)
-    {
-        fin >> tail >> head >> st >> st;
-        fout << '\t' << tail << "->" << head;
-        if(i<l_sz)
-            fout << "[color=black,label=\""+std::to_string(i)+"\"]\n";
-        else
-            fout << "[color=red,label=\""+std::to_string(i)+"\"]\n";
-    }
-    fout << "}\n";
-    fin.close();
-    fout.close();
-    system(("dot -Tpdf "+graph_file+".gv > "+graph_file+".pdf").c_str());
-}
-
 #endif

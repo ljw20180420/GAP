@@ -135,6 +135,18 @@ public:
         work_queue.push(std::move(task));
         return res;
     }
+    std::vector<std::thread::id> get_ids()
+    {
+        std::vector<std::thread::id> thread_ids;
+        for(auto & thread : threads)
+            thread_ids.push_back(thread.get_id());
+        return thread_ids;
+    }
+    
+    size_t size()
+    {
+        return threads.size();
+    }
 };
 
 #endif
