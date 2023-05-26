@@ -11,6 +11,7 @@ constexpr static const double inf = std::numeric_limits<double>::infinity();
 
 struct Dot // cannot use constructor because on Memory
 {
+    bool visit;
     int n; // n determines the type of Dot
     size_t s;
     int w;

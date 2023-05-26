@@ -14,36 +14,44 @@ struct Align : Memory, Graph
 {
     struct CrossGlobalData
     {
-        struct SimNode
+        struct Doo
         {
-            struct Doo
-            {
-                int w;
-                double F;
-                double G;
+            int w;
+            double F, G;
 
-                Doo(int w_, double F_, double G_)
-                    : w(w_), F(F_), G(G_)
-                {
-                }
-            };
-            int c;
-            size_t sr1;
-            size_t sr2;
-            std::deque<Doo> FG;
-
-            SimNode(int c_, size_t sr1_, size_t sr2_)
-                : c(c_), sr1(sr1_), sr2(sr2_)
+            Doo(int w_, double F_, double G_)
+                : w(w_), F(F_), G(G_)
             {
-            }
-
-            void reset(int c_, size_t sr1_, size_t sr2_)
-            {
-                c = c_;
-                sr1 = sr1_;
-                sr2 = sr2_;
             }
         };
+
+        std::deque<Doo> FG;
+
+        struct SimNode
+        {
+            int c;
+            int64_t sr1, sr2;
+            int shiftFG;
+
+            SimNode(int c_, int64_t sr1_, int64_t sr2_, int shiftFG_)
+                : c(c_), sr1(sr1_), sr2(sr2_), shiftFG(shiftFG_)
+            {
+            }
+        };
+
+        std::deque<SimNode> simnodes;
+
+        void emplace_back(int c_, int64_t sr1_, int64_t sr2_)
+        {
+            simnodes.emplace_back(c_, sr1_, sr2_, FG.size());
+        }
+
+        void pop_back()
+        {
+            if (FG.size() > simnodes.back().shiftFG)
+                FG.erase(FG.begin() + simnodes.back().shiftFG, FG.end());
+            simnodes.pop_back();
+        }
 
         struct Do
         {
@@ -51,14 +59,12 @@ struct Align : Memory, Graph
             double E;
 
             Do(int w_, double E_)
+            : w(w_), E(E_)
             {
-                w = w_;
-                E = E_;
             }
         };
 
         std::deque<Do> E0, E;
-        std::deque<SimNode> simnodes;
         std::deque<double> Ethres;
     };
 
@@ -87,6 +93,7 @@ struct Align : Memory, Graph
             ptr[w].n = n;
             ptr[w].s = s;
             ptr[w].w = w;
+            ptr[w].visit = false;
         }
     }
 
@@ -105,7 +112,7 @@ struct Align : Memory, Graph
             Dots[w].n = n;
             Dots[w].s = s;
             Dots[w].w = w;
-            Dots[w].s_sz = 0;
+            Dots[w].visit = false;
         }
     }
 
@@ -114,6 +121,7 @@ struct Align : Memory, Graph
         Initial(chunk_sz_);
         for (auto &node : nodes)
         {
+            node.Abar.visit = false;
             node.Abar.n = -2;
             node.Abar.s = 0;
             node.Abar.w = 0;
@@ -280,88 +288,83 @@ struct Align : Memory, Graph
     void CrossIterationGlobal(EdgeGlobalCross *edge, int scc_sz)
     {
         std::deque<Dot> &A = edge->tail->A.back();
-        auto &simnodes = crossglobaldata.simnodes;
-        auto &E0 = crossglobaldata.E0;
-        auto &E = crossglobaldata.E;
+        std::deque<CrossGlobalData::SimNode> &simnodes = crossglobaldata.simnodes;
+        std::deque<CrossGlobalData::Do> &E0 = crossglobaldata.E0, &E = crossglobaldata.E;
         std::deque<double> &Ethres = crossglobaldata.Ethres;
+        std::deque<CrossGlobalData::Doo> &FG = crossglobaldata.FG;
 
-        int lambda = 0;
         int c = -1;
         int64_t sr1 = 0, sr2 = edge->browheel.sequence.size() - 1;
-        if (lambda < simnodes.size())
-            simnodes[lambda].reset(c, sr1, sr2);
-        else
-            simnodes.emplace_back(c, sr1, sr2);
+        crossglobaldata.emplace_back(c, sr1, sr2);
         for (size_t w = 0; w <= O.size(); ++w)
         {
             double tgw = (O.size() > w ? (O.size() - w - 1) * edge->tail->ue + edge->tail->ve : 0);
-            E0.emplace_back(w, w > 0 ? std::max(E0[w - 1].E + edge->ue, simnodes[0].FG[w - 1].G + edge->ve) : -inf);
+            E0.emplace_back(w, w > 0 ? std::max(E0[w-1].E + edge->ue, FG[w - 1].G + edge->ve) : -inf);
             if (E0[w].E + edge->ue < std::max(E0[w].E, A[w].val + edge->T) + edge->tail->ve && E0[w].E + (O.size() - w) * edge->ue < std::max(E0[w].E, A[w].val + edge->T) + tgw)
                 E0[w].E = -inf;
-            simnodes[lambda].FG.emplace_back(w, -inf, std::max(E0[w].E, A[w].val + edge->T));
-            Ethres[w] = std::max(E0[w].E, simnodes[0].FG[w].G + std::min(0.0, std::min(edge->tail->ve - edge->ue, tgw - (O.size() - w) * edge->ue)));
-            edge->head->updateA0(w, simnodes[lambda].FG[w].G, edge, simnodes[lambda].sr1, lambda);
+            FG.emplace_back(w, -inf, std::max(E0[w].E, A[w].val + edge->T));
+            Ethres[w] = std::max(E0[w].E, FG[w].G + std::min(0.0, std::min(edge->tail->ve - edge->ue, tgw - (O.size() - w) * edge->ue)));
+            edge->head->updateA0(w, FG[w].G, edge, simnodes[0].sr1, 0);
         }
 
         while (true)
         {
             do
             {
-                if (!simnodes[lambda].FG.empty())
+                if (simnodes.back().shiftFG < FG.size())
                     c = 1;
                 else
                 {
                     do
                     {
-                        c = simnodes[lambda].c;
-                        simnodes[lambda].FG.clear();
-                        --lambda;
-                    } while (c == 6 && lambda >= 0);
-                    if (lambda < 0)
+                        c = simnodes.back().c;
+                        crossglobaldata.pop_back();
+                    } while (c == 6 && !simnodes.empty());
+                    if (simnodes.empty())
                         break;
                 }
                 do
                 {
                     ++c;
-                    sr1 = simnodes[lambda].sr1;
-                    sr2 = simnodes[lambda].sr2;
+                    sr1 = simnodes.back().sr1;
+                    sr2 = simnodes.back().sr2;
                     edge->browheel.PreRange(sr1, sr2, c);
                 } while (sr1 > sr2 && c < 6);
                 if (sr1 <= sr2)
                 {
-                    ++lambda;
-                    if (lambda < simnodes.size())
-                        simnodes[lambda].reset(c, sr1, sr2);
-                    else
-                        simnodes.emplace_back(c, sr1, sr2);
+                    crossglobaldata.emplace_back(c, sr1, sr2);
                     break;
                 }
-                else
-                    simnodes[lambda].FG.clear();
+                else if(FG.size() > simnodes.back().shiftFG)
+                    FG.erase(FG.begin() + simnodes.back().shiftFG, FG.end());
             } while (true);
-            if (lambda < 0)
+            if (simnodes.empty())
                 break;
 
-            for (int j = 0, w = simnodes[lambda - 1].FG[j].w;;)
+            int64_t idx = simnodes[simnodes.size() - 2].shiftFG;
+            for (int j = 0, w = FG[idx].w;;)
             {
-                E.emplace_back(w, std::max((!E.empty() && E.back().w == w - 1) ? E.back().E + edge->ue : -inf, (!simnodes[lambda].FG.empty() && simnodes[lambda].FG.back().w == w - 1) ? simnodes[lambda].FG.back().G + edge->ve : -inf));
+                E.emplace_back(w, std::max((!E.empty() && E.back().w == w - 1) ? E.back().E + edge->ue : -inf, (simnodes.back().shiftFG < FG.size() && FG.back().w == w - 1) ? FG.back().G + edge->ve : -inf));
                 if (E.back().E < Ethres[w])
                     E.back().E = -inf;
 
-                double F_val = j < simnodes[lambda - 1].FG.size() && simnodes[lambda - 1].FG[j].w == w ? std::max(simnodes[lambda - 1].FG[j].F + edge->uf, simnodes[lambda - 1].FG[j].G + edge->vf) : -inf;
-                double G_val = j > 0 && simnodes[lambda - 1].FG[j - 1].w == w - 1 ? simnodes[lambda - 1].FG[j - 1].G + edge->gamma[simnodes[lambda].c][BroWheel::base2int(O[w - 1])] : -inf;
+                double F_val = idx < simnodes.back().shiftFG && FG[idx].w == w ? std::max(FG[idx].F + edge->uf, FG[idx].G + edge->vf) : -inf;
+                double G_val = j > 0 && FG[idx - 1].w == w - 1 ? FG[idx - 1].G + edge->gamma[simnodes.back().c][BroWheel::base2int(O[w - 1])] : -inf;
                 G_val = std::max(std::max(G_val, E.back().E), F_val);
-                if (G_val >= simnodes[0].FG[w].G)
+                if (G_val >= FG[w].G)
                 {
-                    simnodes[lambda].FG.emplace_back(w, F_val, G_val);
-                    edge->head->updateA0(w, G_val, edge, simnodes[lambda].sr1, lambda);
+                    FG.emplace_back(w, F_val, G_val);
+                    edge->head->updateA0(w, G_val, edge, simnodes.back().sr1, simnodes.size() - 1);
                 }
-                if (j < simnodes[lambda - 1].FG.size() && simnodes[lambda - 1].FG[j].w <= w)
+                if (idx < simnodes.back().shiftFG && FG[idx].w <= w)
+                {
                     ++j;
-                if (w < O.size() && (simnodes[lambda - 1].FG[j - 1].w == w || (!simnodes[lambda].FG.empty() && simnodes[lambda].FG.back().w == w) || (!E.empty() && E.back().w == w && E.back().E > -inf)))
+                    ++idx;
+                }
+                if (w < O.size() && (FG[idx - 1].w == w || (simnodes.back().shiftFG < FG.size() && FG.back().w == w) || (!E.empty() && E.back().w == w && E.back().E > -inf)))
                     ++w;
-                else if (j < simnodes[lambda - 1].FG.size())
-                    w = simnodes[lambda - 1].FG[j].w;
+                else if (idx < simnodes.back().shiftFG)
+                    w = FG[idx].w;
                 else
                     break;
             }
@@ -503,15 +506,16 @@ struct Align : Memory, Graph
         fout.write((char *)&Onsz, sizeof(Onsz));
         fout.write(Oname.data(), sizeof(char) * Onsz);
         std::queue<Dot *> dots;
+        std::deque<Dot *> visits;
         size_t id = 0;
         Q.id = id;
-        Q.s_sz = -Q.s_sz - 1;
+        Q.visit = true;
         dots.push(&Q);
         while (!dots.empty())
         {
             Dot *M = dots.front();
             dots.pop();
-            M->s_sz = -M->s_sz - 1;
+            visits.push_back(M);
             if (M->n < -3 && M->s == 0)
                 GlobalTrack(M);
             fout.write((char *)&M->n, sizeof(Dot::n));
@@ -522,10 +526,10 @@ struct Align : Memory, Graph
             fout.write((char *)&M->lambda, sizeof(Dot::lambda));
             for (int i = 0; i < M->s_sz; ++i)
             {
-                if (M->sources[i]->s_sz >= 0)
+                if (!M->sources[i]->visit)
                 {
                     M->sources[i]->id = ++id;
-                    M->sources[i]->s_sz = -M->sources[i]->s_sz - 1;
+                    M->sources[i]->visit = true;
                     dots.push(M->sources[i]);
                 }
                 fout.write((char *)&M->sources[i]->id, sizeof(M->sources[i]->id));
@@ -534,6 +538,11 @@ struct Align : Memory, Graph
         if (id > max_id)
             max_id = id;
 
+        while(!visits.empty())
+        {
+            visits.back()->visit = false;
+            visits.pop_back();
+        }
         for (auto &edge : global_crosses)
             edge.tracktree.clear();
         for (auto &edge : global_circuits)
