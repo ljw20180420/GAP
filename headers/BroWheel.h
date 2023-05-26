@@ -1,6 +1,7 @@
 #ifndef BROWHEEL_H
 #define BROWHEEL_H
 
+#include <bits/stdc++.h>
 #include <limits>
 #include <vector>
 #include <string>
@@ -14,82 +15,258 @@
 #include <experimental/filesystem>
 #include "Threadpool.h"
 
-struct Memory
+template <typename T>
+struct BinVec
 {
-    size_t chunk_sz;
-    std::vector<char*> chunks;
-    char* now;
-    size_t remain;
-    size_t chunk_id;
-    
-    ~Memory()
+    T sigma;
+    T ww;
+    T sz;
+
+    std::vector<char> BV;
+
+    BinVec(T sigma_)
     {
-        for(size_t i=0; i<chunks.size(); ++i)
-            delete[] chunks[i];
+        sigma=sigma_;
+        sigma2ww();
     }
-    
-    void Initial(size_t chunk_sz_)
+
+    void sigma2ww()
     {
-        for(size_t i=0; i<chunks.size(); ++i)
-            delete[] chunks[i];
-        chunks.clear();
-        chunk_sz=chunk_sz_;
-        chunks.emplace_back(new char[chunk_sz]);
-        now=chunks.back();
-        remain=chunk_sz;
-        chunk_id=0;
-    }
-    
-    template <typename U>
-    U* heap_alloc(size_t num)
-    {
-        size_t size=num*sizeof(U);
-        void* ptr=now;
-        if(!(now=(char*)std::align(alignof(U),size,ptr,remain)))
+        ww=0;
+        T sigma_=sigma;
+        while(sigma_>0)
         {
-            ++chunk_id;
-            if(chunk_id==chunks.size())
-            {
-                chunks.emplace_back(new char[chunk_sz]);
-                now=chunks.back();
-            }
-            else
-                now=chunks[chunk_id];
-            remain=chunk_sz;
-            ptr=now;
-            now=(char*)std::align(alignof(U),size,ptr,remain);
+            sigma_/=2;
+            ++ww;
         }
-        now+=size;
-        remain-=size;
-        return (U*)(now-size);
+    }
+
+    void resize(T N)
+    {
+        BV.resize((ww*N+CHAR_BIT-1)/CHAR_BIT);
+        sz=N;
     }
     
+    bool getbit(T j)
+    {
+        return BV[j/CHAR_BIT]<<(j%CHAR_BIT) & 128;
+    }
+
+    void setbit(T j, bool logic)
+    {
+        if(logic)
+            BV[j/CHAR_BIT]|=128>>(j%CHAR_BIT);
+        else
+            BV[j/CHAR_BIT]&=~(128>>(j%CHAR_BIT));
+    }
+
+    T operator()(T i)
+    {
+        T j=ww*i;
+        T c=getbit(j);
+        while(j<ww*(i+1)-1)
+        {
+            c<<=1;
+            c+=getbit(++j);
+        }
+        return c;
+    }
+    
+    void set(T i, T c)
+    {
+        T j=ww*(i+1);
+        while(j>ww*i)
+        {
+            setbit(--j, c & 1);
+            c/=2;
+        }
+    }
+
+    void push_back(T c)
+    {
+        resize(++sz);
+        set(sz-1,c);
+    }
+
     void clear()
     {
-        chunk_id=0;
-        now=chunks.front();
-        remain=chunk_sz;
+        BV.clear();
+        sz=0;
+    }
+
+    void reserve(T N)
+    {
+        BV.reserve((N*ww+CHAR_BIT-1)/CHAR_BIT);
+    }
+
+    T size()
+    {
+        return sz;
+    }
+
+    void shrink_to_fit()
+    {
+        BV.resize((sz*ww+CHAR_BIT-1)/CHAR_BIT);
+        BV.shrink_to_fit();
+    }
+
+    void saveBinVec(std::ofstream & fout)
+    {
+        fout.write((char*)&sigma,sizeof(T));
+        fout.write((char*)&sz,sizeof(T));
+        T tmp=BV.size();
+        fout.write((char*)&tmp,sizeof(T));
+        fout.write(BV.data(),BV.size());
+    }
+
+    void loadBinVec(std::ifstream & fin)
+    {
+        fin.read((char*)&sigma,sizeof(T));
+        sigma2ww();
+        fin.read((char*)&sz,sizeof(T));
+        T tmp;
+        fin.read((char*)&tmp,sizeof(T));
+        BV.resize(tmp);
+        fin.read(BV.data(),tmp);
+        BV.shrink_to_fit();
     }
 };
 
 template <typename T>
-struct BinWord
+struct RankVec : BinVec<T>
 {
-    static const int ww=3;
-    static const int r=(sizeof(T)*CHAR_BIT)/ww;
-    static const int bsf=(r-1)*ww;
-    static const int block_size=64*1024;
+    T** R1=NULL;
+    uint16_t** R2=NULL;
+    const T b1=8;
+    const T b2=256*32;
 
-    std::vector<bool> BV;
-    
+    RankVec(T sigma_) : BinVec<T>::BinVec(sigma_)
+    {}
+
+    ~RankVec()
+    {
+        release(R1);
+        release(R2);
+    }
+
+    template <typename U>
+    void release(U** R)
+    {
+        if(R)
+        {
+            delete[] R[0];
+            delete[] R;
+        }
+    }
+
+    void apply_memory()
+    {
+        apply(R1, b1*b2);
+        apply(R2, b1);
+    }
+
+    template <typename U>
+    void apply(U** & R, T block_size)
+    {
+        T sz=(this->size()-1)/block_size+2;
+        release(R);
+        R=new U*[this->sigma];
+        R[0]=new U[this->sigma*sz];
+        for(T i=1; i<this->sigma; ++i)
+            R[i]=R[i-1]+sz;
+    }
+
+    T count(T cutoff_size)
+    {
+        for(T c=0; c<this->sigma; ++c)
+        {
+            R1[c][0]=0;
+            R2[c][0]=0;
+        }
+        T j1=0;
+        for(T i=0, j2=0; i<cutoff_size; ++i)
+        {
+            if(i%(b1*b2)==0)
+            {
+                ++j1;
+                for(T c=0; c<this->sigma; ++c)
+                    R1[c][j1]=R1[c][j1-1];
+            }
+            if(i%b1==0)
+            {
+                ++j2;
+                for(T c=0; c<this->sigma; ++c)
+                    if(j2%b2==0)
+                        R2[c][j2]=0;
+                    else
+                        R2[c][j2]=R2[c][j2-1];
+            }
+            T c=(*this)(i);
+            if(c>0)
+            {
+                ++R1[c-1][j1];
+                if(j2%b2!=0)
+                    ++R2[c-1][j2];
+            }
+        }
+        return j1;
+    }
+
+    T rank(T c, T i)
+    {
+        T r=R1[c-1][i/(b1*b2)]+R2[c-1][i/b1];
+        for(T j=(i/b1)*b1; j<=i; ++j)
+            if((*this)(j)==c)
+                ++r;
+        return r;
+    }
+
+    void saveRankVec(std::ofstream & fout)
+    {
+        this->saveBinVec(fout);
+        T sz=(this->size()-1)/(b1*b2)+2;
+        fout.write((char*)R1[0],this->sigma*sz*sizeof(T));
+        sz=(this->size()-1)/b1+2;
+        fout.write((char*)R2[0],this->sigma*sz*sizeof(u_int16_t));
+    }
+
+    void loadRankVec(std::ifstream & fin)
+    {
+        this->loadBinVec(fin);
+        apply_memory();
+        T sz=(this->size()-1)/(b1*b2)+2;
+        fin.read((char*)R1[0],this->sigma*sz*sizeof(T));
+        sz=(this->size()-1)/b1+2;
+        fin.read((char*)R2[0],this->sigma*sz*sizeof(u_int16_t));
+    }
+};
+
+template <typename T>
+struct BroWheel
+{
+    const T block_size=64*1024;
+    const static T sigma=6;
+    BinVec<T> sequence=BinVec<T>(sigma);
+    RankVec<T> bwt=RankVec<T>(sigma);
+    std::array<T,sigma> C;
+    const T f=16;
+    RankVec<T> sra=RankVec<T>(1);
+    T* ssa=NULL;
+
+    ~BroWheel()
+    {
+        if(ssa)
+            delete[] ssa;
+    }
+
     void readin(std::list<std::string> & files, bool reverse)
     {
-        T G_sz=0;
+        T sequence_sz=0;
         std::experimental::filesystem::path path=std::experimental::filesystem::current_path();
         for(auto file : files)
-            G_sz+=std::experimental::filesystem::file_size(path/file);
-        BV.clear();
-        BV.reserve(G_sz*ww);
+            sequence_sz+=std::experimental::filesystem::file_size(path/file);
+        sequence.clear();
+        sequence.reserve(sequence_sz);
         
         char* str=new char[block_size];
         for(auto file : files)
@@ -99,24 +276,19 @@ struct BinWord
             do
             {
                 fin.read(str,block_size);
-                for(int i=0, tmp=fin.good()?block_size:fin.gcount(); i<tmp; ++i)
+                for(T i=0; i<(fin.good()?block_size:fin.gcount()); ++i)
                 {
                     if(!isspace(str[i]))
                     {
                         if(!flag)
                             flag=true;
-                        int tmp=str[i]+6;
-                        BV.push_back(tmp & 8);
-                        BV.push_back(tmp & 4);
-                        BV.push_back(tmp & 2);
+                        sequence.push_back((str[i]+6)>>1);
                     }
                     else
                     {
                         if(flag)
                         {
-                            BV.push_back(0);
-                            BV.push_back(0);
-                            BV.push_back(1);
+                            sequence.push_back(1);
                             flag=false;
                         }
                     }
@@ -124,370 +296,177 @@ struct BinWord
             }while(fin.good());
             if(flag)
             {
-                BV.push_back(0);
-                BV.push_back(0);
-                BV.push_back(1);
+                sequence.push_back(1);
             }
             fin.close();
         }
-        BV.back()=0;
-        BV.shrink_to_fit();
+        sequence.set(sequence.size()-1,0);
+        sequence.shrink_to_fit();
         if(reverse)
-            for(T i=0,j=BV.size()-6; i<j; j-=6)
+            for(T i=0,j=sequence.size()-2; i<j; ++i,--j)
             {
-                std::swap(BV[i++],BV[j++]);
-                std::swap(BV[i++],BV[j++]);
-                std::swap(BV[i++],BV[j++]);
+                T c=sequence(i);
+                sequence.set(i,sequence(j));
+                sequence.set(j,c);
             }
         delete[] str;
     }
-    
-    void resize(T N)
-    {
-        BV.resize(ww*N);
-        BV.shrink_to_fit();
-    }
-    
-    T operator()(T i)
-    {
-        T j=ww*i, v=BV[j]<<1;
-        v+=BV[++j];
-        v<<=1;
-        v+=BV[++j];
-        return v;
-    }
-    
-    void set(T i, T v)
-    {
-        T j=ww*i;
-        BV[j]=(v & 4);
-        BV[++j]=(v & 2);
-        BV[++j]=(v & 1);
-    }
-    
+
     void to_T(T h, T t, T* SAI)
     {
-        T i=t-1, k=i-h;
-        SAI[k]=(*this)(i)<<bsf;
-        while(k>0)
+        T bsf=((sizeof(T)*CHAR_BIT)/sequence.ww-1)*sequence.ww;
+        T i=t-1;
+        SAI[i-h]=sequence(i)<<bsf;
+        while(i>h)
         {
-            --k;
-            SAI[k]=(SAI[k+1]>>ww)+((*this)(--i)<<bsf);
+            --i;
+            SAI[i-h]=(SAI[i-h+1]>>sequence.ww)+(sequence(i)<<bsf);
         }
     }
-    
-    T size()
-    {
-        return BV.size()/ww;
-    }
-    
-    void to_chars(char* bytes)
-    {
-        T sz=(BV.size()+CHAR_BIT-1)/CHAR_BIT;
-        T j=0;
-        for(T i=0; i<sz; ++i)
-        {
-            bytes[i]=0;
-            for(T k=CHAR_BIT-1; (k>-1)&&(j<BV.size()); --k,++j)
-                bytes[i]|= BV[j]<<k;
-        }
-    }
-    
-    void from_chars(char* bytes, T BV_sz)
-    {
-        BV.resize(BV_sz);
-        BV.shrink_to_fit();
-        T sz=(BV.size()+CHAR_BIT-1)/CHAR_BIT;
-        T j=0;
-        for(T i=0; i<sz; ++i)
-            for(T k=CHAR_BIT-1; (k>-1)&&(j<BV.size()); --k,++j)
-                BV[j]=bytes[i] & 1UL<<k;
-    }
-};
 
-
-template <typename T>
-struct BroWheel : BinWord<T>, Memory
-{
-    static const int para_sz=6;
-    static const int sigma=6;
-    static const int oo=256;
-    static const int oo2=oo*oo;
-    static const int f=32;
-    
-    T* C;
-    T** Occ1;
-    uint16_t** Occ2;
-    T* SSA;
-    uint16_t** RSRA;
-    
-    void index(BinWord<T> & G, T ll, thread_pool & threads1, thread_pool & thread2, std::string outfile)
+    void index(T ll, thread_pool & threads1, thread_pool & thread2)
     {
-        T RSRA_sz=(G.size()+oo2-1)/oo2+1, SSA_sz=(G.size()+f-2)/f, Occ1_sz=(G.size()+oo2-1)/oo2+1, Occ2_sz=(G.size()+oo-1)/oo+1;
-        T* SA=new T[(para_sz+1)*(4*ll-1)+SSA_sz];
+        T ssa_sz=(sequence.size()+f-1)/f;
+        T* SA=new T[(threads1.size()+1)*(4*ll-1)+ssa_sz];
         T* SAI=SA+2*ll-1;
         T* SAmem=SAI+2*ll;
-        T* SAImem=SAmem+para_sz*(2*ll-1);
-        T* SRA=SAImem+para_sz*2*ll;
-        T** ptr=new T*[RSRA_sz];
-        Initial((sigma*(Occ1_sz+1)+SSA_sz+3)*sizeof(T)+(sigma+1)*sizeof(T*)+(sigma*Occ2_sz+SSA_sz+2)*sizeof(uint16_t)+(sigma+RSRA_sz+2)*sizeof(uint16_t*));
-        C=heap_alloc<T>(sigma);
-        Occ1=heap_alloc<T*>(sigma);
-        Occ2=heap_alloc<uint16_t*>(sigma);
-        RSRA=heap_alloc<uint16_t*>(RSRA_sz);
-        RSRA[0]=heap_alloc<uint16_t>(SSA_sz);
-        SSA=heap_alloc<T>(SSA_sz);
-        Occ1[0]=heap_alloc<T>(sigma*Occ1_sz);
-        Occ2[0]=heap_alloc<uint16_t>(sigma*Occ2_sz);
-        for(T i=1; i<sigma; ++i)
-        {
-            Occ1[i]=&Occ1[i-1][Occ1_sz];
-            Occ2[i]=&Occ2[i-1][Occ2_sz];
-        }
-        this->resize(G.size());
-        BinWord<T> BWTT;
-        BWTT.resize(G.size());
+        T* SAImem=SAmem+threads1.size()*(2*ll-1);
+        T* rssa=SAImem+threads1.size()*2*ll;
+        if(ssa)
+            delete[] ssa;
+        ssa=new T[ssa_sz];
+        bwt.resize(sequence.size());
+        bwt.apply_memory();
+        sra.resize(sequence.size());
+        sra.apply_memory();
+        BinVec<T> bwtt(sigma);
+        bwtt.resize(sequence.size());
         
-        T N=G.size()/ll-1;
+        T N=sequence.size()/ll-1;
         std::queue<std::future<std::tuple<T*,T*,T>>> futures1;
-        T m=std::max(T(0),N-para_sz);
+        T m=(0>N-threads1.size()?0:N-threads1.size());
         for(T n=N-1; n>=m; --n)
-            futures1.push(threads1.submit(std::bind(&BroWheel::SegmentSort, this, G, n, ll, SAmem, SAImem)));
+           futures1.push(threads1.submit(std::bind(&BroWheel::SegmentSort, this, n, ll, SAmem, SAImem, threads1.size())));
         
-        int st=std::max(T(0),N*ll);
-        GetSA(G, st, G.size(), SA, SAI);
-        this->set(SAI[0],0);
-        T BWT_sz=G.size()-st;
-        for(T i=1; i<BWT_sz; ++i)
-            this->set(SAI[i],G(st+i-1));
-        CountBWT(BWT_sz);
+        T st=std::max(T(0),N*ll);
+        GetSA(st, sequence.size(), SA, SAI);
+        bwt.set(SAI[0],0);
+        T cutoff_size=sequence.size()-st;
+        for(T i=1; i<cutoff_size; ++i)
+            bwt.set(SAI[i],sequence(st+i-1));
+        T R1_tail=bwt.count(cutoff_size);
+        for(T c=1; c<sigma; ++c)
+            C[c]=C[c-1]+bwt.R1[c-1][R1_tail];
         
         for(T n=N-1; n>=0; --n)
         {
             T *SAn, *SAIn, pn;
             std::tie(SAn,SAIn,pn)=futures1.front().get();
             futures1.pop();
-            std::future<void> future2=thread2.submit(std::bind(&BroWheel::RelativeOrder, this, G, SAI, SAIn, n, ll));
+            std::future<void> future2=thread2.submit(std::bind(&BroWheel::RelativeOrder, this, SAI, SAIn, n, ll));
             for(T i=0; i<pn; i+=2)
-                SortSplit(SAn, SAIn[i], SAIn[i+1], SAI, SAI, false);
+                SortSplit(SAn, SAIn[i], SAIn[i+1], NULL, SAI);
             future2.wait();
-            this->set(SAI[0],G((n+1)*ll-1));
+            bwt.set(SAI[0],sequence((n+1)*ll-1));
             for(T i=0; i<ll; ++i)
                 SAI[SAn[i]]=SAIn[SAn[i]+ll]+i+1;
-            BWT_sz+=ll;
-            for(T i=0, j=0, k=0; i<BWT_sz; ++i)
+            cutoff_size+=ll;
+            for(T i=0, j=0, k=0; i<cutoff_size; ++i)
             {
                 if(k>=ll || i!=SAI[SAn[k]])
-                    BWTT.set(i,(*this)(j++));
+                    bwtt.set(i,bwt(j++));
                 else
                 {
                     if(SAn[k]>0)
-                        BWTT.set(i,G(n*ll+SAn[k]-1));
+                        bwtt.set(i,sequence(n*ll+SAn[k]-1));
                     else
-                        BWTT.set(i,0);
+                        bwtt.set(i,0);
                     ++k;
                 }
             }
             if(m>0)
             {
-                --m;
-                futures1.push(threads1.submit(std::bind(&BroWheel::SegmentSort, this, G, m, ll, SAmem, SAImem)));
+               --m;
+               futures1.push(threads1.submit(std::bind(&BroWheel::SegmentSort, this, m, ll, SAmem, SAImem, threads1.size())));
             }
-            std::swap(this->BV,BWTT.BV);
-            CountBWT(BWT_sz);
+            std::swap(bwt.BV,bwtt.BV);
+            R1_tail=bwt.count(cutoff_size);
+            for(T c=1; c<sigma; ++c)
+                C[c]=C[c-1]+bwt.R1[c-1][R1_tail];
         }
         
-        for(T p=1; p<RSRA_sz-1; ++p)
-            RSRA[p]=RSRA[0];
-        T i=0;
-        for(T j=BWT_sz-2, tmp; j>=(SSA_sz-1)*f; --j)
+        for(T k=ssa_sz-1, i=0, j=cutoff_size-2; k>=0; --k)
         {
-            tmp=(*this)(i);
-            i=C[tmp-1]+this->GetOcc(i,tmp);
-        }
-        SRA[SSA_sz-1]=i;
-        for(T k=SSA_sz-2; k>=0; --k)
-        {
-            for(T c=0, tmp; c<f; ++c)
+            while(j>=k*f)
             {
-                tmp=(*this)(i);
-                i=C[tmp-1]+this->GetOcc(i,tmp);
+                T c=bwt(i);
+                i=C[c-1]+this->bwt.rank(c,i);
+                --j;
             }
-            SRA[k]=i;
-            ++RSRA[i/oo2+1];
+            rssa[k]=i;
+            sra.set(i,1);
         }
-        ptr[0]=ptr[1]=&SSA[0];
-        for(T p=1, tmp; p<RSRA_sz-1; ++p)
-        {
-            tmp=RSRA[p]-RSRA[0];
-            ptr[p+1]=ptr[p]+tmp;
-            RSRA[p]=RSRA[p-1]+tmp;
-        }
-        RSRA[RSRA_sz-1]=&RSRA[0][SSA_sz];
-        for(T k=0, p; k<SSA_sz; ++k)
-        {
-            p=SRA[k]/oo2+1;
-            *(ptr[p]++)=k;
-        }
-        for(T p=1, *pptr=ptr[0]; p<RSRA_sz; pptr=ptr[p],++p)
-        {
-            std::sort(pptr, ptr[p],[SRA](T i1, T i2) {return SRA[i1]<SRA[i2];});
-        }
-        for(T k=0; k<SSA_sz; ++k)
-        {
-            RSRA[0][k]=SRA[SSA[k]]%oo2;
-            SSA[k]*=f;
-        }
+        sra.count(sra.size());
+        for(T k=0; k<ssa_sz; ++k)
+            ssa[sra.rank(1,rssa[k])-1]=k*f;
         delete[] SA;
-        delete[] ptr;
-        
-        std::ofstream fout(outfile, std::ios::binary);
-        T BV_sz=G.BV.size();
-        fout.write((char*)&BV_sz,sizeof(T));
-        T sz=(BV_sz+CHAR_BIT-1)/CHAR_BIT;
-        char* bytes=new char[sz];
-        G.to_chars(bytes);
-        fout.write(bytes,sz);
-        this->to_chars(bytes);
-        fout.write(bytes,sz);
-        delete[] bytes;
-        fout.write((char*)&RSRA_sz,sizeof(T));
-        fout.write((char*)&SSA_sz,sizeof(T));
-        fout.write((char*)&Occ1_sz,sizeof(T));
-        fout.write((char*)&Occ2_sz,sizeof(T));
-        for(T i=1; i<RSRA_sz; ++i)
-        {
-            T tmp=RSRA[i]-RSRA[0];
-            fout.write((char*)&tmp,sizeof(T));
-        }
-        fout.write((char*)C,sigma*sizeof(T));
-        fout.write((char*)Occ1[0],sigma*Occ1_sz*sizeof(T));
-        fout.write((char*)Occ2[0],sigma*Occ2_sz*sizeof(uint16_t));
-        fout.write((char*)SSA,SSA_sz*sizeof(T));
-        fout.write((char*)RSRA[0],SSA_sz*sizeof(uint16_t));
+    }
+
+    void saveBroWheel(std::string file)
+    {
+        std::ofstream fout(file, std::ios::binary);
+        sequence.saveBinVec(fout);
+        bwt.saveRankVec(fout);
+        fout.write((char*)C.data(),sigma*sizeof(T));
+        sra.saveRankVec(fout);
+        T ssa_sz=(sequence.size()+f-1)/f;
+        fout.write((char*)ssa,ssa_sz*sizeof(T));
         fout.close();
     }
-    
-    void reindex(BinWord<T> & G, std::string infile)
+
+    void loadBroWheel(std::string file)
     {
-        std::ifstream fin(infile, std::ios::binary);
-        T BV_sz;
-        fin.read((char*)&BV_sz,sizeof(T));
-        T sz=(BV_sz+CHAR_BIT-1)/CHAR_BIT;
-        char* bytes=new char[sz];
-        fin.read(bytes,sz);
-        G.from_chars(bytes,BV_sz);
-        fin.read(bytes,sz);
-        this->from_chars(bytes,BV_sz);
-        delete[] bytes;
-        T RSRA_sz, SSA_sz, Occ1_sz, Occ2_sz;
-        fin.read((char*)&RSRA_sz,sizeof(T));
-        fin.read((char*)&SSA_sz,sizeof(T));
-        fin.read((char*)&Occ1_sz,sizeof(T));
-        fin.read((char*)&Occ2_sz,sizeof(T));
-        Initial((sigma*(Occ1_sz+1)+SSA_sz+3)*sizeof(T)+(sigma+1)*sizeof(T*)+(sigma*Occ2_sz+SSA_sz+2)*sizeof(uint16_t)+(sigma+RSRA_sz+2)*sizeof(uint16_t*));
-        C=heap_alloc<T>(sigma);
-        Occ1=heap_alloc<T*>(sigma);
-        Occ2=heap_alloc<uint16_t*>(sigma);
-        RSRA=heap_alloc<uint16_t*>(RSRA_sz);
-        RSRA[0]=heap_alloc<uint16_t>(SSA_sz);
-        SSA=heap_alloc<T>(SSA_sz);
-        Occ1[0]=heap_alloc<T>(sigma*Occ1_sz);
-        Occ2[0]=heap_alloc<uint16_t>(sigma*Occ2_sz);
-        for(T i=1; i<sigma; ++i)
-        {
-            Occ1[i]=&Occ1[i-1][Occ1_sz];
-            Occ2[i]=&Occ2[i-1][Occ2_sz];
-        }
-        for(T i=1; i<RSRA_sz; ++i)
-        {
-            T tmp;
-            fin.read((char*)&tmp,sizeof(T));
-            RSRA[i]=RSRA[0]+tmp;
-        }
-        fin.read((char*)C,sigma*sizeof(T));
-        fin.read((char*)Occ1[0],sigma*Occ1_sz*sizeof(T));
-        fin.read((char*)Occ2[0],sigma*Occ2_sz*sizeof(uint16_t));
-        fin.read((char*)SSA,SSA_sz*sizeof(T));
-        fin.read((char*)RSRA[0],SSA_sz*sizeof(uint16_t));
+        std::ifstream fin(file, std::ios::binary);
+        sequence.loadBinVec(fin);
+        bwt.loadRankVec(fin);
+        fin.read((char*)C.data(),sigma*sizeof(T));
+        sra.loadRankVec(fin);
+        T ssa_sz=(sequence.size()+f-1)/f;
+        if(ssa)
+            delete[] ssa;
+        ssa=new T[ssa_sz];
+        fin.read((char*)ssa,ssa_sz*sizeof(T));
         fin.close();
     }
     
-    void RelativeOrder(BinWord<T> & G, T* SAI, T* SAIn, T n, T ll)
+    void RelativeOrder(T* SAI, T* SAIn, T n, T ll)
     {
-        T tmp=G((n+1)*ll-1);
-        SAIn[2*ll-1]=C[tmp-1]+GetOcc(SAI[0], tmp);
+        T c=sequence((n+1)*ll-1);
+        SAIn[2*ll-1]=C[c-1]+bwt.rank(c,SAI[0]);
         for(T i=ll-2; i>=0; --i)
         {
-            tmp=G(n*ll+i);
-            SAIn[i+ll]=C[tmp-1]+GetOcc(SAIn[i+ll+1], tmp);
+            c=sequence(n*ll+i);
+            SAIn[i+ll]=C[c-1]+bwt.rank(c,SAIn[i+ll+1]);
         }
     }
 
-    std::tuple<T*,T*,T> SegmentSort(BinWord<T> & G, T n, T ll, T* SAmem, T* SAImem)
+    std::tuple<T*,T*,T> SegmentSort(T n, T ll, T* SAmem, T* SAImem, T para_sz)
     {
         T* SA=SAmem+(n%para_sz)*(2*ll-1);
         T* SAI=SAImem+(n%para_sz)*2*ll;
-        GetSA(G, n*ll, (n+2)*ll-1, SA, SAI);
-        T p=GetALS(G, n*ll, (n+2)*ll-1, SA, SAI, ll);
+        GetSA(n*ll, (n+2)*ll-1, SA, SAI);
+        T p=GetALS(n*ll, (n+2)*ll-1, SA, SAI, ll);
         return std::make_tuple(SA,SAI,p);
-    }
-
-    void CountBWT(T BWT_sz)
-    {
-        for(T i=0; i<sigma; ++i)
-        {
-            C[i]=0;
-            Occ1[i][0]=0;
-            Occ2[i][0]=0;
-        }
-        T j1=0;
-        for(T i=0, j2=0; i<BWT_sz; ++i)
-        {
-            if(i%oo2==0)
-            {
-                ++j1;
-                for(T j=0; j<sigma; ++j)
-                    Occ1[j][j1]=Occ1[j][j1-1];
-            }
-            if(i%oo==0)
-            {
-                ++j2;
-                for(T j=0; j<sigma; ++j)
-                    if(j2%oo==0)
-                        Occ2[j][j2]=0;
-                    else
-                        Occ2[j][j2]=Occ2[j][j2-1];
-            }
-            T tmp=(*this)(i)-1;
-            if(tmp>=0)
-            {
-                ++Occ1[tmp][j1];
-                if(j2%oo!=0)
-                    ++Occ2[tmp][j2];
-            }
-        }
-        for(T i=1; i<sigma; ++i)
-            C[i]=C[i-1]+Occ1[i-1][j1];
-    }
-    
-    T GetOcc(T i, T c)
-    {
-        T tmp=Occ1[c-1][(i+1)/oo2]+Occ2[c-1][(i+1)/oo];
-        for(T j=i-(i+1)%oo+1; j<=i; ++j)
-            if((*this)(j)==c)
-                ++tmp;
-        return tmp;
     }
     
     std::tuple<T,T*> OffSet(T* S, T S_sz)
     {
-        T tmp=S[S_sz-1];
-        T i=C[tmp-1]+1, j;
-        if(tmp==sigma)
-            j=this->size()-1;
+        T c=S[S_sz-1];
+        T i=C[c-1]+1, j;
+        if(c==sigma)
+            j=bwt.size()-1;
         else
-            j=C[tmp];
+            j=C[c];
         for(T p=S_sz-2; p>=0; --p)
             PreRange(i,j,S[p]);
         T O_sz=j-i+1;
@@ -499,50 +478,23 @@ struct BroWheel : BinWord<T>, Memory
     
     T SimSuffix(T i)
     {
-        T j=0, k;
-        while((k=CheckMember(i))<0)
+        T j=0;
+        while(sra(i)==0)
         {
-            T tmp=(*this)(i);
-            i=C[tmp-1]+GetOcc(i,tmp);
+            T c=bwt(i);
+            i=C[c-1]+bwt.rank(c,i);
             ++j;
         }
-        return k+j;
-    }
-    
-    T CheckMember(T i)
-    {
-        uint16_t* p=RSRA[i/oo2];
-        uint16_t* q=RSRA[i/oo2+1]-1;
-        i=i%oo2;
-        if(p>q || *p>i || *q<i)
-            return -1;
-        else
-            if(*p==i)
-                return SSA[p-RSRA[0]];
-            else
-                if(*q==i)
-                    return SSA[q-RSRA[0]];
-        while(q-p>1)
-        {
-            uint16_t* m=p+(q-p)/2;
-            if(*m==i)
-                return SSA[m-RSRA[0]];
-            else
-                if(*m<i)
-                    p=m;
-                else
-                    q=m;
-        }
-        return -1;
+        return ssa[sra.rank(1,i)-1]+j;
     }
     
     void PreRange(T& i, T& j, T c)
     {
-        i=C[c-1]+GetOcc(i-1,c)+1;
-        j=C[c-1]+GetOcc(j,c);
+        i=C[c-1]+bwt.rank(c,i-1)+1;
+        j=C[c-1]+bwt.rank(c,j);
     }
     
-    T GetALS(BinWord<T> & G, T h, T t, T* SA, T* SAI, T ll)
+    T GetALS(T h, T t, T* SA, T* SAI, T ll)
     {
         T sz=t-h;
         for(T i=0; i<ll; ++i)
@@ -558,7 +510,7 @@ struct BroWheel : BinWord<T>, Memory
             if(SAI[i]!=ll-1)
             {
                 T j=SA[SAI[i]+1];
-                while(i+k<sz && j+k<sz && G(i+k+h)==G(j+k+h))
+                while(i+k<sz && j+k<sz && sequence(i+k+h)==sequence(j+k+h))
                     ++k;
                 SAI[SAI[i]+ll]=k;
                 if(k>0)
@@ -576,15 +528,15 @@ struct BroWheel : BinWord<T>, Memory
         return p;
     }
 
-    void GetSA(BinWord<T> & G, T h, T t, T* SA, T* SAI)
+    void GetSA(T h, T t, T* SA, T* SAI)
     {
         T sz=t-h;
-        G.to_T(h,t,SAI);
+        to_T(h,t,SAI);
         for(T i=0; i<sz; ++i)
             SA[i]=i;
         SAI[sz]=0;
-        SortSplit(SA, 0, sz-1, SAI, SAI, true);
-        T* SAIh=SAI+this->r;
+        SortSplit(SA, 0, sz-1, SAI, SAI);
+        T* SAIh=SAI+(sizeof(T)*CHAR_BIT)/sequence.ww;
         while(SA[0]>-sz)
         {
             T i=0;
@@ -604,7 +556,7 @@ struct BroWheel : BinWord<T>, Memory
                         k=0;
                     }
                     T j=SAI[SA[i]];
-                    SortSplit(SA, i, j, SAI, SAIh, true);
+                    SortSplit(SA, i, j, SAI, SAIh);
                     i=j+1;
                 }
             }
@@ -615,12 +567,12 @@ struct BroWheel : BinWord<T>, Memory
         }
     }
 
-    void SortSplit(T* SA, T p1, T p2, T* SAI, T* SAIh, bool group)
+    void SortSplit(T* SA, T p1, T p2, T* SAI, T* SAIh)
     {
         T n=p2-p1+1;
         if(n<7)
         {
-            InsertionSort(SA, p1, p2, SAI, SAIh, group);
+            InsertionSort(SA, p1, p2, SAI, SAIh);
             return;
         }
         T m=p1+n/2;
@@ -665,8 +617,8 @@ struct BroWheel : BinWord<T>, Memory
         pa=p1+pb-pa;
         pc=p2-pd+pc;
         if(pa>p1)
-            SortSplit(SA, p1, pa-1, SAI, SAIh, group);
-        if(group)
+            SortSplit(SA, p1, pa-1, SAI, SAIh);
+        if(SAI)
         {
             SAI[SA[pa]]=pc;
             if(pa==pc)
@@ -677,7 +629,7 @@ struct BroWheel : BinWord<T>, Memory
                 while(pa!=pc);
         }
         if(pc<p2)
-            SortSplit(SA, pc+1, p2, SAI, SAIh, group);
+            SortSplit(SA, pc+1, p2, SAI, SAIh);
     }
 
     T med3(T a, T b, T c)
@@ -692,7 +644,7 @@ struct BroWheel : BinWord<T>, Memory
             else return c;
     }
 
-    void InsertionSort(T* SA, T p1, T p2, T* SAI, T* SAIh, bool group)
+    void InsertionSort(T* SA, T p1, T p2, T* SAI, T* SAIh)
     {
         for(T i=p1+1; i<=p2; ++i)
         {
@@ -703,7 +655,7 @@ struct BroWheel : BinWord<T>, Memory
                 --j;
             }
         }
-        if(group)
+        if(SAI)
         {
             T k=p1;
             T v=SAIh[SA[k]];
@@ -727,30 +679,5 @@ struct BroWheel : BinWord<T>, Memory
         }
     }
 };
-
-template <typename T>
-void index_global(std::string file, T ll, thread_pool & threads1, thread_pool & thread2)
-{
-    int index_n;
-    std::ifstream fin(file);
-    fin >> index_n;
-    for(int i=0; i<index_n; ++i)
-    {
-        int file_n;
-        fin >> file_n;
-        std::list<std::string> files;
-        for(int i=0; i<file_n; ++i)
-        {
-            files.emplace_back();
-            fin >> files.back();
-        }
-        std::string outfile;
-        fin >> outfile;
-        BinWord<T> G;
-        G.readin(files, true);
-        BroWheel<T> Bro;
-        Bro.index(G, ll, threads1, thread2, outfile);
-    }
-}
 
 #endif
