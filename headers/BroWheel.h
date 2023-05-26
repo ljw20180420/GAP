@@ -484,6 +484,13 @@ struct BroWheel
     void loadBroWheel(std::string file_)
     {
         file=file_;
+
+        if (!std::experimental::filesystem::exists(file+".idx"))
+        {
+            std::cerr << "long reference index " << file << ".idx does not exist";
+            exit (EXIT_FAILURE);
+        }
+
         std::ifstream fin(file+".idx", std::ios::binary);
         fin.read((char*)&reverse,sizeof(reverse));
         fin.read((char*)&reverse_complement,sizeof(reverse_complement));
@@ -501,7 +508,6 @@ struct BroWheel
             fin.read((char*)&name_cumlen[i].second,sizeof(name_cumlen[i].second));
         }
 
-        // readin();
         bwt.loadRankVec(fin);
         fin.read((char*)C.data(),sigma*sizeof(C[0]));
         sra.loadRankVec(fin);

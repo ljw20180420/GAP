@@ -20,7 +20,7 @@ struct Track : Graph
         int s_sz;
     };
 
-    std::ofstream fout_align, fout_extract, fout_fail;
+    std::ofstream fout_align, fout_extract, fout_fail, fout_death;
     int max_extract, diff_thres, max_range, min_seg_num, max_seg_num;
     int64_t max_mega;
     std::vector<Dot> dots;
@@ -29,7 +29,7 @@ struct Track : Graph
     std::map<Dot *, MegaRange> megadots_tail;
     std::deque<std::pair<Dot *, std::deque<Dot *>>> megasources;
 
-    Track(std::string argfile, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel, std::string run_name, int max_extract_, int64_t max_mega_, int diff_thres_, int max_range_, int min_seg_num_, int max_seg_num_) : Graph(argfile, file2seq, file2browheel), fout_align(run_name + ".alg"), fout_extract(run_name + ".ext"), fout_fail(run_name + ".fail"), max_extract(max_extract_), max_mega(max_mega_), diff_thres(diff_thres_), max_range(max_range_), min_seg_num(min_seg_num_), max_seg_num(max_seg_num_)
+    Track(std::string argfile, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel, std::string run_name, int max_extract_, int64_t max_mega_, int diff_thres_, int max_range_, int min_seg_num_, int max_seg_num_) : Graph(argfile, file2seq, file2browheel), fout_align(run_name + ".alg"), fout_extract(run_name + ".ext"), fout_fail(run_name + ".fail"), fout_death(run_name + ".death"), max_extract(max_extract_), max_mega(max_mega_), diff_thres(diff_thres_), max_range(max_range_), min_seg_num(min_seg_num_), max_seg_num(max_seg_num_)
     {
     }
 
@@ -172,13 +172,23 @@ struct Track : Graph
 
         if (extracts.empty())
         {
-            fout_fail << Oname << '\n'
-                      << O << '\n';
-            if (Oname[0] == '@')
-                fout_fail << plr << '\n'
-                          << quality << '\n';
             if (Qrange.s_sz > 0)
+            {
+                fout_fail << Oname << '\n'
+                      << O << '\n';
+                if (Oname[0] == '@')
+                    fout_fail << plr << '\n'
+                          << quality << '\n';
                 return 1;
+            }
+            else
+            {
+                fout_death << Oname << '\n'
+                      << O << '\n';
+                if (Oname[0] == '@')
+                    fout_death << plr << '\n'
+                          << quality << '\n';
+            }
         }
         return 0;
     }

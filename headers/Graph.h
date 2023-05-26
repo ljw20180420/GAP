@@ -58,6 +58,11 @@ struct NameSeq
 
     void readin(std::string file)
     {
+        if (!std::experimental::filesystem::exists(file))
+        {
+            std::cerr << "reference file " << file << " does not exist\n";
+            exit (EXIT_FAILURE);
+        }
         std::ifstream fin(file);
         std::getline(std::getline(fin, name), seq);
     }

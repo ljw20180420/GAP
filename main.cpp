@@ -459,33 +459,46 @@ int main(int argc, char **argv)
     // run_sim("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_single_cut", true);
     // run_sim("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_double_cut", true);
 
-    std::deque<std::experimental::filesystem::path> dirs = {"/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Ct1-Rep1",
-    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Ct1-Rep2",
-    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Delta-Rep1",
-    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Delta-Rep2",
-    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Kappa-Rep1",
-    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Kappa-Rep2",
-    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Mu-Rep1",
-    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Mu-Rep2",
-    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Theta-Rep1",
-    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Theta-Rep2",
-    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Ct1-Rep1",
-    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Ct1-Rep2",
-    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Delta-Rep1",
-    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Delta-Rep2",
-    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Kappa-Rep1",
-    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Kappa-Rep2",
-    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Mu-Rep1",
-    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Mu-Rep2",
-    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Theta-Rep1",
-    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Theta-Rep2"};
+    // std::deque<std::experimental::filesystem::path> dirs = {
+    // "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Ct1-Rep1",
+    // "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Ct1-Rep2",
+    // "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Delta-Rep1",
+    // "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Delta-Rep2",
+    // "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Kappa-Rep1",
+    // "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Kappa-Rep2",
+    // "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Lambda-Rep1",
+    // "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Lambda-Rep2",
+    // "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Mu-Rep1",
+    // "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Mu-Rep2",
+    // "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Theta-Rep1",
+    // "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Theta-Rep2",
+    // "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Ct1-Rep1",
+    // "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Ct1-Rep2",
+    // "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Delta-Rep1",
+    // "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Delta-Rep2",
+    // "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Kappa-Rep1",
+    // "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Kappa-Rep2",
+    // "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Lambda-Rep1",
+    // "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Lambda-Rep2",
+    // "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Mu-Rep1",
+    // "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Mu-Rep2",
+    // "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Theta-Rep1",
+    // "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Theta-Rep2"};
+
+    std::deque<std::experimental::filesystem::path> dirs = {
+    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Lambda-Rep1",
+    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Lambda-Rep2",
+    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Lambda-Rep1",
+    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Lambda-Rep2"};
 
     int align_trheads_sz = 24, max_extract = 1, max_mega = 10000, diff_thres = 2, max_range = 10, min_seg_num = 1, max_seg_num = 3, block_size = 100, max_round = 4, min_score = 20;
     double T = -10, dT = -5;
     bool para = true;
 
-    std::experimental::filesystem::path dir("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Ct1-Rep1");
-    gradual_align(dir, "argfile", "argfile_last", dir.filename(), align_trheads_sz, max_extract, max_mega, diff_thres, max_range, min_seg_num, max_seg_num, block_size, max_round, T, dT, min_score, false, para);
+    for (auto &dir : dirs)
+    {
+        gradual_align(dir, "argfile", "argfile_last", dir.filename(), align_trheads_sz, max_extract, max_mega, diff_thres, max_range, min_seg_num, max_seg_num, block_size, max_round, T, dT, min_score, false, para);
+    }
 
     return 0;
 }
