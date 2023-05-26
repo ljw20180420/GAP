@@ -324,10 +324,10 @@ struct Align : Memory, GraphCopy<U>
                 for(int wp=1; wp<=target->w; ++wp)
                 {
                     source_max(H2[0][wp-1],{&NTCP.tildeA[NT.tAsz-1][wp-1]},{NTCP.tildeA[NT.tAsz-1][wp-1].val+global->T});
-                    CircleInitial(wp,E,F,G,H2[0][wp-1],global->ve,global->ue);
-                    CircleBody(seq,O,wp,1,E,F,G,H2[0][wp-1],H2[0][target->w],global->ve,global->ue,*global);
+                    CircuitInitial(wp,E,F,G,H2[0][wp-1],global->ve,global->ue);
+                    CircuitBody(seq,O,wp,1,E,F,G,H2[0][wp-1],H2[0][target->w],global->ve,global->ue,*global);
                     for(size_t s=2; s<=seq.size(); ++s)
-                        CircleBody(seq,O,wp,s,E,F,G,H2[0][target->w],H2[0][target->w],global->ve,global->ue,*global);
+                        CircuitBody(seq,O,wp,s,E,F,G,H2[0][target->w],H2[0][target->w],global->ve,global->ue,*global);
                 }
             }
             adrs.push_back(&G[rob[2]][target->w]);
@@ -404,7 +404,7 @@ struct Align : Memory, GraphCopy<U>
                     CrossIterationGlobal(g++, O);
                 else
                 {
-                    CircleIteration(l,g,i,O);
+                    CircuitIteration(l,g,i,O);
                     l+=graph.local_C[i];
                     g+=graph.global_C[i];
                 }
@@ -680,7 +680,7 @@ struct Align : Memory, GraphCopy<U>
         }
     }
     
-    void CircleIteration(int l, int g, int scc, std::string & O)
+    void CircuitIteration(int l, int g, int scc, std::string & O)
     {
         int tAsz=graph.tAsz[scc];
         {
@@ -718,9 +718,9 @@ struct Align : Memory, GraphCopy<U>
         for(size_t w=0; w<=O.size(); ++w)
         {
             for(int ll=l; ll<l+graph.local_C[scc]; ++ll)
-                CircleIterationEdge(w,ll,O,tAsz);
+                CircuitIterationEdge(w,ll,O,tAsz);
             for(int gg=g; gg<g+graph.global_C[scc]; ++gg)
-                CircleIterationEdgeGlobal(w,gg,O,tAsz);
+                CircuitIterationEdgeGlobal(w,gg,O,tAsz);
             for(int a=1; a<tAsz; ++a)
             {
                 for(int ll=l; ll<l+graph.local_C[scc]; ++ll)
@@ -799,7 +799,7 @@ struct Align : Memory, GraphCopy<U>
         }
     }
     
-    void CircleIterationEdge(int w, int l, std::string & O, int tAsz)
+    void CircuitIterationEdge(int w, int l, std::string & O, int tAsz)
     {
         EdgeLocal<U> & edge=graph.locals[l];
         EdgeLocalCopy<U> & edgecopy=this->localcopys[l];
@@ -824,12 +824,12 @@ struct Align : Memory, GraphCopy<U>
         {
             C[0][w-1].val=-inf;
             source_max(H2[0][w-1],{&NTCP.tildeA[tAsz-1][w-1]},{NTCP.tildeA[tAsz-1][w-1].val+T});
-            CircleInitial(w,E,F,G,H2[0][w-1],ve[0],ue[0]);
+            CircuitInitial(w,E,F,G,H2[0][w-1],ve[0],ue[0]);
             for(size_t s=1; s<=seq.size(); ++s)
             {
                 source_max(C[s][w-1],{&C[s-1][w-1],&H2[s-1][w-1]},{C[s-1][w-1].val+uf[w-1],H2[s-1][w-1].val+vf[w-1]});
                 source_max(H2[s][w-1],{&C[s][w-1],&NTCP.tildeA[tAsz-1][w-1]},{C[s][w-1].val,NTCP.tildeA[tAsz-1][w-1].val+gfp[s]+T});
-                CircleBody(seq,O,w,s,E,F,G,H2[s-1][w-1],H2[s][w-1],ve[s],ue[s],edge);
+                CircuitBody(seq,O,w,s,E,F,G,H2[s-1][w-1],H2[s][w-1],ve[s],ue[s],edge);
             }
             adrs.clear();
             vals.clear();
@@ -857,7 +857,7 @@ struct Align : Memory, GraphCopy<U>
         }
     }
     
-    void CircleInitial(int w, Dot<U>** E, Dot<U>** F, Dot<U>** G, Dot<U> & H2, double ve, double ue)
+    void CircuitInitial(int w, Dot<U>** E, Dot<U>** F, Dot<U>** G, Dot<U> & H2, double ve, double ue)
     {
         source_max(E[0][w],{&E[0][w-1],&H2},{E[0][w-1].val+ue,H2.val+ve});
         F[0][w].val=-inf;
@@ -865,7 +865,7 @@ struct Align : Memory, GraphCopy<U>
     }
     
     template <typename Y>
-    void CircleBody(std::string & seq, std::string & O, int w, int s, Dot<U>** E, Dot<U>** F, Dot<U>** G, Dot<U> & Hsm1, Dot<U> & Hs, double ve, double ue, Y & edge)
+    void CircuitBody(std::string & seq, std::string & O, int w, int s, Dot<U>** E, Dot<U>** F, Dot<U>** G, Dot<U> & Hsm1, Dot<U> & Hs, double ve, double ue, Y & edge)
     {
         source_max(E[s][w],{&G[s][w-1],&E[s][w-1],&Hs},{G[s][w-1].val+ve,E[s][w-1].val+ue,Hs.val+ve});
         source_max(F[s][w],{&G[s-1][w],&F[s-1][w]},{G[s-1][w].val+edge.vf[w],F[s-1][w].val+edge.uf[w]});
@@ -873,7 +873,7 @@ struct Align : Memory, GraphCopy<U>
         source_max(G[s][w],{&E[s][w],&F[s][w],&G[s-1][w-1],&Hsm1},{E[s][w].val,F[s][w].val,G[s-1][w-1].val+gm,Hsm1.val+gm});
     }
     
-    void CircleIterationEdgeGlobal(int w, int g, std::string & O, int tAsz)
+    void CircuitIterationEdgeGlobal(int w, int g, std::string & O, int tAsz)
     {
         EdgeGlobal<U> & edge=graph.globals[g];
         EdgeGlobalCopy<U> & edgecopy=this->globalcopys[g];
@@ -891,7 +891,7 @@ struct Align : Memory, GraphCopy<U>
             sncs.back().E=sncs.back().F=sncs.back().G=-inf;
             sncs.back().sr1=0, sncs.back().sr2=Bro.size()-1;
             sncs.back().s=0;
-            sncs.back().itd=sncs.back().itj=sncs.end();
+            sncs.back().itd=sncs.end();
             B[0].val=-inf;
             A[0][w].val=-inf;
         }
@@ -906,9 +906,7 @@ struct Align : Memory, GraphCopy<U>
             boxes[w].push_back(it->sr1);
             boxes[w].push_back(it->sr2);
             boxes[w].push_back(it->s);
-            std::stack<typename std::list<SNC<U>>::iterator> to_add;
-            InsertSNC(it,to_add,sncs,Bro);
-            it=add_it(it,to_add,sncs.end());
+            it=InsertSNC(it,sncs,Bro);
             while(it!=sncs.end())
             {
                 it->Gp=it->G;
@@ -918,6 +916,10 @@ struct Align : Memory, GraphCopy<U>
                 it->G=std::max(std::max(it->E,it->F),it->itp->Gp+gm);
                 if(it->s==1)
                     it->G=std::max(it->G,H2+gm);
+                if(it->G<NTCP.tildeA[0][w].val+T)
+                    it->G=it->F=-inf;
+                if(it->E+ue<NTCP.tildeA[0][w].val+T+ve)
+                    it->E=-inf;
                 if(it->G>=A[0][w].val)
                 {
                     if(it->G>A[0][w].val)
@@ -929,17 +931,24 @@ struct Align : Memory, GraphCopy<U>
                     boxes[w].push_back(it->sr2);
                     boxes[w].push_back(it->s);
                 }
-                if(it->G<NTCP.tildeA[0][w].val+T)
-                    it->G=it->F=-inf;
-                if(it->E+ue<NTCP.tildeA[0][w].val+T+ve)
-                    it->E=-inf;
-                InsertSNC(it,to_add,sncs,Bro);
-                it=add_it(it,to_add,sncs.end());
+                it=InsertSNC(it,sncs,Bro);
             }
             if(size_t(w)==O.size())
                 sncs.clear();
             else
-                ShearTree(sncs.begin(),sncs.end());
+            {
+                it=sncs.begin();
+                while(it->itd!=sncs.end())
+                {
+                    if(it->itd->G==-inf && it->itd->E==-inf && it->itd->itp->G==-inf)
+                    {
+                        it->itd->Gp=-inf;
+                        it->itd=it->itd->itd;
+                    }
+                    else
+                        it=it->itd;
+                }
+            }
             if(B[w].val>=A[0][w].val)
             {
                 if(B[w].val>A[0][w].val)
@@ -964,9 +973,9 @@ struct Align : Memory, GraphCopy<U>
         }
     }
     
-    void InsertSNC(typename std::list<SNC<U>>::iterator it, std::stack<typename std::list<SNC<U>>::iterator> & to_add, std::list<SNC<U>> & sncs, BroWheel<U> & Bro)
+    typename std::list<SNC<U>>::iterator InsertSNC(typename std::list<SNC<U>>::iterator it, std::list<SNC<U>> & sncs, BroWheel<U> & Bro)
     {
-        if(it->Gp!=-inf || it->G!=-inf)
+        if(it->G!=-inf && it->Gp==-inf)
         {
             if(it->itcs.size()==0)
             {
@@ -991,74 +1000,14 @@ struct Align : Memory, GraphCopy<U>
                     it->itcs.push_back(sncs.end());
             }
             if(it->itcs[0]!=sncs.end())
-                for(auto vit=it->itcs.rbegin(); vit!=it->itcs.rend(); ++vit)
-                    to_add.push(*vit);
+                for(auto itc : it->itcs)
+                    if(itc->E==-inf && itc->G==-inf)
+                    {
+                        itc->itd=it->itd;
+                        it->itd=itc;
+                    }
         }
-    }
-    
-    typename std::list<SNC<U>>::iterator add_it(typename std::list<SNC<U>>::iterator it, std::stack<typename std::list<SNC<U>>::iterator> & to_add, typename std::list<SNC<U>>::iterator end_it)
-    {
-        if(!to_add.empty())
-        {
-            bool sg=(it->itd==end_it || to_add.top()->s>it->itd->s), se=(to_add.top()->s==it->itd->s), ll=(to_add.top()->letter<it->itd->letter), le=(to_add.top()->letter==it->itd->letter);
-            if(sg || (se && (ll || le)))
-            {
-                if(sg || ll)
-                {
-                    to_add.top()->itd=it->itd;
-                    it->itd=to_add.top();
-                    to_add.top()->itj=it->itj;
-                }
-                it->itj=to_add.top();
-                to_add.pop();
-            }
-        }
-        return it->itj;
-    }
-    
-    void ShearTree(typename std::list<SNC<U>>::iterator beg_it, typename std::list<SNC<U>>::iterator end_it)
-    {
-        auto it=beg_it;
-        std::stack<typename std::list<SNC<U>>::iterator> down_stack;
-        while(it->itd!=end_it)
-        {
-            down_stack.push(it->itd);
-            auto itt=it->itj;
-            while(itt!=end_it && itt->E==-inf && itt->G==-inf && itt->itp->G==-inf)
-            {
-                while(!down_stack.empty() && down_stack.top()->s>=itt->itd->s)
-                    down_stack.pop();
-                down_stack.push(itt->itd);
-                itt->Gp=-inf;
-                itt=itt->itj;
-            }
-            if(itt==end_it)
-            {
-                it->itd=end_it;
-                it->itj=end_it;
-                break;
-            }
-            else
-            {
-                auto ite=down_stack.top();
-                do
-                {
-                    auto itop=down_stack.top();
-                    down_stack.pop();
-                    if(down_stack.empty())
-                        it->itd=itop;
-                    else
-                        itop->itp->itd=itop;
-                }while(!down_stack.empty());
-                auto iti=it;
-                while(iti!=ite)
-                {
-                    iti->itj=itt;
-                    iti=iti->itd;
-                }
-                it=itt;
-            }
-        }
+        return it->itd;
     }
     
     void update_cross(NodeCopy<U> & nodecopy, int W)

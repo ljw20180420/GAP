@@ -108,7 +108,6 @@ struct SNC
     typename std::list<SNC<T>>::iterator itp;
     std::vector<typename std::list<SNC<T>>::iterator> itcs;
     typename std::list<SNC<T>>::iterator itd;
-    typename std::list<SNC<T>>::iterator itj;
 };
 
 template <typename T>
