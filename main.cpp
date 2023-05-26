@@ -267,6 +267,7 @@ int main(int argc, char **argv)
     test_RandomReads("argfile", 24);
 
     // index_genome("argfile", 3);
+    // chdir("./test_CRISPR");
     // test_CRISPR("argfile", 3);
 
     // run_sim("./test_single_cut");
@@ -308,14 +309,14 @@ void test_RandomReads(std::string argfile, int threads1_sz)
     std::map<std::string, NameSeq> file2seq;
     std::map<std::string, BroWheel> file2browheel;
 
-    thread_pool threads1(threads1_sz); // mt
-    // std::deque<std::string> read_files = read_reference_and_index(argc, argv, 300, threads1, file2seq, file2browheel, false); // mt
-    std::deque<std::string> read_files = load_index(argc, argv, file2seq, file2browheel); // mt
-    std::deque<std::string> mg_files = parallel_align(128 * 1024 * 1024, threads1, argc, argv, file2seq, file2browheel, read_files, "Random"); // mt
+    // thread_pool threads1(threads1_sz); // mt
+    // // std::deque<std::string> read_files = read_reference_and_index(argc, argv, 300, threads1, file2seq, file2browheel, false); // mt
+    // std::deque<std::string> read_files = load_index(argc, argv, file2seq, file2browheel); // mt
+    // std::deque<std::string> mg_files = parallel_align(128 * 1024 * 1024, threads1, argc, argv, file2seq, file2browheel, read_files, "Random"); // mt
 
-    // std::deque<std::string> read_files = load_index(argc, argv, file2seq, file2browheel); // st
-    // std::string mg_file = single_align(128 * 1024 * 1024, argc, argv, file2seq, file2browheel, read_files, "Random"); // st
-    // std::deque<std::string> mg_files = {mg_file}; // st
+    std::deque<std::string> read_files = load_index(argc, argv, file2seq, file2browheel); // st
+    std::string mg_file = single_align(128 * 1024 * 1024, argc, argv, file2seq, file2browheel, read_files, "Random"); // st
+    std::deque<std::string> mg_files = {mg_file}; // st
 
     Track track(argc, argv, file2seq, file2browheel, 128 * 1024 * 1024);
     track.ReadTrack(mg_files, read_files, "Random", INT64_MAX, 1);

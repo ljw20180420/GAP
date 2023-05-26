@@ -59,7 +59,7 @@ struct Align : Memory, Graph
 
         std::deque<Do> E0, E;
         std::deque<SimNode> simnodes;
-        std::deque<double> C, Ethres;
+        std::deque<double> Ethres;
     };
 
     const static int ww = 3;
@@ -159,16 +159,10 @@ struct Align : Memory, Graph
         if (O.size() + 1 > crossglobaldata.Ethres.size())
         {
             crossglobaldata.Ethres.resize(O.size() + 1);
-            crossglobaldata.C.resize(O.size() + 1);
-            for (auto &edge : global_circuits)
-                edge.Cdelta.resize(O.size() + 1);
-            for (auto &edge : global_crosses)
-                edge.Cdelta.resize(O.size() + 1);
             for (int n = 0; n < nodes.size(); ++n)
             {
                 nodes[n].AdeltaDot.resize(O.size() + 1);
-                nodes[n].AdeltaCross.resize(O.size() + 1);
-                nodes[n].AdeltaCircuit.resize(O.size() + 1);
+                nodes[n].AdeltaGlobal.resize(O.size() + 1);
             }
         }
         for (int n = 0; n < nodes.size(); ++n)
@@ -201,16 +195,9 @@ struct Align : Memory, Graph
                     else
                         source_max(node->B[w], {&node->B[w - 1], &node->A[scc.nodes.size() - 1][w - 1]}, {node->B[w - 1].val + node->ue, node->A[scc.nodes.size() - 1][w - 1].val + node->ve});
 
-                    double oldval = node->A[0][w].val;
-                    renew_source(node->B[w].val, &node->B[w], node->A[0][w].val, node->AdeltaDot[w]);
+                    node->updateA0(w, node->B[w].val, &node->B[w]);
                     if (w == 0)
-                        renew_source(node->Abar.val, &node->Abar, node->A[0][w].val, node->AdeltaDot[w]);
-                    if (node->A[0][w].val > oldval)
-                    {
-                        for (auto cross : node->AdeltaCross[w])
-                            cross->Cdelta[w].clear();
-                        node->AdeltaCross[w].clear();
-                    }
+                        node->updateA0(w, node->Abar.val, &node->Abar);
                 }
                 for (auto edge : scc.local_circuits)
                     CircuitIteration(w, edge, scc.nodes.size());
@@ -271,8 +258,6 @@ struct Align : Memory, Graph
         Dot **E = edge->E;
         Dot **F = edge->F;
         Dot **G = edge->G;
-        std::deque<Dot> &hA = edge->head->A.front();
-        std::deque<std::deque<Dot *>> &AdeltaDot = edge->head->AdeltaDot;
         for (size_t s = 0; s <= edge->nameseq.seq.size(); ++s)
             for (size_t w = 0; w <= O.size(); ++w)
             {
@@ -288,7 +273,7 @@ struct Align : Memory, Graph
                     source_max(G[s][w], {&F[s][w], &E[s][w], &A[w]}, {F[s][w].val, E[s][w].val, A[w].val + (s == 0 ? 0 : edge->vfp + (s - 1) * edge->ufp) + edge->T});
                 else
                     source_max(G[s][w], {&F[s][w], &E[s][w], &G[s - 1][w - 1], &A[w]}, {F[s][w].val, E[s][w].val, G[s - 1][w - 1].val + edge->gamma[BroWheel::base2int(edge->nameseq.seq[s - 1])][BroWheel::base2int(O[w - 1])], A[w].val + (s == 0 ? 0 : edge->vfp + (s - 1) * edge->ufp) + edge->T});
-                renew_source(G[s][w].val, &G[s][w], hA[w].val, AdeltaDot[w]);
+                edge->head->updateA0(w, G[s][w].val, &G[s][w]);
             }
     }
 
@@ -298,8 +283,7 @@ struct Align : Memory, Graph
         auto &simnodes = crossglobaldata.simnodes;
         auto &E0 = crossglobaldata.E0;
         auto &E = crossglobaldata.E;
-        std::deque<double> &C = crossglobaldata.C, &Ethres = crossglobaldata.Ethres;
-        std::deque<std::deque<std::pair<int64_t, int>>> &Cdelta = edge->Cdelta;
+        std::deque<double> &Ethres = crossglobaldata.Ethres;
 
         int lambda = 0;
         int c = -1;
@@ -316,8 +300,7 @@ struct Align : Memory, Graph
                 E0[w].E = -inf;
             simnodes[lambda].FG.emplace_back(w, -inf, std::max(E0[w].E, A[w].val + edge->T));
             Ethres[w] = std::max(E0[w].E, simnodes[0].FG[w].G + std::min(0.0, std::min(edge->tail->ve - edge->ue, tgw - (O.size() - w) * edge->ue)));
-            C[w] = edge->head->A[0][w].val;
-            renew_source(simnodes[lambda].FG[w].G, simnodes[lambda].sr1, lambda, C[w], Cdelta[w]);
+            edge->head->updateA0(w, simnodes[lambda].FG[w].G, edge, simnodes[lambda].sr1, lambda);
         }
 
         while (true)
@@ -371,7 +354,7 @@ struct Align : Memory, Graph
                 if (G_val >= simnodes[0].FG[w].G)
                 {
                     simnodes[lambda].FG.emplace_back(w, F_val, G_val);
-                    renew_source(G_val, simnodes[lambda].sr1, lambda, C[w], Cdelta[w]);
+                    edge->head->updateA0(w, G_val, edge, simnodes[lambda].sr1, lambda);
                 }
                 if (j < simnodes[lambda - 1].FG.size() && simnodes[lambda - 1].FG[j].w <= w)
                     ++j;
@@ -387,20 +370,6 @@ struct Align : Memory, Graph
         }
 
         E0.clear();
-
-        for (int w = 0; w <= O.size(); ++w)
-            if (!Cdelta[w].empty())
-            {
-                if (C[w] > edge->head->A[0][w].val)
-                {
-                    edge->head->A[0][w].val = C[w];
-                    edge->head->AdeltaDot[w].clear();
-                    for (auto cross : edge->head->AdeltaCross[w])
-                        cross->Cdelta[w].clear();
-                    edge->head->AdeltaCross[w].clear();
-                }
-                edge->head->AdeltaCross[w].emplace_back(edge);
-            }
     }
 
     void CircuitIteration(size_t w, EdgeLocalCircuit *edge, int scc_sz)
@@ -411,8 +380,6 @@ struct Align : Memory, Graph
         Dot **F0 = edge->F0;
         Dot **G0 = edge->G0;
         Dot **G = edge->G;
-        double C = edge->head->A[0][w].val;
-        std::deque<Dot *> &AdeltaDot = edge->head->AdeltaDot[w];
 
         if (w > 0)
             source_max(D[w - 1], {&A[w - 1]}, {A[w - 1].val + edge->T});
@@ -437,16 +404,7 @@ struct Align : Memory, Graph
                 source_max(G0[s][w], {&E[s][w], &F0[s][w], &G[s - 1][w - 1]}, {E[s][w].val, F0[s][w].val, G[s - 1][w - 1].val + edge->gamma[BroWheel::base2int(edge->nameseq.seq[s - 1])][BroWheel::base2int(O[w - 1])]});
             else
                 source_max(G0[s][w], {&E[s][w], &F0[s][w]}, {E[s][w].val, F0[s][w].val});
-
-            renew_source(G0[s][w].val, &G0[s][w], C, AdeltaDot);
-        }
-
-        if (C > edge->head->A[0][w].val)
-        {
-            edge->head->A[0][w].val = C;
-            for (auto cross : edge->head->AdeltaCross[w])
-                cross->Cdelta[w].clear();
-            edge->head->AdeltaCross[w].clear();
+            edge->head->updateA0(w, G0[s][w].val, &G0[s][w]);
         }
     }
 
@@ -457,7 +415,6 @@ struct Align : Memory, Graph
 
         std::deque<Dot> &A = edge->tail->A.back(), &B = edge->tail->B;
         std::deque<SNC> &sncs = edge->sncs;
-        std::deque<std::pair<int64_t, int>> &Cdelta = edge->Cdelta[w];
 
         if (w == 1)
         {
@@ -495,8 +452,7 @@ struct Align : Memory, Graph
         double Ethres = std::max(sncs.front().E, Gthres + std::min(0.0, std::min(edge->tail->ve - edge->ue, tgw - (O.size() - w) * edge->ue)));
         sncs.front().F0 = -inf;
         sncs.front().G0 = sncs.front().E;
-        double C = edge->head->A[0][w].val;
-        renew_source(sncs.front().G0, sncs.front().sr1, sncs.front().lambda, C, Cdelta);
+        edge->head->updateA0(w, sncs.front().G0, edge, sncs.front().sr1, sncs.front().lambda);
 
         for (auto jump = sncs.front().jump; jump; jump = jump->jump)
         {
@@ -511,7 +467,7 @@ struct Align : Memory, Graph
                 jump->G0 = -inf;
             }
             else
-                renew_source(jump->G0, jump->sr1, jump->lambda, C, Cdelta);
+                edge->head->updateA0(w, jump->G0, edge, jump->sr1, jump->lambda);
             if (jump->G0 != -inf && jump->hatG == -inf)
             {
                 if (jump->cid == 0)
@@ -539,22 +495,6 @@ struct Align : Memory, Graph
         }
         if (w == O.size())
             sncs.clear();
-
-        if (!Cdelta.empty())
-        {
-            if (C > edge->head->A[0][w].val)
-            {
-                edge->head->A[0][w].val = C;
-                edge->head->AdeltaDot[w].clear();
-                for (auto cross : edge->head->AdeltaCross[w])
-                    cross->Cdelta[w].clear();
-                edge->head->AdeltaCross[w].clear();
-                for (auto circuit : edge->head->AdeltaCircuit[w])
-                    circuit->Cdelta[w].clear();
-                edge->head->AdeltaCircuit[w].clear();
-            }
-            edge->head->AdeltaCircuit[w].emplace_back(edge);
-        }
     }
 
     void GetMinimalGraph()
@@ -591,127 +531,111 @@ struct Align : Memory, Graph
                 fout.write((char *)&M->sources[i]->id, sizeof(M->sources[i]->id));
             }
         }
-        for (auto &edge : global_crosses)
-            edge.tracknodes.clear();
-        for (auto &edge : global_circuits)
-            edge.tracknodes.clear();
-        max_id = id > max_id ? id : max_id;
+        if (id > max_id)
+            max_id = id;
 
+        for (auto &edge : global_crosses)
+            edge.tracktree.clear();
+        for (auto &edge : global_circuits)
+            edge.tracktree.clear();
         for (auto &node : nodes)
-            for (int w = 0; w <= O.size(); ++w)
-            {
-                for (auto edge : node.AdeltaCross[w])
-                    edge->Cdelta[w].clear();
-                node.AdeltaCross[w].clear();
-                for (auto edge : node.AdeltaCircuit[w])
-                    edge->Cdelta[w].clear();
-                node.AdeltaCircuit[w].clear();
-                node.AdeltaDot[w].clear();
-            }
+            node.clearAdelta(O.size());
         clear();
     }
 
     void GlobalTrack(Dot *M)
     {
-        for (auto &edge : nodes[-M->n - 4].AdeltaCross[M->w])
+        for (auto &globalsuffix : nodes[-M->n - 4].AdeltaGlobal[M->w])
         {
+            EdgeGlobal *edge = globalsuffix.edge;
             std::deque<Dot> &A = edge->tail->A.back();
-            auto &tracknodes = edge->tracknodes;
-            for (auto &suf : edge->Cdelta[M->w])
+            TrackTree &tracktree = edge->tracktree;
+            std::deque<TrackTree::TrackNode> &tracknodes = tracktree.tracknodes;
+            std::deque<Dot> &dots = tracktree.dots;
+            size_t start = edge->browheel.SimSuffix(globalsuffix.start);
+            if (tracktree.tracknodes.empty())
             {
-                size_t start = edge->browheel.SimSuffix(suf.first);
-                if (tracknodes.empty())
-                    tracknodes.emplace_back(this, (TrackNode *)NULL, (TrackNode *)NULL, edge->n, edge->browheel.sequence.size() - 1 - start - suf.second, O.size(), 0);
-                auto tracknode = &tracknodes.front();
-                for (int w = tracknode->tau; w <= M->w; ++w)
+                tracktree.W = O.size();
+                tracktree.emplace_back(-1, edge->n, edge->browheel.sequence.size() - 1 - start - globalsuffix.lambda, 0);
+            }
+            tracktree.setidx(0);
+            if (edge->head->scc_id != edge->tail->scc_id)
+            {
+                for (int w = tracknodes[tracktree.idx].tau; w <= M->w; ++w)
                 {
                     if (w == 0)
-                        source_max(tracknode->E[w], {}, {});
+                        source_max(dots[tracktree.shiftE + w], {}, {});
                     else
-                        source_max(tracknode->E[w], {&tracknode->E[w - 1], &tracknode->G[w - 1]}, {tracknode->E[w - 1].val + edge->ue, tracknode->G[w - 1].val + edge->ve});
-                    source_max(tracknode->F[w], {}, {});
-                    source_max(tracknode->G[w], {&tracknode->E[w], &tracknode->F[w], &A[w]}, {tracknode->E[w].val, tracknode->F[w].val, A[w].val + edge->T});
+                        source_max(dots[tracktree.shiftE + w], {&dots[tracktree.shiftE + w - 1], &dots[tracktree.shiftG + w - 1]}, {dots[tracktree.shiftE + w - 1].val + edge->ue, dots[tracktree.shiftG + w - 1].val + edge->ve});
+                    source_max(dots[tracktree.shiftF + w], {}, {});
+                    source_max(dots[tracktree.shiftG + w], {&dots[tracktree.shiftE + w], &dots[tracktree.shiftF + w], &A[w]}, {dots[tracktree.shiftE + w].val, dots[tracktree.shiftF + w].val, A[w].val + edge->T});
                 }
-                tracknode->tau = std::max(tracknode->tau, M->w + 1);
-                for (int i = suf.second - 1; i >= 0; --i)
+                tracknodes[tracktree.idx].tau = std::max(tracknodes[tracktree.idx].tau, M->w + 1);
+                for (int i = globalsuffix.lambda - 1; i >= 0; --i)
                 {
                     int c = edge->browheel.sequence(start + i);
-                    if (!tracknode->itcs[c - 2])
+                    if (tracknodes[tracktree.idx].cidxs[c - 2] < 0)
                     {
-                        tracknodes.emplace_back(this, tracknode, (TrackNode *)NULL, edge->n, edge->browheel.sequence.size() - 1 - start - i, O.size(), tracknode->lambda + 1);
-                        tracknode->itcs[c - 2] = &tracknodes.back();
+                        tracktree.emplace_back(-1, edge->n, edge->browheel.sequence.size() - 1 - start - i, dots[tracktree.shiftE].lambda + 1);
+                        tracknodes[tracktree.idx].cidxs[c - 2] = tracknodes.size() - 1;
                     }
-                    tracknode = tracknode->itcs[c - 2];
-                    for (int w = tracknode->tau; w <= M->w; ++w)
+                    tracktree.setidx(tracknodes[tracktree.idx].cidxs[c - 2]);
+                    for (int w = tracknodes[tracktree.idx].tau; w <= M->w; ++w)
                     {
                         if (w == 0)
-                            source_max(tracknode->E[w], {}, {});
+                            source_max(dots[tracktree.shiftE + w], {}, {});
                         else
-                            source_max(tracknode->E[w], {&tracknode->E[w - 1], &tracknode->G[w - 1]}, {tracknode->E[w - 1].val + edge->ue, tracknode->G[w - 1].val + edge->ve});
-                        source_max(tracknode->F[w], {&tracknode->itp->F[w], &tracknode->itp->G[w]}, {tracknode->itp->F[w].val + edge->uf, tracknode->itp->G[w].val + edge->vf});
+                            source_max(dots[tracktree.shiftE + w], {&dots[tracktree.shiftE + w - 1], &dots[tracktree.shiftG + w - 1]}, {dots[tracktree.shiftE + w - 1].val + edge->ue, dots[tracktree.shiftG + w - 1].val + edge->ve});
+                        source_max(dots[tracktree.shiftF + w], {&dots[tracktree.shiftPF + w], &dots[tracktree.shiftPG + w]}, {dots[tracktree.shiftPF + w].val + edge->uf, dots[tracktree.shiftPG + w].val + edge->vf});
                         if (w == 0)
-                            source_max(tracknode->G[w], {&tracknode->E[w], &tracknode->F[w]}, {tracknode->E[w].val, tracknode->F[w].val});
+                            source_max(dots[tracktree.shiftG + w], {&dots[tracktree.shiftE + w], &dots[tracktree.shiftF + w]}, {dots[tracktree.shiftE + w].val, dots[tracktree.shiftF + w].val});
                         else
-                            source_max(tracknode->G[w], {&tracknode->E[w], &tracknode->F[w], &tracknode->itp->G[w - 1]}, {tracknode->E[w].val, tracknode->F[w].val, tracknode->itp->G[w - 1].val + edge->gamma[c][BroWheel::base2int(O[w - 1])]});
+                            source_max(dots[tracktree.shiftG + w], {&dots[tracktree.shiftE + w], &dots[tracktree.shiftF + w], &dots[tracktree.shiftPG + w - 1]}, {dots[tracktree.shiftE + w].val, dots[tracktree.shiftF + w].val, dots[tracktree.shiftPG + w - 1].val + edge->gamma[c][BroWheel::base2int(O[w - 1])]});
                     }
-                    tracknode->tau = std::max(tracknode->tau, M->w + 1);
+                    tracknodes[tracktree.idx].tau = std::max(tracknodes[tracktree.idx].tau, M->w + 1);
                 }
-                nodes[-M->n - 4].AdeltaDot[M->w].emplace_back(&tracknode->G[M->w]);
+                nodes[-M->n - 4].AdeltaDot[M->w].emplace_back(&dots[tracktree.shiftG + M->w]);
             }
-        }
-        for (auto &edge : nodes[-M->n - 4].AdeltaCircuit[M->w])
-        {
-            std::deque<Dot> &A = edge->tail->A.back();
-            auto &tracknodes = edge->tracknodes;
-            for (auto &suf : edge->Cdelta[M->w])
+            else
             {
-                size_t start = edge->browheel.SimSuffix(suf.first);
-                if (tracknodes.empty())
-                {
-                    alloc_initial(edge->G, edge->n, edge->browheel.sequence.size() - 1 - start - suf.second);
-                    for (size_t w = 0; w <= O.size(); ++w)
-                        edge->G[w].lambda = 0;
-                    tracknodes.emplace_back(this, (TrackNode *)NULL, (TrackNode *)NULL, edge->n, edge->browheel.sequence.size() - 1 - start - suf.second, O.size(), 0);
-                }
-                auto tracknode = &tracknodes.front();
-                for (int w = tracknode->tau; w <= M->w; ++w)
+                for (int w = tracknodes[tracktree.idx].tau; w <= M->w; ++w)
                 {
                     if (w > 0)
-                        source_max(edge->G[w - 1], {&tracknode->G[w - 1], &A[w - 1]}, {tracknode->G[w - 1].val, A[w - 1].val + edge->T});
+                        source_max(dots[tracktree.shiftG + w - 1], {&dots[tracktree.shiftE + w - 1], &A[w - 1]}, {dots[tracktree.shiftE + w - 1].val, A[w - 1].val + edge->T});
                     if (w == 0)
-                        source_max(tracknode->E[w], {}, {});
+                        source_max(dots[tracktree.shiftE + w], {}, {});
                     else
-                        source_max(tracknode->E[w], {&tracknode->E[w - 1], &edge->G[w - 1]}, {tracknode->E[w - 1].val + edge->ue, edge->G[w - 1].val + edge->ve});
-                    source_max(tracknode->F[w], {}, {});
-                    source_max(tracknode->G[w], {&tracknode->E[w], &tracknode->F[w]}, {tracknode->E[w].val, tracknode->F[w].val});
+                        source_max(dots[tracktree.shiftE + w], {&dots[tracktree.shiftE + w - 1], &dots[tracktree.shiftG + w - 1]}, {dots[tracktree.shiftE + w - 1].val + edge->ue, dots[tracktree.shiftG + w - 1].val + edge->ve});
+                    source_max(dots[tracktree.shiftF + w], {}, {});
                 }
-                tracknode->tau = std::max(tracknode->tau, M->w + 1);
-                for (int i = suf.second - 1; i >= 0; --i)
+                tracknodes[tracktree.idx].tau = std::max(tracknodes[tracktree.idx].tau, M->w + 1);
+                for (int i = globalsuffix.lambda - 1; i >= 0; --i)
                 {
                     int c = edge->browheel.sequence(start + i);
-                    if (!tracknode->itcs[c - 2])
+                    if (tracknodes[tracktree.idx].cidxs[c - 2] < 0)
                     {
-                        tracknodes.emplace_back(this, tracknode, (TrackNode *)NULL, edge->n, edge->browheel.sequence.size() - 1 - start - i, O.size(), tracknode->lambda + 1);
-                        tracknode->itcs[c - 2] = &tracknodes.back();
+                        tracktree.emplace_back(-1, edge->n, edge->browheel.sequence.size() - 1 - start - i, dots[tracktree.shiftE].lambda + 1);
+                        tracknodes[tracktree.idx].cidxs[c - 2] = tracknodes.size() - 1;
                     }
-                    tracknode = tracknode->itcs[c - 2];
-                    for (int w = tracknode->tau; w <= M->w; ++w)
+                    tracktree.setidx(tracknodes[tracktree.idx].cidxs[c - 2]);
+                    for (int w = tracknodes[tracktree.idx].tau; w <= M->w; ++w)
                     {
                         if (w == 0)
-                            source_max(tracknode->E[w], {}, {});
+                            source_max(dots[tracktree.shiftE + w], {}, {});
                         else
-                            source_max(tracknode->E[w], {&tracknode->E[w - 1], &tracknode->G[w - 1]}, {tracknode->E[w - 1].val + edge->ue, tracknode->G[w - 1].val + edge->ve});
-                        source_max(tracknode->F[w], {&tracknode->itp->F[w], &tracknode->itp->G[w]}, {tracknode->itp->F[w].val + edge->uf, tracknode->itp->G[w].val + edge->vf});
+                            source_max(dots[tracktree.shiftE + w], {&dots[tracktree.shiftE + w - 1], &dots[tracktree.shiftG + w - 1]}, {dots[tracktree.shiftE + w - 1].val + edge->ue, dots[tracktree.shiftG + w - 1].val + edge->ve});
+                        if (tracktree.pidx == 0)
+                            source_max(dots[tracktree.shiftF + w], {&dots[tracktree.shiftPF + w], &dots[tracktree.shiftPE + w]}, {dots[tracktree.shiftPF + w].val + edge->uf, dots[tracktree.shiftPE + w].val + edge->vf});
+                        else
+                            source_max(dots[tracktree.shiftF + w], {&dots[tracktree.shiftPF + w], &dots[tracktree.shiftPG + w]}, {dots[tracktree.shiftPF + w].val + edge->uf, dots[tracktree.shiftPG + w].val + edge->vf});
                         if (w == 0)
-                            source_max(tracknode->G[w], {&tracknode->E[w], &tracknode->F[w]}, {tracknode->E[w].val, tracknode->F[w].val});
-                        else if (tracknode->itp == &tracknodes.front())
-                            source_max(tracknode->G[w], {&tracknode->E[w], &tracknode->F[w], &edge->G[w - 1]}, {tracknode->E[w].val, tracknode->F[w].val, edge->G[w - 1].val + edge->gamma[c][BroWheel::base2int(O[w - 1])]});
+                            source_max(dots[tracktree.shiftG + w], {&dots[tracktree.shiftE + w], &dots[tracktree.shiftF + w]}, {dots[tracktree.shiftE + w].val, dots[tracktree.shiftF + w].val});
                         else
-                            source_max(tracknode->G[w], {&tracknode->E[w], &tracknode->F[w], &tracknode->itp->G[w - 1]}, {tracknode->E[w].val, tracknode->F[w].val, tracknode->itp->G[w - 1].val + edge->gamma[c][BroWheel::base2int(O[w - 1])]});
+                            source_max(dots[tracktree.shiftG + w], {&dots[tracktree.shiftE + w], &dots[tracktree.shiftF + w], &dots[tracktree.shiftPG + w - 1]}, {dots[tracktree.shiftE + w].val, dots[tracktree.shiftF + w].val, dots[tracktree.shiftPG + w - 1].val + edge->gamma[c][BroWheel::base2int(O[w - 1])]});
                     }
-                    tracknode->tau = std::max(tracknode->tau, M->w + 1);
+                    tracknodes[tracktree.idx].tau = std::max(tracknodes[tracktree.idx].tau, M->w + 1);
                 }
-                nodes[-M->n - 4].AdeltaDot[M->w].emplace_back(&tracknode->G[M->w]);
+                nodes[-M->n - 4].AdeltaDot[M->w].emplace_back(&dots[tracktree.shiftG + M->w]);
             }
         }
         M->s_sz = nodes[-M->n - 4].AdeltaDot[M->w].size();

@@ -27,6 +27,7 @@ struct Edge
 {
     const static int sigma = 6;
 
+    bool global;
     std::string name;
     double gamma[sigma + 1][sigma + 1];
     double ve;
@@ -74,12 +75,9 @@ struct EdgeLocal : Edge
     double ufm;
 
     EdgeLocal(std::string name_, double gamma_[7][7], double ve_, double ue_, double vf_, double uf_, double T_, int n_, NameSeq &nameseq_, double vfp_, double ufp_, double vfm_, double ufm_)
-        : Edge(name_, gamma_, ve_, ue_, vf_, uf_, T_, n_), nameseq(nameseq_)
+        : Edge(name_, gamma_, ve_, ue_, vf_, uf_, T_, n_), nameseq(nameseq_), vfp(vfp_), ufp(ufp_), vfm(vfm_), ufm(ufm_)
     {
-        vfp = vfp_;
-        ufp = ufp_;
-        vfm = vfm_;
-        ufm = ufm_;
+        global = false;
     }
 };
 
@@ -90,10 +88,11 @@ struct EdgeLocalCross : EdgeLocal
     Dot **G;
 
     EdgeLocalCross(EdgeLocal &edge)
-    : EdgeLocal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.nameseq, edge.vfp, edge.ufp, edge.vfm, edge.ufm)
+        : EdgeLocal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.nameseq, edge.vfp, edge.ufp, edge.vfm, edge.ufm)
     {
-        tail=edge.tail;
-        head=edge.head;
+        tail = edge.tail;
+        head = edge.head;
+        global = false;
     }
 };
 
@@ -108,71 +107,94 @@ struct EdgeLocalCircuit : EdgeLocal
     Dot **DX;
 
     EdgeLocalCircuit(EdgeLocal &edge)
-    : EdgeLocal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.nameseq, edge.vfp, edge.ufp, edge.vfm, edge.ufm)
+        : EdgeLocal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.nameseq, edge.vfp, edge.ufp, edge.vfm, edge.ufm)
     {
-        tail=edge.tail;
-        head=edge.head;
+        tail = edge.tail;
+        head = edge.head;
+        global = false;
     }
 };
 
-struct TrackNode
-{
-    TrackNode* itp;
-    TrackNode* itcs[5];
-    Dot *E;
-    Dot *F;
-    Dot *G;
-    int tau = 0;
-    int lambda;
+enum enumEFG{enumE, enumF, enumG};
 
-    TrackNode(Memory *memory_, TrackNode* itp_, TrackNode* itc_, int n, size_t s, int W, int lambda_)
+struct TrackTree
+{
+    int W;
+    std::deque<Dot> dots;
+    int64_t idx, pidx;
+    int shiftE, shiftF, shiftG, shiftPE, shiftPF, shiftPG;
+
+    void setidx(int64_t idx_)
     {
-        itp = itp_;
-        for (int i = 0; i < 5; ++i)
-            itcs[i] = itc_;
-        alloc_initial(memory_, E, n, s, W);
-        alloc_initial(memory_, F, n, s, W);
-        alloc_initial(memory_, G, n, s, W);
-        lambda=lambda_;
-        for (int w=0; w<=W; ++w)
+        if (idx_ == 0)
+            pidx = -1;
+        else
         {
-            E[w].lambda=lambda;
-            F[w].lambda=lambda;
-            G[w].lambda=lambda;
+            pidx = idx;
+            shiftPE = shiftE;
+            shiftPF = shiftF;
+            shiftPG = shiftG;
         }
+        idx = idx_;
+        shiftE = 3 * idx * (W + 1);
+        shiftF = shiftE + (W + 1);
+        shiftG = shiftF + (W + 1);
+    }
+    struct TrackNode
+    {
+        int64_t cidxs[5];
+        int tau = 0;
+
+        TrackNode(int64_t cidx_)
+        {
+            for (int i = 0; i < 5; ++i)
+                cidxs[i] = cidx_;
+        }
+    };
+
+    std::deque<TrackNode> tracknodes;
+
+    void emplace_back(int64_t cidx_, int n_, int64_t s_, int lambda_)
+    {
+        tracknodes.emplace_back(cidx_);
+        dots.resize(tracknodes.size() * (enumG + 1) * (W+1));
+        for (int k = (tracknodes.size() - 1) * (enumG + 1) * (W+1), t = enumE; t <= enumG; ++t)
+            for (int w = 0; w <= W; ++w, ++k)
+            {
+                dots[k].n = n_;
+                dots[k].s = s_;
+                dots[k].w = w;
+                dots[k].lambda = lambda_;
+            }
     }
 
-    void alloc_initial(Memory *memory_, Dot *&ptr, int n, size_t s, int W)
+    void clear()
     {
-        ptr = memory_->heap_alloc<Dot>(W+1);
-        for (int w = 0; w <= W; ++w)
-        {
-            ptr[w].n = n;
-            ptr[w].s = s;
-            ptr[w].w = w;
-        }
+        dots.clear();
+        tracknodes.clear();
     }
 };
 
 struct EdgeGlobal : Edge
 {
     BroWheel &browheel;
-    std::deque<std::deque<std::pair<int64_t, int>>> Cdelta;
-    std::deque<TrackNode> tracknodes;
+    TrackTree tracktree;
 
     EdgeGlobal(std::string name_, double gamma_[7][7], double ve_, double ue_, double vf_, double uf_, double T_, int n_, BroWheel &browheel_)
         : Edge(name_, gamma_, ve_, ue_, vf_, uf_, T_, n_), browheel(browheel_)
     {
+        global = true;
     }
 };
 
 struct EdgeGlobalCross : EdgeGlobal
 {
     EdgeGlobalCross(EdgeGlobal &edge)
-    : EdgeGlobal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.browheel)
+        : EdgeGlobal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.browheel)
     {
-        tail=edge.tail;
-        head=edge.head;
+        tail = edge.tail;
+        head = edge.head;
+        global = true;
     }
 };
 
@@ -200,20 +222,20 @@ struct SNC
 struct EdgeGlobalCircuit : EdgeGlobal
 {
     std::deque<SNC> sncs;
-
-    Dot *G;
     Dot **D0;
 
     EdgeGlobalCircuit(EdgeGlobal &edge)
-    : EdgeGlobal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.browheel)
+        : EdgeGlobal(edge.name, edge.gamma, edge.ve, edge.ue, edge.vf, edge.uf, edge.T, edge.n, edge.browheel)
     {
-        tail=edge.tail;
-        head=edge.head;
+        tail = edge.tail;
+        head = edge.head;
+        global = true;
     }
 };
 
 struct Node
 {
+    int scc_id;
     std::string name;
     double ve;
     double ue;
@@ -229,14 +251,61 @@ struct Node
     std::vector<std::deque<Dot>> A;
     std::deque<Dot> B;
     std::deque<std::deque<Dot *>> AdeltaDot;
-    std::deque<std::deque<EdgeGlobalCross *>> AdeltaCross;
-    std::deque<std::deque<EdgeGlobalCircuit *>> AdeltaCircuit;
+
+    struct GlobalSuffix
+    {
+        EdgeGlobal *edge;
+        int64_t start;
+        int lambda;
+
+        GlobalSuffix(EdgeGlobal *edge_, int64_t start_, int lambda_)
+            : edge(edge_), start(start_), lambda(lambda_)
+        {
+        }
+    };
+
+    std::deque<std::deque<GlobalSuffix>> AdeltaGlobal;
 
     Node(std::string name_, double ve_, double ue_)
+        : name(name_), ve(ve_), ue(ue_)
     {
-        name = name_;
-        ve = ve_;
-        ue = ue_;
+    }
+
+    void updateA0(int w, double val, Dot *adr)
+    {
+        if (val >= A[0][w].val)
+        {
+            if (val > A[0][w].val)
+            {
+                A[0][w].val = val;
+                AdeltaDot[w].clear();
+                AdeltaGlobal[w].clear();
+            }
+            AdeltaDot[w].emplace_back(adr);
+        }
+    }
+
+    void updateA0(int w, double val, EdgeGlobal *edge_, int64_t start_, int lambda_)
+    {
+        if (val >= A[0][w].val)
+        {
+            if (val > A[0][w].val)
+            {
+                A[0][w].val = val;
+                AdeltaDot[w].clear();
+                AdeltaGlobal[w].clear();
+            }
+            AdeltaGlobal[w].emplace_back(edge_, start_, lambda_);
+        }
+    }
+
+    void clearAdelta(int W)
+    {
+        for (int w = 0; w <= W; ++w)
+        {
+            AdeltaDot[w].clear();
+            AdeltaGlobal[w].clear();
+        }
     }
 };
 
@@ -304,21 +373,20 @@ struct Graph
             {
                 while (++i < argc && (strlen(argv[i]) < 2 || argv[i][0] != '-' || argv[i][1] != '-'))
                 {
-                    double gamma_[7][7]={
+                    double gamma_[7][7] = {
                         {-inf, -inf, -inf, -inf, -inf, -inf, -inf},
                         {-inf, -inf, -inf, -inf, -inf, -inf, -inf},
                         {-inf, -inf, -3, -3, -3, -3, -3},
                         {-inf, -inf, -3, 1, -3, -3, -3},
                         {-inf, -inf, -3, -3, 1, -3, -3},
                         {-inf, -inf, -3, -3, -3, 1, -3},
-                        {-inf, -inf, -3, -3, -3, -3, 1}
-                    };
-                    if (!strcmp(argv[i],"default_gamma"))
+                        {-inf, -inf, -3, -3, -3, -3, 1}};
+                    if (!strcmp(argv[i], "default_gamma"))
                         ++i;
                     else
-                        for (int a=0; a<7; ++a)
-                            for (int b=0; b<7; ++b)
-                                gamma_[a][b]=str2double(argv[i++]);
+                        for (int a = 0; a < 7; ++a)
+                            for (int b = 0; b < 7; ++b)
+                                gamma_[a][b] = str2double(argv[i++]);
                     locals.emplace_back(argv[i], gamma_, str2double(argv[i + 1]), str2double(argv[i + 2]), str2double(argv[i + 3]), str2double(argv[i + 4]), str2double(argv[i + 5]), n++, file2seq[argv[i]], str2double(argv[i + 6]), str2double(argv[i + 7]), str2double(argv[i + 8]), str2double(argv[i + 9]));
                     i += 9;
                     for (auto &node : nodes)
@@ -336,21 +404,20 @@ struct Graph
             {
                 while (++i < argc && (strlen(argv[i]) < 2 || argv[i][0] != '-' || argv[i][1] != '-'))
                 {
-                    double gamma_[7][7]={
+                    double gamma_[7][7] = {
                         {-inf, -inf, -inf, -inf, -inf, -inf, -inf},
                         {-inf, -inf, -inf, -inf, -inf, -inf, -inf},
                         {-inf, -inf, -3, -3, -3, -3, -3},
                         {-inf, -inf, -3, 1, -3, -3, -3},
                         {-inf, -inf, -3, -3, 1, -3, -3},
                         {-inf, -inf, -3, -3, -3, 1, -3},
-                        {-inf, -inf, -3, -3, -3, -3, 1}
-                    };
-                    if (!strcmp(argv[i],"default_gamma"))
+                        {-inf, -inf, -3, -3, -3, -3, 1}};
+                    if (!strcmp(argv[i], "default_gamma"))
                         ++i;
                     else
-                        for (int a=0; a<7; ++a)
-                            for (int b=0; b<7; ++b)
-                                gamma_[a][b]=str2double(argv[i++]);
+                        for (int a = 0; a < 7; ++a)
+                            for (int b = 0; b < 7; ++b)
+                                gamma_[a][b] = str2double(argv[i++]);
                     globals.emplace_back(argv[i], gamma_, str2double(argv[i + 1]), str2double(argv[i + 2]), str2double(argv[i + 3]), str2double(argv[i + 4]), str2double(argv[i + 5]), n++, file2browheel[argv[i]]);
                     i += 5;
                     for (auto &node : nodes)
@@ -388,6 +455,12 @@ struct Graph
             edge.tail->out_global_circuits.push_back(&edge);
             edge.head->in_global_circuits.push_back(&edge);
         }
+        for (int i = 0; i < sccs.size(); ++i)
+            for (auto node : sccs[i].nodes)
+            {
+                node->scc_id = i;
+                node->A.resize(sccs[i].nodes.size());
+            }
     }
 
     double str2double(const char *str)
@@ -428,12 +501,12 @@ struct Graph
             DeepFirstLine(node, reverse, visit, locals, globals);
         for (auto iter = locals.begin(); iter != locals.end();)
             if (!visit[iter->n])
-                iter=locals.erase(iter);
+                iter = locals.erase(iter);
             else
                 ++iter;
         for (auto iter = globals.begin(); iter != globals.end();)
             if (!visit[iter->n])
-                iter=globals.erase(iter);
+                iter = globals.erase(iter);
             else
                 ++iter;
     }
@@ -482,7 +555,6 @@ struct Graph
             } while (top != node);
             for (auto nnode : sccs.front().nodes)
             {
-                nnode->A.resize(sccs.front().nodes.size());
                 for (auto &edge : locals)
                     if (edge.tail == nnode)
                     {
