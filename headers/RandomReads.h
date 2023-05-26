@@ -99,7 +99,7 @@ void random_seq(Graph &graph, std::ofstream &fout_read, std::ofstream &fout_trut
     fout_read << seq << '\n';
 }
 
-void random_DG(int n_sz, int r_sz, int t_sz, int max_e_sz, std::string argfile, bool acyclic, double gpro, double rpro, double nve, double nue, double ve, double ue, double vf, double uf, double T, double dT, double minScore, int64_t diffseg, double vfp, double ufp, double vfm, double ufm, double mat, double mis, std::string local_file, std::string global_file, int lseqlb, int lsequb, int gseqlb, int gsequb, int aseqlb, int asequb, int seq_num, std::string read_file, std::string truth_file, double indel_rate, double mut_rate, int head_in, int tail_in, double apro)
+void random_DG(int n_sz, int r_sz, int t_sz, int max_e_sz, std::string argfile, bool acyclic, double gpro, double rpro, double nve, double nue, double ve, double ue, double vf, double uf, double T, double dT, double min_score, double vfp, double ufp, double vfm, double ufm, double mat, double mis, std::string local_file, std::string global_file, int lseqlb, int lsequb, int gseqlb, int gsequb, int aseqlb, int asequb, int seq_num, std::string read_file, std::string truth_file, double indel_rate, double mut_rate, int head_in, int tail_in, double apro, std::string run_name, int index_threads_sz, int align_threads_sz, int max_extract, int diff_thres, int max_range, int min_seg_num, int max_seg_num, int max_round, int block_size, int64_t max_mega, int64_t ll)
 {
     srand(1);
     std::vector<std::vector<std::string>> args;
@@ -122,8 +122,6 @@ void random_DG(int n_sz, int r_sz, int t_sz, int max_e_sz, std::string argfile, 
     std::vector<std::vector<std::string>> args_global;
     std::map<std::string, NameSeq> file2seq;
     std::map<std::string, BroWheel> file2browheel;
-    int argc;
-    char **argv;
     bool at_least_two_sccs = false, average_four_edge_types;
     do
     {
@@ -167,7 +165,7 @@ void random_DG(int n_sz, int r_sz, int t_sz, int max_e_sz, std::string argfile, 
                         "-inf", "-inf", "-inf", mis_s, mat_s, mis_s, mis_s,
                         "-inf", "-inf", "-inf", mis_s, mis_s, mat_s, mis_s,
                         "-inf", "-inf", "-inf", mis_s, mis_s, mis_s, mat_s,
-                        global_file + std::to_string(en), std::to_string(ve), std::to_string(ue), std::to_string(vf), std::to_string(uf), std::to_string(T), std::to_string(dT), std::to_string(minScore), std::to_string(diffseg), "node" + std::to_string(t), "node" + std::to_string(h)});
+                        global_file + std::to_string(en), std::to_string(ve), std::to_string(ue), std::to_string(vf), std::to_string(uf), std::to_string(T), std::to_string(dT), std::to_string(min_score), "node" + std::to_string(t), "node" + std::to_string(h), "false"});
                 }
                 else
                 {
@@ -179,29 +177,66 @@ void random_DG(int n_sz, int r_sz, int t_sz, int max_e_sz, std::string argfile, 
                         "-inf", "-inf", "-inf", mis_s, mat_s, mis_s, mis_s,
                         "-inf", "-inf", "-inf", mis_s, mis_s, mat_s, mis_s,
                         "-inf", "-inf", "-inf", mis_s, mis_s, mis_s, mat_s,
-                        local_file + std::to_string(en), std::to_string(ve), std::to_string(ue), std::to_string(vf), std::to_string(uf), std::to_string(T), std::to_string(dT), std::to_string(minScore), std::to_string(diffseg), "node" + std::to_string(t), "node" + std::to_string(h), std::to_string(vfp), std::to_string(ufp), std::to_string(vfm), std::to_string(ufm)});
+                        local_file + std::to_string(en), std::to_string(ve), std::to_string(ue), std::to_string(vf), std::to_string(uf), std::to_string(T), std::to_string(dT), std::to_string(min_score), "node" + std::to_string(t), "node" + std::to_string(h), std::to_string(vfp), std::to_string(ufp), std::to_string(vfm), std::to_string(ufm)});
                 }
             }
             else
                 continue;
-            argc = 3;
-            for (auto &aa : {args, args_local, args_global})
-                for (auto &a : aa)
-                    argc += a.size();
-            argv = new char *[argc];
-            int ii = 0;
+            
+            std::ofstream fout(argfile);
+            fout << "run_name = " << run_name << ";\n";
+            fout << "read_files = {\n\t" << read_file << ";\n};\n";
+            fout << "index_threads_sz = " << index_threads_sz << ";\n";
+            fout << "align_threads_sz = " << align_threads_sz << ";\n";
+            fout << "max_round = " << max_round << ";\n";
+            fout << "max_extract = " << max_extract << ";\n";
+            fout << "diff_thres = " << diff_thres << ";\n";
+            fout << "max_range = " << max_range << ";\n";
+            fout << "min_seg_num = " << min_seg_num << ";\n";
+            fout << "max_seg_num = " << max_seg_num << ";\n";
+            fout << "max_mega = " << max_mega << ";\n";
+            fout << "block_size = " << block_size << ";\n";
+            fout << "ll = " << ll << ";\n";
+
             for (auto &arg : args)
-                for (auto &ar : arg)
-                    argv[++ii] = (char *)ar.c_str();
-            argv[++ii] = (char *)"--locals";
+            {
+                if (arg[0] == "--nodes")
+                    fout << "nodes = {\n";
+                else if (arg[0] == "--roots")
+                    fout << "};\nroots = {\n";
+                else if (arg[0] == "--targets")
+                    fout << "};\ntargets = {\n";
+                else if (arg.size() == 1)
+                    fout << "\t" << arg[0] << ";\n";
+                else
+                {
+                    fout << "\t{\n"
+                         << "\t\tname = " << arg[0] << ";\n"
+                         << "\t\tve = " << arg[1] << ";\n"
+                         << "\t\tue = " << arg[2] << ";\n"
+                         << "\t};\n";
+                }
+            }
+            fout << "};\nlocals = {\n";
             for (auto &arg : args_local)
-                for (auto &ar : arg)
-                    argv[++ii] = (char *)ar.c_str();
-            argv[++ii] = (char *)"--globals";
+            {
+                fout << "\t{\n\t\tgamma = {\n";
+                for (int i = 0; i < 49; ++i)
+                    fout << "\t\t\t" << arg[i] << ";\n";
+                fout << "\t\t};\n\t\tname = " << arg[49] << ";\n\t\tve = " << arg[50] << ";\n\t\tue = " << arg[51] << ";\n\t\tvf = " << arg[52] << ";\n\t\tuf = " << arg[53] << ";\n\t\tT = " << arg[54] << ";\n\t\tdT = " << arg[55] << ";\n\t\tmin_score = " << arg[56] << ";\n\t\ttail = " << arg[57] << ";\n\t\thead = " << arg[58] << ";\n\t\tvfp = " << arg[59] << ";\n\t\tufp = " << arg[60] << ";\n\t\tvfm = " << arg[61] << ";\n\t\tufm = " << arg[62] << ";\n\t};\n";
+            }
+            fout << "};\nglobals = {\n";
             for (auto &arg : args_global)
-                for (auto &ar : arg)
-                    argv[++ii] = (char *)ar.c_str();
-            Graph graph(argc, argv, file2seq, file2browheel);
+            {
+                fout << "\t{\n\t\tgamma = {\n";
+                for (int i = 0; i < 49; ++i)
+                    fout << "\t\t\t" << arg[i] << ";\n";
+                fout << "\t\t};\n\t\tname = " << arg[49] << ";\n\t\tve = " << arg[50] << ";\n\t\tue = " << arg[51] << ";\n\t\tvf = " << arg[52] << ";\n\t\tuf = " << arg[53] << ";\n\t\tT = " << arg[54] << ";\n\t\tdT = " << arg[55] << ";\n\t\tmin_score = " << arg[56] << ";\n\t\ttail = " << arg[57] << ";\n\t\thead = " << arg[58] << ";\n\t\treverse_complement = " << arg[59] << ";\n\t};\n";
+            }
+            fout << "};\n";
+            fout.close();
+
+            Graph graph(argfile, file2seq, file2browheel);
             bool not_connect = false;
             for (auto &node : graph.nodes)
             {
@@ -218,7 +253,6 @@ void random_DG(int n_sz, int r_sz, int t_sz, int max_e_sz, std::string argfile, 
                 average_four_edge_types = graph.local_crosses.size() > 0 && graph.local_crosses.size() <= up_single_type && graph.local_circuits.size() > 0 && graph.local_circuits.size() <= up_single_type && graph.global_crosses.size() > 0 && graph.global_crosses.size() <= up_single_type && graph.global_circuits.size() > 0 && graph.global_circuits.size() <= up_single_type;
                 break;
             }
-            delete[] argv;
         }
     } while (!at_least_two_sccs || args_local.size() + args_global.size() > max_e_sz || !average_four_edge_types);
 
@@ -244,32 +278,7 @@ void random_DG(int n_sz, int r_sz, int t_sz, int max_e_sz, std::string argfile, 
         fout.close();
         pair.second.readin(pair.first, true, false);
     }
-    Graph graph(argc, argv, file2seq, file2browheel);
-    delete[] argv;
-    std::ofstream fout(argfile);
-    fout << "\"--read_files\", "
-         << "\"" << read_file << "\",\n";
-    for (auto &arg : args)
-    {
-        for (auto &ar : arg)
-            fout << "\"" << ar << "\", ";
-        fout << '\n';
-    }
-    fout << "\"--locals\",\n";
-    for (auto &arg : args_local)
-    {
-        for (auto &ar : arg)
-            fout << "\"" << ar << "\", ";
-        fout << '\n';
-    }
-    fout << "\"--globals\",\n";
-    for (auto &arg : args_global)
-    {
-        for (auto &ar : arg)
-            fout << "\"" << ar << "\", ";
-        fout << '\n';
-    }
-    fout.close();
+    Graph graph(argfile, file2seq, file2browheel);
 
     std::ofstream fout_read(read_file), fout_truth(truth_file);
     for (int sn = 1; sn <= seq_num; ++sn)

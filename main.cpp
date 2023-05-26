@@ -10,58 +10,40 @@
 #include <exception>
 #include <unistd.h>
 #include <ctime>
+#include "headers/Help.h"
 
 struct Parallel_Align
 {
-    int argc;
-    char **argv;
-    std::string run_name;
     std::map<std::string, NameSeq> file2seq;
     std::map<std::string, BroWheel> file2browheel;
-    int Omax;
+    Graph graph;
+
+    std::string argfile, run_name;
     std::deque<std::string> read_files, mg_files;
+    int index_threads_sz, align_threads_sz, max_round, max_extract, diff_thres, max_range, min_seg_num, max_seg_num, block_size, Omax, round = 0;
+    int64_t max_mega, ll;
     std::atomic<int> block_num;
 
-    Parallel_Align(int argc_, char **argv_, std::string run_name_)
-        : argc(argc_), argv(argv_), run_name(run_name_)
+    Parallel_Align(std::string argfile_)
+        : graph(argfile_, file2seq, file2browheel), argfile(argfile_)
     {
-        initialize();
-    }
-
-    Parallel_Align(std::string argfile, std::string run_name_)
-        : run_name(run_name_)
-    {
-        std::vector<std::string> args;
-        std::string tmp;
+        std::string data;
         std::ifstream fin(argfile);
-        while (fin >> tmp)
-        {
-            if (tmp.back() == ',')
-                args.push_back(tmp.substr(1, tmp.size() - 3));
-            else
-                args.push_back(tmp.substr(1, tmp.size() - 2));
-        }
-        fin.close();
-        argc = args.size() + 1;
-        argv = new char *[argc];
-        for (int i = 1; i < argc; ++i)
-        {
-            argv[i] = new char[args[i - 1].size() + 1];
-            strcpy(argv[i], args[i - 1].c_str());
-        }
-        initialize();
-    }
-
-    void initialize()
-    {
-        Graph(argc, argv, file2seq, file2browheel).draw("graph.gv");
-        for (int i = 1; i < argc; ++i)
-            if (!strcmp(argv[i], "--read_files"))
-            {
-                while (++i < argc && (strlen(argv[i]) < 2 || argv[i][0] != '-' || argv[i][1] != '-'))
-                    read_files.push_back(argv[i]);
-                --i;
-            }
+        std::getline(fin, data, '\0');
+        std::map<std::string, std::string> hts = get_handles(split_string(data, ';', '{', '}'));
+        run_name = hts["run_name"];
+        read_files = split_string(remove_open_close(hts["read_files"], '{', '}'), ';', '\0', '\0');
+        index_threads_sz = std::stoi(hts["index_threads_sz"]);
+        align_threads_sz = std::stoi(hts["align_threads_sz"]);
+        max_round = std::stoi(hts["max_round"]);
+        max_extract = std::stoi(hts["max_extract"]);
+        diff_thres = std::stoi(hts["diff_thres"]);
+        max_range = std::stoi(hts["max_range"]);
+        min_seg_num = std::stoi(hts["min_seg_num"]);
+        max_seg_num = std::stoi(hts["max_seg_num"]);
+        max_mega = std::stol(hts["max_mega"]);
+        block_size = std::stoi(hts["block_size"]);
+        ll = std::stol(hts["ll"]);
         Omax = 0;
         for (auto &read_file : read_files)
         {
@@ -80,15 +62,40 @@ struct Parallel_Align
             if (maxlen > Omax)
                 Omax = maxlen;
         }
+        graph.draw("graph.gv");
     }
 
-    void do_index(int ll, int threads1_sz, bool reverse_complement)
+    void do_index()
     {
-        for (auto &pair : file2browheel)
-            pair.second.readin(pair.first, true, reverse_complement);
-        thread_pool threads1(threads1_sz), thread2(1);
+        thread_pool threads1(index_threads_sz), thread2(1);
         for (auto &pair : file2browheel)
         {
+            int true_num = 0, false_num = 0;
+            for (EdgeGlobalCross &global : graph.global_crosses)
+                if (global.name == pair.first)
+                    if (global.reverse_complement)
+                        ++true_num;
+                    else
+                        ++false_num;
+            for (EdgeGlobalCircuit &global : graph.global_circuits)
+                if (global.name == pair.first)
+                    if (global.reverse_complement)
+                        ++true_num;
+                    else
+                        ++false_num;
+            bool reverse_complement;
+            if (true_num > 0 && false_num > 0)
+            {
+                std::cerr << "unable to determine whether " << pair.first << " should be reverse_complement\n";
+                exit(-1);
+            }
+            else if (true_num == 0 && false_num == 0)
+                continue;
+            else if (true_num > 0)
+                reverse_complement = true;
+            else
+                reverse_complement = false;
+            pair.second.readin(pair.first, true, reverse_complement);
             pair.second.index(ll, threads1, thread2);
             pair.second.saveBroWheel();
         }
@@ -102,7 +109,7 @@ struct Parallel_Align
             pair.second.loadBroWheel(pair.first);
     }
 
-    std::queue<std::pair<std::string, std::string>> fill_block(int64_t block_size, std::ifstream &fin, std::deque<std::string>::iterator &iter)
+    std::queue<std::pair<std::string, std::string>> fill_block(std::ifstream &fin, std::deque<std::string>::iterator &iter)
     {
         std::queue<std::pair<std::string, std::string>> reads;
         while (reads.size() < block_size)
@@ -138,41 +145,51 @@ struct Parallel_Align
         }
     }
 
-    void single_align(int64_t block_size)
+    void single_align()
     {
-        mg_files.emplace_back(run_name + ".mg");
-        Align align(argc, argv, file2seq, file2browheel, mg_files.front(), Omax);
+        if (round > 0)
+            read_files = {run_name + std::to_string(round - 1) + ".fail"};
+        mg_files = {run_name + std::to_string(round) + ".mg"};
+        Align align(argfile, file2seq, file2browheel, mg_files.front(), Omax);
+        for (Edge *edge : align.edges)
+            edge->T += round * edge->dT;
 
         auto iter = read_files.begin();
         std::ifstream fin(*iter);
         while (iter != read_files.end())
         {
-            process_and_write_single(fill_block(block_size, fin, iter), align);
+            process_and_write_single(fill_block(fin, iter), align);
         }
         if (!align.Oname.empty())
             align.fout.write((char *)&align.max_id, sizeof(align.max_id));
         align.fout.close();
     }
 
-    void parallel_align(int threads1_sz, int64_t block_size)
+    void parallel_align()
     {
+        if (round > 0)
+            read_files = {run_name + std::to_string(round - 1) + ".fail"};
         std::map<std::thread::id, Align> aligns;
-        thread_pool threads1(threads1_sz);
+        thread_pool threads1(align_threads_sz);
         auto thread_ids = threads1.get_ids();
+        mg_files.clear();
         for (size_t i = 0; i < threads1.size(); ++i)
         {
-            mg_files.emplace_back(run_name + std::to_string(i) + ".mg");
-            aligns.emplace(std::piecewise_construct, std::forward_as_tuple(thread_ids[i]), std::forward_as_tuple(argc, argv, file2seq, file2browheel, mg_files.back(), Omax));
+            mg_files.emplace_back(run_name + std::to_string(round) + ".mg" + std::to_string(i));
+            aligns.emplace(std::piecewise_construct, std::forward_as_tuple(thread_ids[i]), std::forward_as_tuple(argfile, file2seq, file2browheel, mg_files.back(), Omax));
         }
+        for (auto &pair : aligns)
+            for (Edge *edge : pair.second.edges)
+                edge->T += round * edge->dT;
 
-        int max_block = 2 * threads1_sz;
+        int max_block = 2 * align_threads_sz;
         block_num.store(0);
         std::deque<std::future<void>> futures;
         auto iter = read_files.begin();
         std::ifstream fin(*iter);
         while (iter != read_files.end())
         {
-            auto reads = fill_block(block_size, fin, iter);
+            auto reads = fill_block(fin, iter);
             while (block_num.load() == max_block)
                 ;
             futures.push_back(threads1.submit(std::bind(&Parallel_Align::process_and_write, this, std::move(reads), std::ref(aligns))));
@@ -196,22 +213,12 @@ struct Parallel_Align
         --block_num;
     }
 
-    void track(int64_t max_seq, int64_t max_track, int64_t max_extract)
+    int64_t track()
     {
-        Track track(argc, argv, file2seq, file2browheel);
-        track.ReadTrack(mg_files, read_files, run_name, max_seq, max_track, max_extract, 0);
+        Track track(argfile, file2seq, file2browheel, run_name + std::to_string(round), max_extract, max_mega, diff_thres, max_range, min_seg_num, max_seg_num);
+        return track.ReadTrack(mg_files, read_files);
     }
 };
-
-void help()
-{
-    std::cout << "--read_files file1 file2 ...\n"
-              << "--nodes node_name1 gap_open_penalty(GOP)1 gap_extend_penalty(GEP)1 node_name2...\n"
-              << "--roots root_name1 root_name2 ...\n"
-              << "--targets target_name1 target_name2 ...\n"
-              << "--locals <default_gamma | 49_pair_scores1> local_file1 GOP_in_ref1 GEP_in_ref1 GOP_in_query1 GEP_in_query1 basic_penalty1 GOP_in_ref_begin1 GEP_in_ref_begin1 GOP_in_ref_end1 GEP_in_ref_end1 tail1 head1 <default_gamma | 49_pair_scores2> local_file2...\n"
-              << "--globals <default_gamma | 49_pair_scores1> global_file1 GOP_in_ref1 GEP_in_ref1 GOP_in_query1 GEP_in_query1 basic_penalty1 tail1 head1 <default_gamma | 49_pair_scores2> global_file2...\n";
-}
 
 std::deque<std::string> get_dirs()
 {
@@ -245,31 +252,109 @@ void test_GenerateRandomReads(std::string dir, std::string argfile)
 
     int n_sz = 5, r_sz = 2, t_sz = 1, max_e_sz = 8, lseqlb = 100, lsequb = 200, gseqlb = 10000, gsequb = 20000, aseqlb = 50, asequb = 100, seq_num = 10000, head_in = 10, tail_in = 10;
     bool acyclic = false;
-    double gpro = 0.5, rpro = 0, nve = 0, nue = 0, ve = -5, ue = -2, vf = -5, uf = -2, T = -10, dT = -5, minScore = 20, vfp = 0, ufp = 0, vfm = 0, ufm = 0, mat = 1, mis = -3, indel_rate = 0.005, mut_rate = 0.005, apro = 0.5;
-    int64_t diffseg = 10;
+    double gpro = 0.5, rpro = 0, nve = 0, nue = 0, ve = -5, ue = -2, vf = -5, uf = -2, T = -10, dT = -5, min_score = 20, vfp = 0, ufp = 0, vfm = 0, ufm = 0, mat = 1, mis = -3, indel_rate = 0.005, mut_rate = 0.005, apro = 0.5;
 
-    random_DG(n_sz, r_sz, t_sz, max_e_sz, "argfile", acyclic, gpro, rpro, nve, nue, ve, ue, vf, uf, T, dT, minScore, diffseg, vfp, ufp, vfm, ufm, mat, mis, "local_file", "global_file", lseqlb, lsequb, gseqlb, gsequb, aseqlb, asequb, seq_num, "read_file", "truth_file", indel_rate, mut_rate, head_in, tail_in, apro);
+    int index_threads_sz = 3, align_threads_sz = 24, max_extract = 3, diff_thres = 2, max_range = 10, min_seg_num = 0, max_seg_num = 0, max_round = 5, block_size = 100;
+    int64_t max_mega = 10000, ll = 150000000;
+
+    random_DG(n_sz, r_sz, t_sz, max_e_sz, "argfile", acyclic, gpro, rpro, nve, nue, ve, ue, vf, uf, T, dT, min_score, vfp, ufp, vfm, ufm, mat, mis, "local_file", "global_file", lseqlb, lsequb, gseqlb, gsequb, aseqlb, asequb, seq_num, "read_file", "truth_file", indel_rate, mut_rate, head_in, tail_in, apro, "random", index_threads_sz, align_threads_sz, max_extract, diff_thres, max_range, min_seg_num, max_seg_num, max_round, block_size, max_mega, ll);
 }
 
-void test_Align(std::string dir, std::string run_name, std::string argfile, int threads1_sz, int64_t max_track, int64_t max_extract)
+void override(std::experimental::filesystem::path dir, std::string argfile, std::deque<std::pair<std::string, std::string>> hvps)
 {
     chdir(dir.c_str());
 
-    Parallel_Align parallel_align(argfile, run_name);
-    // parallel_align.do_index(150000000, 3, true);  
-    parallel_align.load_index();
-    // time_t time_tic = time(0);
-    // // parallel_align.single_align(100); // st
-    // parallel_align.parallel_align(threads1_sz, 100); // mt
-    // std::cerr << "align time is " << time(0) - time_tic << '\n';
-
-    for (size_t i = 0; i < threads1_sz; ++i) // test track
-        parallel_align.mg_files.emplace_back(run_name + std::to_string(i) + ".mg"); // test track
-
-    parallel_align.track(INT64_MAX, max_track, max_extract);
+    std::string data;
+    std::ifstream fin(argfile);
+    std::getline(fin, data, '\0');
+    for (std::pair<std::string, std::string> &hvp : hvps)
+    {
+        size_t pos = 0;
+        while (true)
+        {
+            pos = data.find(hvp.first, pos);
+            if (pos == std::string::npos)
+                break;
+            else
+            {
+                int cpos = data.rfind(";", pos);
+                if (cpos == std::string::npos)
+                    cpos = -1;
+                for (++cpos; isspace(data[cpos]); ++cpos)
+                    ;
+                int epos = data.find("=", pos), eepos = epos;
+                if (epos == std::string::npos)
+                {
+                    pos += hvp.first.size();
+                    continue;
+                }
+                for (--epos; isspace(data[epos]); --epos)
+                    ;
+                if (cpos < pos || epos > pos + hvp.first.size() - 1)
+                {
+                    pos += hvp.first.size();
+                    continue;
+                }
+                int depth = 0;
+                for (pos = eepos + 1; pos < data.size(); ++pos)
+                {
+                    if (data[pos] == ';')
+                    {
+                        if (depth == 0)
+                            break;
+                    }
+                    else if (data[pos] == '{')
+                        ++depth;
+                    else if (data[pos] == '}')
+                        --depth;
+                }
+                data.replace(eepos + 1, pos - eepos - 1, " " + hvp.second);
+                pos += hvp.second.size() + 1 - (pos - eepos - 1);
+            }
+        }
+    }
+    std::ofstream fout(argfile + ".override");
+    fout << data;
 }
 
-void run_sim(std::string sim_dir, std::string run_name, int threads1_sz, int64_t max_track, int64_t max_extract)
+std::deque<int64_t> test_Align(std::experimental::filesystem::path dir, std::string argfile, bool reindex, bool para)
+{
+    chdir(dir.c_str());
+
+    int64_t not_failed_by_unalign;
+    Parallel_Align parallel_align(argfile);
+    if (reindex)
+        parallel_align.do_index();
+    else
+        parallel_align.load_index();
+    std::deque<int64_t> align_times;
+    do
+    {
+        time_t time_tic = time(0);
+        if (para)
+            parallel_align.parallel_align();
+        else
+            parallel_align.single_align();
+        
+        align_times.push_back(time(0) - time_tic);
+        std::cerr << "align time is " << align_times.back() << '\n';
+
+        // parallel_align.mg_files.clear(); // test track
+        // for (size_t i = 0; i < parallel_align.align_threads_sz; ++i) // test track
+        //     parallel_align.mg_files.emplace_back(parallel_align.run_name + std::to_string(parallel_align.round) + ".mg" + std::to_string(i)); // test track
+        // if (parallel_align.round > 0) // test track
+        //     parallel_align.read_files = {parallel_align.run_name + std::to_string(parallel_align.round - 1) + ".fail"}; // test track
+
+        not_failed_by_unalign = parallel_align.track();
+
+        ++parallel_align.round;
+
+    } while (not_failed_by_unalign > 0 && parallel_align.round <= parallel_align.max_round);
+
+    return align_times;
+}
+
+void run_sim(std::string sim_dir, bool para)
 {
     chdir(sim_dir.c_str());
     std::deque<std::string> dirs = get_dirs();
@@ -278,34 +363,129 @@ void run_sim(std::string sim_dir, std::string run_name, int threads1_sz, int64_t
         chdir(("./" + dir).c_str());
         std::deque<std::string> argfiles = get_argfiles();
         for (auto &argfile : argfiles)
-            test_Align("./", run_name, argfile, threads1_sz, max_track, max_extract);
+            test_Align("./", argfile, false, para);
         chdir("..");
     }
     chdir("..");
 }
 
+int gradual_align(std::experimental::filesystem::path dir, std::string argfile, std::string argfile_last, std::string run_name, int align_trheads_sz, int max_extract, int max_mega, int diff_thres, int max_range, int min_seg_num, int max_seg_num, int block_size, int max_round, double T, double dT, int min_score, bool reindex, bool para)
+{
+    override(dir, argfile, {{"run_name", run_name.c_str()}, {"align_threads_sz", std::to_string(align_trheads_sz).c_str()}, {"max_extract", std::to_string(max_extract).c_str()}, {"max_mega", std::to_string(max_mega).c_str()}, {"diff_thres", std::to_string(diff_thres).c_str()}, {"max_range", std::to_string(max_range).c_str()}, {"min_seg_num", std::to_string(min_seg_num).c_str()}, {"max_seg_num", std::to_string(max_seg_num).c_str()}, {"block_size", std::to_string(block_size).c_str()}, {"max_round", std::to_string(max_round).c_str()}, {"T", std::to_string(T).c_str()}, {"dT", std::to_string(dT).c_str()}, {"min_score", std::to_string(min_score).c_str()}});
+    std::deque<int64_t> align_times = test_Align(dir, argfile + ".override", reindex, para);
+    std::ofstream fout((dir / "align_times").string());
+    for (int round = 0; round < align_times.size(); ++round)
+        fout << round << '\t' << T + round * dT << '\t' << align_times[round] << '\n';
+    for (int i = 5; i >= 0; --i)
+    {
+        std::string fail_last = run_name + std::to_string(i) + ".fail";
+        std::ifstream fin(fail_last);
+        if (!fin)
+            continue;
+        fin.seekg(0, std::ios::end);
+        if (fin.tellg() > 0)
+        {
+            fin.close();
+            override(dir, argfile_last, {{"run_name", (run_name + "_last").c_str()}, {"read_files", "{" + fail_last + ";};"}, {"align_threads_sz", std::to_string(align_trheads_sz).c_str()}, {"max_extract", std::to_string(max_extract).c_str()}, {"max_mega", std::to_string(max_mega).c_str()}, {"diff_thres", std::to_string(diff_thres).c_str()}, {"max_range", std::to_string(max_range).c_str()}, {"min_seg_num", "0"}, {"max_seg_num", "0"}, {"block_size", std::to_string(block_size).c_str()}, {"max_round", "0"}, {"T", "0"}, {"dT", "0"}, {"min_score", "0"}});
+            std::deque<int64_t> align_times = test_Align(dir, argfile_last + ".override", false, para);
+            fout << "last\t*\t" << align_times.front() << '\n';
+        }
+        break;
+    }
+}
+
 int main(int argc, char **argv)
 {
-    // test_GenerateRandomReads("./test_RandomReads", "argfile");
-    test_Align("./test_RandomReads", "random", "argfile", 24, 1, 1);
+    // help();
 
-    
-    // test_Align("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_time/test_CRISPR_5", "CRISPR", "argfile", 6, 1, 1);
-    
-    // test_Align("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_time/test_CRISPR_10", "CRISPR", "argfile", 6, 1, 1);
+    // test_GenerateRandomReads("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_RandomReads", "argfile");
+    // override("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_RandomReads", "argfile", {{"align_threads_sz", "24"}, {"max_extract", "4"}, {"max_mega", "20000"}, {"diff_thres", "1"}, {"max_range", "5"}, {"max_round", "5"}, {"T", "-5"}, {"dT", "-1"}, {"min_score", "20"}});
+    // test_Align("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_RandomReads", "argfile.override", false, true);
 
-    // test_Align("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_time/test_CRISPR_15", "CRISPR", "argfile", 6, 1, 1);
+    // override("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_CRISPR", "argfile", {{"align_threads_sz", "6"}, {"max_extract", "1"}, {"max_mega", "10000"}, {"diff_thres", "10"}, {"max_range", "10"}, {"max_round", "4"}, {"T", "-10"}, {"dT", "-5"}, {"min_score", "30"}});
+    // test_Align("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_CRISPR", "argfile.override", false, true);
 
-    // test_Align("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_time/test_CRISPR_20", "CRISPR", "argfile", 6, 1, 1);
+    // override("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_CRISPR_cross", "argfile", {{"align_threads_sz", "6"}, {"max_extract", "1"}, {"max_mega", "10000"}, {"diff_thres", "10"}, {"max_range", "10"}, {"max_round", "4"}, {"T", "-10"}, {"dT", "-5"}, {"min_score", "20"}});
+    // test_Align("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_CRISPR_cross", "argfile.override", false, true);
 
-    // test_Align("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_time/test_CRISPR_25", "CRISPR", "argfile", 6, 1, 1);
+    // std::ofstream fout("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_time/align_times");
+    // for (int i = 0; i < 5; ++i)
+    // {
+    //     override("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_time", "argfile", {{"run_name", "CRISPR" + std::to_string(5 * (i + 1))}, {"align_threads_sz", "6"}, {"max_extract", "1"}, {"max_mega", "10000"}, {"diff_thres", "10"}, {"max_range", "10"}, {"min_seg_num", "1"}, {"max_seg_num", "1"}, {"block_size", "10"}, {"max_round", "0"}, {"T", std::to_string(-5 * (i + 1))}, {"min_score", "0"}});
+    //     std::deque<int64_t> align_times = test_Align("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_time", "argfile.override", false, true);
+    //     fout << align_times.front() << '\n';
+    // }
 
-    // test_Align("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_CRISPR_cross", "CRISPR", "argfile", 6, 1, 1);
+    // {
+    //     std::ofstream fout("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_time_direct/align_times"), fout2("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_time_direct/total_times");
+    //     override("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_time_direct", "argfile", {{"run_name", "CRISPR"}, {"align_threads_sz", "6"}, {"max_extract", "1"}, {"max_mega", "10000"}, {"diff_thres", "10"}, {"max_range", "10"}, {"min_seg_num", "0"}, {"max_seg_num", "0"}, {"block_size", "10"}, {"max_round", "0"}, {"T", "0"}, {"dT", "0"}, {"min_score", "0"}});
+    //     time_t time_tic = time(0);
+    //     std::deque<int64_t> align_times = test_Align("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_time_direct", "argfile.override", false, true);
+    //     fout << align_times.front() << '\n';
+    //     fout2 << time(0) - time_tic << '\n';
+    // }
 
-    // test_Align("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/zyj/zhengjin/4C_fold/run", "4C", "argfile", 12, 1, 1);
+    // {
+    //     std::ofstream fout("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_time_loop/align_times");
+    //     override("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_time_loop", "argfile", {{"run_name", "CRISPR"}, {"align_threads_sz", "6"}, {"max_extract", "1"}, {"max_mega", "10000"}, {"diff_thres", "10"}, {"max_range", "10"}, {"min_seg_num", "1"}, {"max_seg_num", "1"}, {"block_size", "10"}, {"max_round", "5"}, {"T", "-5"}, {"dT", "-5"}, {"min_score", "0"}});
+    //     time_t time_tic = time(0);
+    //     std::deque<int64_t> align_times = test_Align("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_time_loop", "argfile.override", false, true);
+    //     for (int64_t align_time : align_times)
+    //         fout << align_time << '\n';
+    //     for (int i = 5; i >= 0; --i)
+    //     {
+    //         std::string fail_last = "CRISPR" + std::to_string(i) + ".fail";
+    //         std::ifstream fin(fail_last);
+    //         if (!fin)
+    //             continue;
+    //         fin.seekg(0, std::ios::end);
+    //         if (fin.tellg() > 0)
+    //         {
+    //             fin.close();
+    //             override("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_time_loop", "argfile_last", {{"run_name", "CRISPR_last"}, {"read_files", "{" + fail_last + ";};"}, {"align_threads_sz", "6"}, {"max_extract", "1"}, {"max_mega", "10000"}, {"diff_thres", "10"}, {"max_range", "10"}, {"min_seg_num", "0"}, {"max_seg_num", "0"}, {"block_size", "10"}, {"max_round", "0"}, {"T", "0"}, {"dT", "0"}, {"min_score", "0"}});
+    //             std::deque<int64_t> align_times = test_Align("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_time_loop", "argfile_last.override", false, true);
+    //             std::ofstream fout_last("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_time_loop/align_time_last");
+    //             fout_last << align_times.front() << '\n';
+    //         }
+    //         break;
+    //     }
+    //     std::ofstream fout_total("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_time_loop/total_times");
+    //     fout_total << time(0) - time_tic << '\n';
+    // }
 
-    // run_sim("./test_single_cut", "sim", 12, 10, 10);
-    // run_sim("./test_double_cut", "sim", 12, 10, 10);
+    // override("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/zyj/zhengjin/4C_fold/run", "argfile", {{"align_threads_sz", "12"}, {"max_extract", "1"}, {"max_mega", "10000"}, {"diff_thres", "10"}, {"max_range", "10"}, {"max_round", "3"}, {"T", "-5"}, {"dT", "-5"}, {"min_score", "20"}});
+    // test_Align("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/zyj/zhengjin/4C_fold/run", "argfile.override", false, true);
+
+    // run_sim("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_single_cut", true);
+    // run_sim("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/test_double_cut", true);
+
+    std::deque<std::experimental::filesystem::path> dirs = {"/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Ct1-Rep1",
+    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Ct1-Rep2",
+    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Delta-Rep1",
+    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Delta-Rep2",
+    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Kappa-Rep1",
+    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Kappa-Rep2",
+    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Mu-Rep1",
+    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Mu-Rep2",
+    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Theta-Rep1",
+    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/single/Theta-Rep2",
+    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Ct1-Rep1",
+    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Ct1-Rep2",
+    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Delta-Rep1",
+    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Delta-Rep2",
+    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Kappa-Rep1",
+    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Kappa-Rep2",
+    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Mu-Rep1",
+    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Mu-Rep2",
+    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Theta-Rep1",
+    "/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Theta-Rep2"};
+
+    int align_trheads_sz = 24, max_extract = 1, max_mega = 10000, diff_thres = 2, max_range = 10, min_seg_num = 1, max_seg_num = 3, block_size = 100, max_round = 4, min_score = 20;
+    double T = -10, dT = -5;
+    bool para = true;
+
+    std::experimental::filesystem::path dir("/home/ljw/new_fold/old_desktop/wuqiang/shoujia/finalresults/double/Ct1-Rep1");
+    gradual_align(dir, "argfile", "argfile_last", dir.filename(), align_trheads_sz, max_extract, max_mega, diff_thres, max_range, min_seg_num, max_seg_num, block_size, max_round, T, dT, min_score, false, para);
 
     return 0;
 }

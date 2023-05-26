@@ -45,8 +45,7 @@ struct Edge
         {-inf, -inf, -3, -3, 1, -3, -3},
         {-inf, -inf, -3, -3, -3, 1, -3},
         {-inf, -inf, -3, -3, -3, -3, 1}};
-    double ve, ue, vf, uf, T, dT, minScore;
-    int64_t diffseg = 0;
+    double ve, ue, vf, uf, T, dT, min_score;
     Node *tail;
     Node *head;
     std::vector<double> gf;
@@ -147,6 +146,7 @@ struct TrackTree
 
 struct EdgeGlobal : Edge
 {
+    bool reverse_complement;
     BroWheel *pbrowheel;
     TrackTree tracktree;
 
@@ -575,6 +575,55 @@ struct SCC
     std::vector<EdgeGlobalCircuit *> global_circuits;
 };
 
+std::string trim_whitespace(std::string str)
+{
+    size_t i = str.find_first_not_of(" \n\r\t\f\v"), j = str.find_last_not_of(" \n\r\t\f\v");
+    return str.substr(i, j - i + 1);
+}
+
+std::deque<std::string> split_string(std::string str, char delimiters, char open_range, char close_range)
+{
+    std::deque<std::string> substrs;
+    int depth = 0, prei = -1;
+    for (int i = 0; i < str.size(); ++i)
+    {
+        if (str[i] == delimiters)
+        {
+            if (depth == 0)
+            {
+                int len = i - prei - 1;
+                if (len > 0)
+                    substrs.emplace_back(trim_whitespace(str.substr(prei + 1, len)));
+                prei = i;
+            }
+        }
+        else if (str[i] == open_range)
+            ++depth;
+        else if (str[i] == close_range)
+            --depth;
+    }
+    return substrs;
+}
+
+std::string remove_open_close(std::string str, char open_range, char close_range)
+{
+    size_t i = str.find_first_of(open_range), j = str.find_last_of(close_range);
+    return str.substr(i + 1, j - i - 1);
+}
+
+std::map<std::string, std::string> get_handles(std::deque<std::string> strs)
+{
+    std::map<std::string, std::string> handles_to_strs;
+    for (std::string &str : strs)
+        for (int i = 0; i < str.size(); ++i)
+            if (str[i] == '=')
+            {
+                handles_to_strs[trim_whitespace(str.substr(0, i))] = trim_whitespace(str.substr(i + 1, str.size() - i - 1));
+                break;
+            }
+    return handles_to_strs;
+}
+
 struct Graph
 {
     const static int sigma = 6;
@@ -617,98 +666,126 @@ struct Graph
                 g[s + 1] = g[s] + u;
     }
 
-    Graph(int argc, char **argv, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel)
+    Graph(std::string argfile, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel)
     {
-        for (int i = 1; i < argc; ++i)
-            if (!strcmp(argv[i], "--nodes"))
-            {
-                while (++i < argc && (strlen(argv[i]) < 2 || argv[i][0] != '-' || argv[i][1] != '-'))
-                {
-                    nodes.emplace_back(argv[i], str2double(argv[i + 1]), str2double(argv[i + 2]), nodes.size());
-                    i += 2;
-                }
-                --i;
-            }
-        std::list<EdgeLocal> locals;
-        std::list<EdgeGlobal> globals;
-        for (int i = 1, n = 0; i < argc; ++i)
-            if (!strcmp(argv[i], "--roots"))
-            {
-                while (++i < argc && (strlen(argv[i]) < 2 || argv[i][0] != '-' || argv[i][1] != '-'))
-                    for (auto &node : nodes)
-                        if (node.name == argv[i])
-                        {
-                            roots.push_back(&node);
-                            node.is_root = true;
-                            break;
-                        }
-                --i;
-            }
-            else if (!strcmp(argv[i], "--targets"))
-            {
-                while (++i < argc && (strlen(argv[i]) < 2 || argv[i][0] != '-' || argv[i][1] != '-'))
-                    for (auto &node : nodes)
-                        if (node.name == argv[i])
-                        {
-                            targets.push_back(&node);
-                            node.is_target = true;
-                            break;
-                        }
-                --i;
-            }
-            else if (!strcmp(argv[i], "--locals") || !strcmp(argv[i], "--globals"))
-            {
-                bool is_global = !strcmp(argv[i], "--globals");
-                while (++i < argc && (strlen(argv[i]) < 2 || argv[i][0] != '-' || argv[i][1] != '-'))
-                {
-                    Edge edge;
-                    edge.n = n++;
-                    edge.global = is_global;
-                    if (!strcmp(argv[i], "default_gamma"))
-                        ++i;
-                    else
-                        for (int a = 0; a < 7; ++a)
-                            for (int b = 0; b < 7; ++b)
-                                edge.gamma[a][b] = str2double(argv[i++]);
-                    edge.name = argv[i];
-                    edge.ve = str2double(argv[++i]);
-                    edge.ue = str2double(argv[++i]);
-                    edge.vf = str2double(argv[++i]);
-                    edge.uf = str2double(argv[++i]);
-                    edge.T = str2double(argv[++i]);
-                    edge.dT = str2double(argv[++i]);
-                    edge.minScore = str2double(argv[++i]);
-                    edge.diffseg = std::stoi(argv[++i]);
-                    get_affine(edge.gf, file2seq[edge.name].seq.size(), 0, edge.uf, edge.vf);
-                    for (auto &node : nodes)
-                    {
-                        if (node.name == argv[i + 1])
-                            edge.tail = &node;
-                        if (node.name == argv[i + 2])
-                            edge.head = &node;
-                    }
-                    i += 2;
+        std::string data;
+        std::ifstream fin(argfile);
+        std::getline(fin, data, '\0');
+        std::deque<std::string> strs = split_string(data, ';', '{', '}');
+        std::map<std::string, std::string> hts = get_handles(strs);
 
-                    if (!is_global)
-                    {
-                        locals.emplace_back(edge);
-                        EdgeLocal &local = locals.back();
-                        local.pnameseq = &file2seq[edge.name];
-                        local.vfp = str2double(argv[++i]);
-                        local.ufp = str2double(argv[++i]);
-                        local.vfm = str2double(argv[++i]);
-                        local.ufm = str2double(argv[++i]);
-                        local.gfm = local.vfm + (local.pnameseq->seq.size() - 1) * local.ufm;
-                        get_affine(local.gfpT, local.pnameseq->seq.size(), local.T, local.ufp, local.vfp);
-                    }
-                    else
-                    {
-                        globals.emplace_back(edge);
-                        globals.back().pbrowheel = &file2browheel[edge.name];
-                    }
-                }
-                --i;
+        std::deque<std::string> settings = split_string(remove_open_close(hts["nodes"], '{', '}'), ';', '{', '}');
+        for (std::string &setting : settings)
+        {
+            std::map<std::string, std::string> htnp = get_handles(split_string(remove_open_close(setting, '{', '}'), ';', '\0', '\0'));
+            nodes.emplace_back(htnp["name"], str2double(htnp["ve"]), str2double(htnp["ue"]), nodes.size());
+        }
+
+        settings = split_string(remove_open_close(hts["roots"], '{', '}'), ';', '\0', '\0');
+        for (auto &node : nodes)
+            if (std::find(settings.begin(), settings.end(), node.name) != settings.end())
+            {
+                roots.push_back(&node);
+                node.is_root = true;
+                if (roots.size() == settings.size())
+                    break;
             }
+        settings = split_string(remove_open_close(hts["targets"], '{', '}'), ';', '\0', '\0');
+        for (auto &node : nodes)
+            if (std::find(settings.begin(), settings.end(), node.name) != settings.end())
+            {
+                targets.push_back(&node);
+                node.is_target = true;
+                if (targets.size() == settings.size())
+                    break;
+            }
+
+        std::list<EdgeLocal> locals;
+        settings = split_string(remove_open_close(hts["locals"], '{', '}'), ';', '{', '}');
+        for (std::string &setting : settings)
+        {
+            Edge edge;
+            edge.n = locals.size();
+            edge.global = false;
+            std::map<std::string, std::string> htp = get_handles(split_string(remove_open_close(setting, '{', '}'), ';', '{', '}'));
+            if (htp["gamma"] != "default")
+            {
+                std::deque<std::string> pair_scores = split_string(remove_open_close(htp["gamma"], '{', '}'), ';', '\0', '\0');
+                for (int a = 0; a < 7; ++a)
+                    for (int b = 0; b < 7; ++b)
+                        edge.gamma[a][b] = str2double(pair_scores[7 * a + b]);
+            }
+            edge.name = htp["name"];
+            edge.ve = str2double(htp["ve"]);
+            edge.ue = str2double(htp["ue"]);
+            edge.vf = str2double(htp["vf"]);
+            edge.uf = str2double(htp["uf"]);
+            edge.T = str2double(htp["T"]);
+            edge.dT = str2double(htp["dT"]);
+            edge.min_score = str2double(htp["min_score"]);
+            get_affine(edge.gf, file2seq[edge.name].seq.size(), 0, edge.uf, edge.vf);
+            for (auto &node : nodes)
+            {
+                if (node.name == htp["tail"])
+                    edge.tail = &node;
+                if (node.name == htp["head"])
+                    edge.head = &node;
+            }
+            locals.emplace_back(edge);
+            EdgeLocal &local = locals.back();
+            local.pnameseq = &file2seq[edge.name];
+            local.vfp = str2double(htp["vfp"]);
+            local.ufp = str2double(htp["ufp"]);
+            local.vfm = str2double(htp["vfm"]);
+            local.ufm = str2double(htp["ufm"]);
+            local.gfm = local.vfm + (local.pnameseq->seq.size() - 1) * local.ufm;
+            get_affine(local.gfpT, local.pnameseq->seq.size(), local.T, local.ufp, local.vfp);
+        }
+
+        std::list<EdgeGlobal> globals;
+        settings = split_string(remove_open_close(hts["globals"], '{', '}'), ';', '{', '}');
+        for (std::string &setting : settings)
+        {
+            Edge edge;
+            edge.n = locals.size() + globals.size();
+            edge.global = true;
+            std::map<std::string, std::string> htp = get_handles(split_string(remove_open_close(setting, '{', '}'), ';', '{', '}'));
+            if (htp["gamma"] != "default")
+            {
+                std::deque<std::string> pair_scores = split_string(remove_open_close(htp["gamma"], '{', '}'), ';', '\0', '\0');
+                for (int a = 0; a < 7; ++a)
+                    for (int b = 0; b < 7; ++b)
+                        edge.gamma[a][b] = str2double(pair_scores[7 * a + b]);
+            }
+            edge.name = htp["name"];
+            edge.ve = str2double(htp["ve"]);
+            edge.ue = str2double(htp["ue"]);
+            edge.vf = str2double(htp["vf"]);
+            edge.uf = str2double(htp["uf"]);
+            edge.T = str2double(htp["T"]);
+            edge.dT = str2double(htp["dT"]);
+            edge.min_score = str2double(htp["min_score"]);
+            get_affine(edge.gf, file2seq[edge.name].seq.size(), 0, edge.uf, edge.vf);
+            for (auto &node : nodes)
+            {
+                if (node.name == htp["tail"])
+                    edge.tail = &node;
+                if (node.name == htp["head"])
+                    edge.head = &node;
+            }
+            globals.emplace_back(edge);
+            globals.back().pbrowheel = &file2browheel[edge.name];
+            transform(htp["reverse_complement"].begin(), htp["reverse_complement"].end(), htp["reverse_complement"].begin(), ::tolower);
+            if (htp["reverse_complement"] == "true")
+                globals.back().reverse_complement = true;
+            else if (htp["reverse_complement"] == "false")
+                globals.back().reverse_complement = false;
+            else
+            {
+                std::cerr << "reverse_complement must be true or false\n";
+                exit(-1);
+            }
+        }
         std::vector<bool> visit(locals.size() + globals.size());
         RemoveEdge(roots, false, visit, locals, globals);
         RemoveEdge(targets, true, visit, locals, globals);
@@ -754,6 +831,11 @@ struct Graph
                 edge.head->in_global_circuits.emplace_back(&global_circuits.back());
                 edges[edge.n] = &global_circuits.back();
             }
+    }
+
+    double str2double(std::string &str)
+    {
+        return str2double(str.c_str());
     }
 
     double str2double(const char *str)

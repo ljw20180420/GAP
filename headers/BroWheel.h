@@ -377,8 +377,6 @@ struct BroWheel
         int64_t m=(0>N-int64_t(threads1.size())?0:N-threads1.size());
         for(int64_t n=N-1; n>=m; --n)
            futures1.push(threads1.submit(std::bind(&BroWheel::SegmentSort, this, n, ll, SAmem, SAImem, threads1.size())));
-        
-        std::cerr << N << '\t' << std::time(NULL) << '\n'; // debug
 
         int64_t st=std::max(int64_t(0),N*ll);
         GetSA(st, sequence.size(), SA, SAI);
@@ -390,13 +388,9 @@ struct BroWheel
         C[0]=0;
         for(int c=1; c<sigma; ++c)
             C[c]=C[c-1]+bwt.R1[c-1][R1_tail];
-        
-        std::cerr << N << '\t' << std::time(NULL) << '\n'; // debug
 
         for(int64_t n=N-1; n>=0; --n)
         {
-            std::cerr << n << '\t' << std::time(NULL) << '\n'; // debug
-
             int64_t *SAn, *SAIn, pn;
             std::tie(SAn,SAIn,pn)=futures1.front().get();
             futures1.pop();
@@ -431,8 +425,6 @@ struct BroWheel
             R1_tail=bwt.count(cutoff_size);
             for(int c=1; c<sigma; ++c)
                 C[c]=C[c-1]+bwt.R1[c-1][R1_tail];
-
-            std::cerr << n << '\t' << std::time(NULL) << '\n'; // debug
         }
 
         for(int64_t k=ssa_sz-1, i=0, j=cutoff_size-2; k>=0; --k)
