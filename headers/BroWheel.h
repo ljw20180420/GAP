@@ -561,12 +561,6 @@ struct BroWheel
         sra.saveRankVec(fout);
         int64_t ssa_sz=(sequence.size()+f-1)/f;
         fout.write((char*)ssa,ssa_sz*sizeof(*ssa));
-        size_t ncs=name_cumlen.size();
-        fout.write((char*)&ncs,sizeof(ncs));
-        for (size_t i=0; i<name_cumlen.size(); ++i)
-            fout.write((char*)&name_cumlen[i].second, sizeof(name_cumlen[i].second));
-        for (size_t i=0; i<name_cumlen.size(); ++i)
-            fout << name_cumlen[i].first << '\n';
         fout.close();
     }
 
@@ -585,14 +579,7 @@ struct BroWheel
             delete[] ssa;
         ssa=new int64_t[ssa_sz];
         fin.read((char*)ssa,ssa_sz*sizeof(*ssa));
-        // size_t ncs;
-        // fin.read((char*)&ncs,sizeof(ncs));
-        // name_cumlen.resize(ncs);
-        // for (size_t i=0; i<name_cumlen.size(); ++i)
-        //     fin.read((char*)&name_cumlen[i].second, sizeof(name_cumlen[i].second));
-        // for (size_t i=0; i<name_cumlen.size(); ++i)
-        //     fin >> name_cumlen[i].first;
-        // fin.close();
+        fin.close();
     }
     
     void RelativeOrder(int64_t* SAI, int64_t* SAIn, int64_t n, int64_t ll)

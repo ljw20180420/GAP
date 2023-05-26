@@ -124,7 +124,7 @@ struct TrackNode
     int tau = 0;
     int lambda;
 
-    TrackNode(Memory *memory_, TrackNode* itp_, TrackNode* itc_, int n, int s, int W, int lambda_)
+    TrackNode(Memory *memory_, TrackNode* itp_, TrackNode* itc_, int n, size_t s, int W, int lambda_)
     {
         itp = itp_;
         for (int i = 0; i < 5; ++i)
@@ -141,7 +141,7 @@ struct TrackNode
         }
     }
 
-    void alloc_initial(Memory *memory_, Dot *&ptr, int n, int s, int W)
+    void alloc_initial(Memory *memory_, Dot *&ptr, int n, size_t s, int W)
     {
         ptr = memory_->heap_alloc<Dot>(W+1);
         for (int w = 0; w <= W; ++w)

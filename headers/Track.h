@@ -191,8 +191,6 @@ struct Track : Memory, Graph
                     }
                 }
 
-                fout_track << std::endl; // debug
-
                 std::list<std::array<char, 3>> align;
                 for (auto it1 = path.begin(), it2 = std::next(it1); it2 != std::prev(path.end()); ++it1, ++it2)
                 {
