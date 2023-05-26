@@ -182,7 +182,6 @@ struct SNC;
 struct EdgeGlobalCircuit : EdgeGlobal
 {
     std::deque<SNC> sncs;
-    std::list<SNC *> vs;
 
     Dot *G;
     Dot **D0;

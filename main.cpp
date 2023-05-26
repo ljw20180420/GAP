@@ -8,6 +8,7 @@
 #include <cmath>
 #include <typeinfo>
 #include <exception>
+#include <unistd.h> 
 
 void help()
 {
@@ -68,8 +69,8 @@ std::deque<std::future<void>> load_blocks(std::deque<std::string> read_files, th
             if (std::getline(std::getline(fin, name), read))
             {
                 reads.emplace(name, read);
-                if (name[0]=='>')
-                    fin.ignore(std::numeric_limits<size_t>::max(),'\n').ignore(std::numeric_limits<size_t>::max(),'\n');
+                if (name[0]=='@')
+                    fin.ignore(std::numeric_limits<std::streamsize>::max(),'\n').ignore(std::numeric_limits<std::streamsize>::max(),'\n');
             }
             else
             {
@@ -101,8 +102,8 @@ void load_blocks(std::deque<std::string> read_files, Align &align, size_t block_
             if (std::getline(std::getline(fin, name), read))
             {
                 reads.emplace(name, read);
-                if (name[0]=='>')
-                    fin.ignore(std::numeric_limits<size_t>::max(),'\n').ignore(std::numeric_limits<size_t>::max(),'\n');
+                if (name[0]=='@')
+                    fin.ignore(std::numeric_limits<std::streamsize>::max(),'\n').ignore(std::numeric_limits<std::streamsize>::max(),'\n');
             }
             else
             {
@@ -182,31 +183,6 @@ std::deque<std::string> read_reference_and_index(int argc, char **argv, int ll, 
     return read_files;
 }
 
-std::deque<std::string> read_reference_and_index(int argc, char **argv, int ll, int threads1_sz, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel, bool reverse_complement)
-{
-    Graph graph(argc, argv, file2seq, file2browheel);
-    graph.draw("graph.gv");
-    for (auto &pair : file2seq)
-        pair.second.readin(pair.first);
-    for (auto &pair : file2browheel)
-        pair.second.readin(pair.first, true, reverse_complement);
-    for (auto &pair : file2browheel)
-    {
-        pair.second.index(ll, threads1_sz);
-        pair.second.saveBroWheel();
-    }
-    std::deque<std::string> read_files;
-    for (int i = 1; i < argc; ++i)
-        if (!strcmp(argv[i], "--read_files"))
-        {
-            while (++i < argc && (strlen(argv[i]) < 2 || argv[i][0] != '-' || argv[i][1] != '-'))
-                read_files.push_back(argv[i]);
-            --i;
-        }
-
-    return read_files;
-}
-
 std::deque<std::string> parallel_align(size_t chunk_sz, thread_pool &threads1, int argc, char **argv, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel, std::deque<std::string> read_files, std::string run_name)
 {
     std::map<std::thread::id, Align> aligns;
@@ -235,16 +211,65 @@ std::deque<std::string> parallel_align(size_t chunk_sz, thread_pool &threads1, i
     return mg_files;
 }
 
+std::deque<std::string> get_dirs()
+{   
+    const std::experimental::filesystem::path current_path(".");
+    std::experimental::filesystem::directory_iterator end_itr; // default construction yields past-the-end
+    std::deque<std::string> dirs;
+    for ( std::experimental::filesystem::directory_iterator itr( current_path ); itr != end_itr; ++itr )
+        if ( std::experimental::filesystem::is_directory(itr->status()) )
+            dirs.push_back(itr->path().filename().string());
+    return dirs;
+}
+
+std::deque<std::string> get_argfiles()
+{   
+    const std::experimental::filesystem::path current_path(".");
+    std::experimental::filesystem::directory_iterator end_itr; // default construction yields past-the-end
+    std::deque<std::string> argfiles;
+    for ( std::experimental::filesystem::directory_iterator itr( current_path ); itr != end_itr; ++itr )
+        if ( ! std::experimental::filesystem::is_directory(itr->status()) )
+        {
+            std::string str_tmp=itr->path().filename().string();
+            if (str_tmp.size()>8 && str_tmp.substr(str_tmp.size()-8,8)==".argfile")
+                argfiles.push_back(str_tmp);
+        }
+    return argfiles;
+}
+
+void run_sim(std::string sim_dir);
+
 void test_RandomReads(std::string argfile, int threads1_sz);
 void index_genome(std::string argfile, int threads1_sz);
 void test_CRISPR(std::string argfile, int threads1_sz);
+void test_single_double(std::string argfile, int threads1_sz);
 
 int main(int argc, char **argv)
 {
-    test_RandomReads("argfile", 24);
+    // test_RandomReads("argfile", 24);
     // index_genome("argfile", 3);
     // test_CRISPR("argfile", 3);
+
+    run_sim("./test_single_cut");
+    run_sim("./test_double_cut");
+
     return 0;
+}
+
+void run_sim(std::string sim_dir)
+{
+    chdir(sim_dir.c_str());
+    std::deque<std::string> dirs=get_dirs();
+    for (auto dir : dirs)
+    {
+        std::string tmp="./"+dir;
+        chdir(tmp.c_str());
+        std::deque<std::string> argfiles=get_argfiles();
+        for (auto &argfile : argfiles)
+            test_single_double(argfile, 12);
+        chdir("..");
+    }
+    chdir("..");
 }
 
 void test_RandomReads(std::string argfile, int threads1_sz)
@@ -300,13 +325,26 @@ void test_CRISPR(std::string argfile, int threads1_sz)
     thread_pool threads1(threads1_sz);
     std::deque<std::string> mg_files = parallel_align(128 * 1024 * 1024, threads1, argc, argv, file2seq, file2browheel, read_files, "CRISPR");
 
-    // std::deque<std::string> mg_files;
-    // for (size_t i = 0; i < threads1_sz; ++i)
-    //     mg_files.emplace_back("CRISPR" + std::to_string(i) + ".mg");
-
-
     Track track(argc, argv, file2seq, file2browheel, 128 * 1024 * 1024);
     track.ReadTrack(mg_files, read_files, "CRISPR", INT64_MAX, 1);
     track.extract("CRISPR", 1);
 }
 
+void test_single_double(std::string argfile, int threads1_sz)
+{
+    int argc;
+    char **argv;
+    std::vector<std::string> args;
+    std::tie(argc, argv) = read_argfile(argfile, args);
+
+    std::map<std::string, NameSeq> file2seq;
+    std::map<std::string, BroWheel> file2browheel;
+    std::deque<std::string> read_files = load_index(argc, argv, file2seq, file2browheel);
+
+    thread_pool threads1(threads1_sz);
+    std::deque<std::string> mg_files = parallel_align(128 * 1024 * 1024, threads1, argc, argv, file2seq, file2browheel, read_files, "sim");
+
+    Track track(argc, argv, file2seq, file2browheel, 128 * 1024 * 1024);
+    track.ReadTrack(mg_files, read_files, "sim", INT64_MAX, 10);
+    track.extract("sim", 10);
+}

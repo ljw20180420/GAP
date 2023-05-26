@@ -69,24 +69,29 @@ struct SNC
     double F0;
     double G0;
     double hatG;
+    int8_t c;
+    int8_t idl;
+    int lambda;
     size_t sr1;
     size_t sr2;
-    int lambda;
+    size_t cid; // 0 means not try to add child yet
     SNC *itp;
-    SNC *itcs[5]; // NULL means not try to add child yet, root means child does not exist.
+    SNC *jump;
 
-    SNC(double E_, double F0_, double G0_, double hatG_, size_t sr1_, size_t sr2_, int lambda_, SNC *itp_, SNC *itc_)
+    SNC(double E_, double F0_, double G0_, double hatG_, int8_t c_, int8_t idl_, int lambda_, size_t sr1_, size_t sr2_, size_t cid_, SNC *itp_, SNC *jump_)
     {
         E = E_;
         F0 = F0_;
         G0 = G0_;
         hatG = hatG_;
+        c = c_;
+        idl = idl_;
+        lambda = lambda_;
         sr1 = sr1_;
         sr2 = sr2_;
-        lambda = lambda_;
+        cid = cid_;
         itp = itp_;
-        for (int i = 0; i < 5; ++i)
-            itcs[i] = itc_;
+        jump = jump_;
     }
 };
 
@@ -462,83 +467,82 @@ struct Align : Memory, Graph
         Dot **A = edge->tail->A;
         if (w == 0)
         {
-            edge->sncs.emplace_front(-inf, -inf, -inf, -inf, 0, edge->browheel.sequence.size() - 1, 0, (SNC *)NULL, (SNC *)NULL);
-            edge->vs.insert(edge->vs.begin(), &edge->sncs.front());
+            edge->sncs.emplace_back(-inf, -inf, -inf, -inf, 0, 5, 0, 0, edge->browheel.sequence.size() - 1, 1, (SNC *)NULL, (SNC *)NULL);
             for (int c = 2; c <= 6; ++c)
             {
-                int64_t sr1 = edge->vs.front()->sr1;
-                int64_t sr2 = edge->vs.front()->sr2;
+                int64_t sr1 = edge->sncs.front().sr1;
+                int64_t sr2 = edge->sncs.front().sr2;
                 edge->browheel.PreRange(sr1, sr2, c);
-                edge->sncs.emplace_front(-inf, -inf, -inf, -inf, sr1, sr2, edge->vs.front()->lambda + 1, edge->vs.front(), (SNC *)NULL);
-                edge->vs.front()->itcs[c - 2] = &edge->sncs.front();
-                edge->vs.insert(std::next(edge->vs.begin()), &edge->sncs.front());
+                edge->sncs.emplace_back(-inf, -inf, -inf, -inf, c, 0, 1, sr1, sr2, 0, &edge->sncs.front(), edge->sncs.front().jump);
+                edge->sncs.front().jump=&edge->sncs.back();
             }
             edge->C[0] = -inf;
             edge->Cdelta[0].clear();
             return;
         }
-        edge->vs.front()->hatG = std::max(edge->vs.front()->G0, A[scc_sz - 1][w - 1].val + edge->T);
-        for (auto iter = std::next(edge->vs.begin()); iter != edge->vs.end();)
+        edge->sncs.front().hatG = std::max(edge->sncs.front().G0, A[scc_sz - 1][w - 1].val + edge->T);
+        for (auto prejump = &edge->sncs.front(), jump = prejump->jump; jump; jump = prejump->jump)
         {
-            (*iter)->hatG = (*iter)->G0;
-            if ((*iter)->itp != edge->vs.front() && (*iter)->itp->hatG == -inf && (*iter)->hatG == -inf)
-                iter = edge->vs.erase(iter);
+            jump->hatG = jump->G0;
+            if (jump->itp != &edge->sncs.front() && jump->itp->hatG == -inf && jump->hatG == -inf)
+                prejump->jump=jump->jump;
             else
-                ++iter;
+                prejump=jump;
         }
-        edge->vs.front()->E = std::max(edge->vs.front()->hatG + edge->ve, edge->vs.front()->E + edge->ue);
-        edge->vs.front()->F0 = -inf;
-        edge->vs.front()->G0 = std::max(edge->vs.front()->E, edge->vs.front()->F0);
-        edge->C[w] = edge->vs.front()->G0;
+        edge->sncs.front().E = std::max(edge->sncs.front().hatG + edge->ve, edge->sncs.front().E + edge->ue);
+        edge->sncs.front().F0 = -inf;
+        edge->sncs.front().G0 = std::max(edge->sncs.front().E, edge->sncs.front().F0);
+        edge->C[w] = edge->sncs.front().G0;
         edge->Cdelta[w].clear();
-        edge->Cdelta[w].emplace_back(edge->vs.front()->sr1, edge->vs.front()->lambda);
+        edge->Cdelta[w].emplace_back(edge->sncs.front().sr1, 0);
 
-        for (auto iter = std::next(edge->vs.begin()); iter != edge->vs.end(); ++iter)
+        for (auto jump = edge->sncs.front().jump; jump; jump = jump->jump)
         {
-            (*iter)->E = std::max((*iter)->hatG + edge->ve, (*iter)->E + edge->ue);
-            (*iter)->F0 = std::max((*iter)->itp->G0 + edge->vf, (*iter)->itp->F0 + edge->uf);
-            int c = std::find((*iter)->itp->itcs, (*iter)->itp->itcs + 5, (*iter)) - (*iter)->itp->itcs + 2;
-            (*iter)->G0 = std::max(std::max((*iter)->E, (*iter)->F0), (*iter)->itp->hatG + edge->gamma[c][BroWheel::base2int(O[w - 1])]);
-            if ((*iter)->G0 < edge->vs.front()->G0)
+            jump->E = std::max(jump->hatG + edge->ve, jump->E + edge->ue);
+            jump->F0 = std::max(jump->itp->G0 + edge->vf, jump->itp->F0 + edge->uf);
+            jump->G0 = std::max(std::max(jump->E, jump->F0), jump->itp->hatG + edge->gamma[jump->c][BroWheel::base2int(O[w - 1])]);
+            if (jump->G0 < edge->sncs.front().G0)
             {
-                (*iter)->E = -inf;
-                (*iter)->F0 = -inf;
-                (*iter)->G0 = -inf;
+                jump->E = -inf;
+                jump->F0 = -inf;
+                jump->G0 = -inf;
             }
-            if ((*iter)->G0 >= edge->C[w])
+            if (jump->G0 >= edge->C[w])
             {
-                if ((*iter)->G0 > edge->C[w])
+                if (jump->G0 > edge->C[w])
                 {
-                    edge->C[w] = (*iter)->G0;
+                    edge->C[w] = jump->G0;
                     edge->Cdelta[w].clear();
                 }
-                edge->Cdelta[w].emplace_back((*iter)->sr1, (*iter)->lambda);
+                edge->Cdelta[w].emplace_back(jump->sr1, jump->lambda);
             }
-            if ((*iter)->G0 != -inf && (*iter)->hatG == -inf)
-                for (int c = 2; c <= 6; ++c)
+            if (jump->G0 != -inf && jump->hatG == -inf)
+            {
+                if (jump->cid == 0)
                 {
-                    if (!(*iter)->itcs[c - 2])
+                    jump->cid=edge->sncs.size();
+                    for (int c = 2; c <= 6; ++c)
                     {
-                        int64_t sr1 = (*iter)->sr1;
-                        int64_t sr2 = (*iter)->sr2;
+                        int64_t sr1 = jump->sr1;
+                        int64_t sr2 = jump->sr2;
                         edge->browheel.PreRange(sr1, sr2, c);
                         if (sr1 <= sr2)
                         {
-                            edge->sncs.emplace_front(-inf, -inf, -inf, -inf, sr1, sr2, (*iter)->lambda + 1, (*iter), (SNC *)NULL);
-                            (*iter)->itcs[c - 2] = &edge->sncs.front();
+                            edge->sncs.emplace_back(-inf, -inf, -inf, -inf, c, 0, jump->lambda+1, sr1, sr2, 0, jump, (SNC *)NULL);
+                            ++jump->idl;
                         }
-                        else
-                            (*iter)->itcs[c - 2] = edge->vs.front();
-                    }
-                    if ((*iter)->itcs[c - 2] != edge->vs.front() && (*iter)->itcs[c - 2]->hatG == -inf)
-                        edge->vs.insert(std::next(iter), (*iter)->itcs[c - 2]);
+                    }   
                 }
+                for (int idi=0; idi<jump->idl; ++idi)
+                    if (edge->sncs[jump->cid+idi].hatG == -inf)
+                    {
+                        edge->sncs[jump->cid+idi].jump=jump->jump;
+                        jump->jump=&edge->sncs[jump->cid+idi];
+                    }
+            }
         }
         if (w == O.size())
-        {
             edge->sncs.clear();
-            edge->vs.clear();
-        }
     }
 
     void GetMinimalGraph()

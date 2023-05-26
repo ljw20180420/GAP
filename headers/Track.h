@@ -88,8 +88,8 @@ struct Track : Memory, Graph
             if (std::getline(std::getline(fin_seq, Oname), O))
             {
                 ++seq_num;
-                if (Oname[0]=='>')
-                    fin_seq.ignore(std::numeric_limits<size_t>::max(),'\n').ignore(std::numeric_limits<size_t>::max(),'\n');
+                if (Oname[0]=='@')
+                    fin_seq.ignore(std::numeric_limits<std::streamsize>::max(),'\n').ignore(std::numeric_limits<std::streamsize>::max(),'\n');
                 for (size_t f = 0; f < fins.size(); ++f)
                 {
                     if (Onames[f] == Oname)
