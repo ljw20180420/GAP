@@ -101,8 +101,6 @@ struct Align : Graph
 
     MonoDeque<Dot *> dot_sources;
 
-    
-
     void apply_memory()
     {
         trn = 0;
@@ -174,7 +172,7 @@ struct Align : Graph
         int w;
         int n;
     };
-    
+
     SWN get_swn(int64_t idx)
     {
         SWN swn;
@@ -189,7 +187,7 @@ struct Align : Graph
         {
             swn.s = 0;
             swn.w = 0;
-            if (idx ==  tnn - 1)
+            if (idx == tnn - 1)
                 swn.n = Dot::DotQ;
             else
                 swn.n = Dot::DotAbar;
@@ -198,7 +196,7 @@ struct Align : Graph
     }
 
     Align(int argc, char **argv, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel, std::string mgfile, int Omax_)
-    : Graph(argc, argv, file2seq, file2browheel), fout(mgfile, std::ifstream::binary), Omax(Omax_)
+        : Graph(argc, argv, file2seq, file2browheel), fout(mgfile, std::ifstream::binary), Omax(Omax_)
     {
         apply_memory();
 
@@ -229,8 +227,7 @@ struct Align : Graph
                 }
                 for (auto edge : scc.local_circuits)
                     CircuitIteration(w, edge);
-                for (auto edge : scc.global_circuits)
-                    CircuitIterationGlobal(w, edge);
+                CircuitIterationGlobal(w, scc);
                 for (int64_t l = 1; l < scc.nodes.size(); ++l)
                 {
                     for (auto edge : scc.global_circuits)
@@ -423,93 +420,200 @@ struct Align : Graph
         }
     }
 
-    void CircuitIterationGlobal(int64_t w, EdgeGlobalCircuit *edge)
+    // void CircuitIterationGlobal(int64_t w, EdgeGlobalCircuit *edge)
+    // {
+    //     if (w == 0)
+    //         return;
+
+    //     double *Avals = edge->tail->Avals[edge->tail->scc_sz - 1], *Bvals = edge->tail->Bvals;
+    //     std::deque<SNC> &sncs = edge->sncs;
+
+    //     if (w == 1)
+    //     {
+    //         sncs.emplace_back(-inf, -inf, -inf, -inf, -1, 5, 0, 0, edge->pbrowheel->sequence.size() - 1, 1, (SNC *)NULL, (SNC *)NULL);
+    //         for (int c = 2; c <= 6; ++c)
+    //         {
+    //             int64_t sr1 = sncs.front().sr1;
+    //             int64_t sr2 = sncs.front().sr2;
+    //             edge->pbrowheel->PreRange(sr1, sr2, c);
+    //             if (sr1 <= sr2)
+    //             {
+    //                 sncs.emplace_back(-inf, -inf, -inf, -inf, c, 0, 1, sr1, sr2, 0, &sncs.front(), sncs.front().jump);
+    //                 sncs.front().jump = &sncs.back();
+    //             }
+    //         }
+    //     }
+    //     else
+    //     {
+    //         for (auto prejump = &sncs.front(), jump = prejump->jump; jump; jump = prejump->jump)
+    //         {
+    //             jump->hatG = jump->G0;
+    //             if (jump->itp != &sncs.front() && jump->itp->hatG == -inf && jump->hatG == -inf && jump->E == -inf)
+    //                 prejump->jump = jump->jump;
+    //             else
+    //                 prejump = jump;
+    //         }
+    //     }
+
+    //     sncs.front().hatG = std::max(sncs.front().G0, Avals[w - 1] + edge->T);
+    //     sncs.front().E = std::max(sncs.front().hatG + edge->ve, sncs.front().E + edge->ue);
+    //     double tgw = (O.size() > w ? (O.size() - w - 1) * edge->tail->ue + edge->tail->ve : 0);
+    //     if (sncs.front().E + edge->ue < std::max(sncs.front().E, Bvals[w] + edge->T) + edge->tail->ve && sncs.front().E + (O.size() - w) * edge->ue < std::max(sncs.front().E, Bvals[w] + edge->T) + tgw)
+    //         sncs.front().E = -inf;
+    //     double Gthres = std::max(sncs.front().E, Bvals[w] + edge->T);
+    //     double Ethres = std::max(sncs.front().E, Gthres + std::min(0.0, std::min(edge->tail->ve - edge->ue, tgw - (O.size() - w) * edge->ue)));
+    //     sncs.front().F0 = -inf;
+    //     sncs.front().G0 = sncs.front().E;
+    //     edge->head->updateA0(w, sncs.front().G0, edge, sncs.front().sr1, sncs.front().lambda);
+
+    //     for (auto jump = sncs.front().jump; jump; jump = jump->jump)
+    //     {
+    //         jump->E = std::max(jump->hatG + edge->ve, jump->E + edge->ue);
+    //         if (jump->E < Ethres)
+    //             jump->E = -inf;
+    //         jump->F0 = std::max(jump->itp->G0 + edge->vf, jump->itp->F0 + edge->uf);
+    //         jump->G0 = std::max(std::max(jump->E, jump->F0), jump->itp->hatG + edge->gamma[jump->c][BroWheel::base2int(O[w - 1])]);
+    //         if (jump->G0 < Gthres)
+    //         {
+    //             jump->F0 = -inf;
+    //             jump->G0 = -inf;
+    //         }
+    //         else
+    //             edge->head->updateA0(w, jump->G0, edge, jump->sr1, jump->lambda);
+    //         if (jump->G0 != -inf && jump->hatG == -inf)
+    //         {
+    //             if (jump->cid == 0)
+    //             {
+    //                 jump->cid = sncs.size();
+    //                 for (int c = 2; c <= 6; ++c)
+    //                 {
+    //                     int64_t sr1 = jump->sr1;
+    //                     int64_t sr2 = jump->sr2;
+    //                     edge->pbrowheel->PreRange(sr1, sr2, c);
+    //                     if (sr1 <= sr2)
+    //                     {
+    //                         sncs.emplace_back(-inf, -inf, -inf, -inf, c, 0, jump->lambda + 1, sr1, sr2, 0, jump, (SNC *)NULL);
+    //                         ++jump->idl;
+    //                     }
+    //                 }
+    //             }
+    //             for (int idi = 0; idi < jump->idl; ++idi)
+    //                 if (sncs[jump->cid + idi].E == -inf && sncs[jump->cid + idi].G0 == -inf)
+    //                 {
+    //                     sncs[jump->cid + idi].jump = jump->jump;
+    //                     jump->jump = &sncs[jump->cid + idi];
+    //                 }
+    //         }
+    //     }
+    //     if (w == O.size())
+    //         sncs.clear();
+    // }
+
+    void CircuitIterationGlobal(int64_t w, SCC &scc)
     {
         if (w == 0)
             return;
 
-        double *Avals = edge->tail->Avals[edge->tail->scc_sz - 1], *Bvals = edge->tail->Bvals;
-        std::deque<SNC> &sncs = edge->sncs;
+        std::vector<EdgeGlobalCircuit *> edges = scc.global_circuits;
+        std::vector<double> tgws(edges.size());
+        std::vector<SNC *> jumps(edges.size());
 
-        if (w == 1)
+        for (int i = 0; i < edges.size(); ++i)
         {
-            sncs.emplace_back(-inf, -inf, -inf, -inf, -1, 5, 0, 0, edge->pbrowheel->sequence.size() - 1, 1, (SNC *)NULL, (SNC *)NULL);
-            for (int c = 2; c <= 6; ++c)
+            if (w == 1)
             {
-                int64_t sr1 = sncs.front().sr1;
-                int64_t sr2 = sncs.front().sr2;
-                edge->pbrowheel->PreRange(sr1, sr2, c);
-                if (sr1 <= sr2)
+                edges[i]->sncs.emplace_back(-inf, -inf, -inf, -inf, -1, 5, 0, 0, edges[i]->pbrowheel->sequence.size() - 1, 1, (SNC *)NULL, (SNC *)NULL);
+                for (int c = 2; c <= 6; ++c)
                 {
-                    sncs.emplace_back(-inf, -inf, -inf, -inf, c, 0, 1, sr1, sr2, 0, &sncs.front(), sncs.front().jump);
-                    sncs.front().jump = &sncs.back();
+                    int64_t sr1 = edges[i]->sncs.front().sr1;
+                    int64_t sr2 = edges[i]->sncs.front().sr2;
+                    edges[i]->pbrowheel->PreRange(sr1, sr2, c);
+                    if (sr1 <= sr2)
+                    {
+                        edges[i]->sncs.emplace_back(-inf, -inf, -inf, -inf, c, 0, 1, sr1, sr2, 0, &(edges[i]->sncs.front()), edges[i]->sncs.front().jump);
+                        edges[i]->sncs.front().jump = &(edges[i]->sncs.back());
+                    }
                 }
-            }
-        }
-        else
-        {
-            for (auto prejump = &sncs.front(), jump = prejump->jump; jump; jump = prejump->jump)
-            {
-                jump->hatG = jump->G0;
-                if (jump->itp != &sncs.front() && jump->itp->hatG == -inf && jump->hatG == -inf && jump->E == -inf)
-                    prejump->jump = jump->jump;
-                else
-                    prejump = jump;
-            }
-        }
-
-        sncs.front().hatG = std::max(sncs.front().G0, Avals[w - 1] + edge->T);
-        sncs.front().E = std::max(sncs.front().hatG + edge->ve, sncs.front().E + edge->ue);
-        double tgw = (O.size() > w ? (O.size() - w - 1) * edge->tail->ue + edge->tail->ve : 0);
-        if (sncs.front().E + edge->ue < std::max(sncs.front().E, Bvals[w] + edge->T) + edge->tail->ve && sncs.front().E + (O.size() - w) * edge->ue < std::max(sncs.front().E, Bvals[w] + edge->T) + tgw)
-            sncs.front().E = -inf;
-        double Gthres = std::max(sncs.front().E, Bvals[w] + edge->T);
-        double Ethres = std::max(sncs.front().E, Gthres + std::min(0.0, std::min(edge->tail->ve - edge->ue, tgw - (O.size() - w) * edge->ue)));
-        sncs.front().F0 = -inf;
-        sncs.front().G0 = sncs.front().E;
-        edge->head->updateA0(w, sncs.front().G0, edge, sncs.front().sr1, sncs.front().lambda);
-
-        for (auto jump = sncs.front().jump; jump; jump = jump->jump)
-        {
-            jump->E = std::max(jump->hatG + edge->ve, jump->E + edge->ue);
-            if (jump->E < Ethres)
-                jump->E = -inf;
-            jump->F0 = std::max(jump->itp->G0 + edge->vf, jump->itp->F0 + edge->uf);
-            jump->G0 = std::max(std::max(jump->E, jump->F0), jump->itp->hatG + edge->gamma[jump->c][BroWheel::base2int(O[w - 1])]);
-            if (jump->G0 < Gthres)
-            {
-                jump->F0 = -inf;
-                jump->G0 = -inf;
             }
             else
-                edge->head->updateA0(w, jump->G0, edge, jump->sr1, jump->lambda);
-            if (jump->G0 != -inf && jump->hatG == -inf)
             {
-                if (jump->cid == 0)
+                for (auto prejump = &(edges[i]->sncs.front()), jump = prejump->jump; jump; jump = prejump->jump)
                 {
-                    jump->cid = sncs.size();
-                    for (int c = 2; c <= 6; ++c)
-                    {
-                        int64_t sr1 = jump->sr1;
-                        int64_t sr2 = jump->sr2;
-                        edge->pbrowheel->PreRange(sr1, sr2, c);
-                        if (sr1 <= sr2)
-                        {
-                            sncs.emplace_back(-inf, -inf, -inf, -inf, c, 0, jump->lambda + 1, sr1, sr2, 0, jump, (SNC *)NULL);
-                            ++jump->idl;
-                        }
-                    }
+                    jump->hatG = jump->G0;
+                    if (jump->itp != &(edges[i]->sncs.front()) && jump->itp->hatG == -inf && jump->hatG == -inf && jump->E == -inf)
+                        prejump->jump = jump->jump;
+                    else
+                        prejump = jump;
                 }
-                for (int idi = 0; idi < jump->idl; ++idi)
-                    if (sncs[jump->cid + idi].E == -inf && sncs[jump->cid + idi].G0 == -inf)
-                    {
-                        sncs[jump->cid + idi].jump = jump->jump;
-                        jump->jump = &sncs[jump->cid + idi];
-                    }
             }
+
+            edges[i]->sncs.front().hatG = std::max(edges[i]->sncs.front().G0, edges[i]->tail->Avals[edges[i]->tail->scc_sz - 1][w - 1] + edges[i]->T);
+            edges[i]->sncs.front().E = std::max(edges[i]->sncs.front().hatG + edges[i]->ve, edges[i]->sncs.front().E + edges[i]->ue);
+            tgws[i] = (O.size() > w ? (O.size() - w - 1) * edges[i]->tail->ue + edges[i]->tail->ve : 0);
+            edges[i]->sncs.front().F0 = -inf;
+            edges[i]->sncs.front().G0 = edges[i]->sncs.front().E;
+            edges[i]->head->updateA0(w, edges[i]->sncs.front().G0, edges[i], edges[i]->sncs.front().sr1, edges[i]->sncs.front().lambda);
+
+            jumps[i] = edges[i]->sncs.front().jump;
         }
-        if (w == O.size())
-            sncs.clear();
+
+        while (edges.size() > 0)
+            for (int i = 0; i < edges.size();)
+            {
+                double Gthres = std::max(edges[i]->sncs.front().E, edges[i]->tail->Avals[0][w] + edges[i]->T);
+                double Ethres = std::max(edges[i]->sncs.front().E, Gthres + std::min(0.0, std::min(edges[i]->tail->ve - edges[i]->ue, tgws[i] - (O.size() - w) * edges[i]->ue)));
+
+                if (jumps[i])
+                {
+                    jumps[i]->E = std::max(jumps[i]->hatG + edges[i]->ve, jumps[i]->E + edges[i]->ue);
+                    if (jumps[i]->E < Ethres)
+                        jumps[i]->E = -inf;
+                    jumps[i]->F0 = std::max(jumps[i]->itp->G0 + edges[i]->vf, jumps[i]->itp->F0 + edges[i]->uf);
+                    jumps[i]->G0 = std::max(std::max(jumps[i]->E, jumps[i]->F0), jumps[i]->itp->hatG + edges[i]->gamma[jumps[i]->c][BroWheel::base2int(O[w - 1])]);
+                    if (jumps[i]->G0 < Gthres)
+                    {
+                        jumps[i]->F0 = -inf;
+                        jumps[i]->G0 = -inf;
+                    }
+                    else
+                        edges[i]->head->updateA0(w, jumps[i]->G0, edges[i], jumps[i]->sr1, jumps[i]->lambda);
+                    if (jumps[i]->G0 != -inf && jumps[i]->hatG == -inf)
+                    {
+                        if (jumps[i]->cid == 0)
+                        {
+                            jumps[i]->cid = edges[i]->sncs.size();
+                            for (int c = 2; c <= 6; ++c)
+                            {
+                                int64_t sr1 = jumps[i]->sr1;
+                                int64_t sr2 = jumps[i]->sr2;
+                                edges[i]->pbrowheel->PreRange(sr1, sr2, c);
+                                if (sr1 <= sr2)
+                                {
+                                    edges[i]->sncs.emplace_back(-inf, -inf, -inf, -inf, c, 0, jumps[i]->lambda + 1, sr1, sr2, 0, jumps[i], (SNC *)NULL);
+                                    ++jumps[i]->idl;
+                                }
+                            }
+                        }
+                        for (int idi = 0; idi < jumps[i]->idl; ++idi)
+                            if (edges[i]->sncs[jumps[i]->cid + idi].E == -inf && edges[i]->sncs[jumps[i]->cid + idi].G0 == -inf)
+                            {
+                                edges[i]->sncs[jumps[i]->cid + idi].jump = jumps[i]->jump;
+                                jumps[i]->jump = &(edges[i]->sncs[jumps[i]->cid + idi]);
+                            }
+                    }
+                    jumps[i] = jumps[i]->jump;
+                    
+                    ++ i;
+                }
+                else
+                {
+                    if (w == O.size())
+                        edges[i]->sncs.clear();
+                    edges.erase(edges.begin() + i);
+                    tgws.erase(tgws.begin() + i);
+                    jumps.erase(jumps.begin() + i);
+                }
+            }
     }
 
     void outputdot(int64_t M, SWN &swn)

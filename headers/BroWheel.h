@@ -11,7 +11,7 @@
 #include <map>
 #include <cctype>
 #include <algorithm>
-#include <experimental/filesystem>
+#include <filesystem>
 #include "Threadpool.h"
 
 struct BinVec
@@ -271,7 +271,7 @@ struct BroWheel
 
     void readin()
     {
-        int64_t sequence_sz=std::experimental::filesystem::file_size(file);
+        int64_t sequence_sz=std::filesystem::file_size(file);
         sequence.clear();
         if (reverse_complement)
             sequence.reserve(2*sequence_sz);
@@ -485,7 +485,7 @@ struct BroWheel
     {
         file=file_;
 
-        if (!std::experimental::filesystem::exists(file+".idx"))
+        if (!std::filesystem::exists(file+".idx"))
         {
             std::cerr << "long reference index " << file << ".idx does not exist";
             exit (EXIT_FAILURE);

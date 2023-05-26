@@ -57,7 +57,7 @@ struct NameSeq
 
     void readin(std::string file)
     {
-        if (!std::experimental::filesystem::exists(file))
+        if (!std::filesystem::exists(file))
         {
             std::cerr << "reference file " << file << " does not exist\n";
             exit (EXIT_FAILURE);
