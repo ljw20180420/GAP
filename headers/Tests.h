@@ -1,10 +1,11 @@
-#ifndef RANDOMREADS_H
-#define RANDOMREADS_H
+#ifndef TESTS_H
+#define TESTS_H
 #include <cstdlib>
 #include <utility>
 #include <set>
 #include <iterator>
 #include "Track.h"
+
 
 std::tuple<std::string, std::string, std::string> random_mut(std::string &str, double indel_rate, double mut_rate, int head_in, int tail_in)
 {
@@ -99,7 +100,7 @@ void random_seq(Graph &graph, std::ofstream &fout_read, std::ofstream &fout_trut
     fout_read << seq << '\n';
 }
 
-void random_DG(int n_sz, int r_sz, int t_sz, int max_e_sz, std::string argfile, bool acyclic, double gpro, double rpro, double nve, double nue, double ve, double ue, double vf, double uf, double T, double dT, double min_score, double vfp, double ufp, double vfm, double ufm, double mat, double mis, std::string local_file, std::string global_file, int lseqlb, int lsequb, int gseqlb, int gsequb, int aseqlb, int asequb, int seq_num, std::string read_file, std::string truth_file, double indel_rate, double mut_rate, int head_in, int tail_in, double apro, std::string run_name, int index_threads_sz, int align_threads_sz, int max_extract, int diff_thres, int max_range, int min_seg_num, int max_seg_num, int max_round, int block_size, int64_t max_mega, int64_t ll)
+void random_DG(int n_sz, int r_sz, int t_sz, int max_e_sz, std::string argfile, bool acyclic, double gpro, double rpro, double nve, double nue, double ve, double ue, double vf, double uf, double T, double dT, double min_score, double vfp, double ufp, double vfm, double ufm, double mat, double mis, std::string local_file, std::string global_file, int lseqlb, int lsequb, int gseqlb, int gsequb, int aseqlb, int asequb, int seq_num, std::string read_file, std::string truth_file, double indel_rate, double mut_rate, int head_in, int tail_in, double apro, std::string run, int threads_sz, int max_extract, int diff_thres, int max_range, int min_seg_num, int max_seg_num, int max_round, int block_size, int64_t max_mega)
 {
     srand(1);
     std::vector<std::vector<std::string>> args;
@@ -184,10 +185,9 @@ void random_DG(int n_sz, int r_sz, int t_sz, int max_e_sz, std::string argfile, 
                 continue;
             
             std::ofstream fout(argfile);
-            fout << "run_name = " << run_name << ";\n";
+            fout << "run = " << run << ";\n";
             fout << "read_files = {\n\t" << read_file << ";\n};\n";
-            fout << "index_threads_sz = " << index_threads_sz << ";\n";
-            fout << "align_threads_sz = " << align_threads_sz << ";\n";
+            fout << "threads_sz = " << threads_sz << ";\n";
             fout << "max_round = " << max_round << ";\n";
             fout << "max_extract = " << max_extract << ";\n";
             fout << "diff_thres = " << diff_thres << ";\n";
@@ -196,7 +196,6 @@ void random_DG(int n_sz, int r_sz, int t_sz, int max_e_sz, std::string argfile, 
             fout << "max_seg_num = " << max_seg_num << ";\n";
             fout << "max_mega = " << max_mega << ";\n";
             fout << "block_size = " << block_size << ";\n";
-            fout << "ll = " << ll << ";\n";
 
             for (auto &arg : args)
             {
@@ -290,5 +289,77 @@ void random_DG(int n_sz, int r_sz, int t_sz, int max_e_sz, std::string argfile, 
     fout_read.close();
     fout_truth.close();
 }
+
+void test_GenerateRandomReads(std::string dir, std::string argfile)
+{
+    chdir(dir.c_str());
+
+    int n_sz = 5, r_sz = 2, t_sz = 1, max_e_sz = 8, lseqlb = 100, lsequb = 200, gseqlb = 10000, gsequb = 20000, aseqlb = 50, asequb = 100, seq_num = 10000, head_in = 10, tail_in = 10;
+    bool acyclic = false;
+    double gpro = 0.5, rpro = 0, nve = 0, nue = 0, ve = -5, ue = -2, vf = -5, uf = -2, T = -10, dT = -5, min_score = 20, vfp = 0, ufp = 0, vfm = 0, ufm = 0, mat = 1, mis = -3, indel_rate = 0.005, mut_rate = 0.005, apro = 0.5;
+
+    int threads_sz = 24, max_extract = 3, diff_thres = 2, max_range = 10, min_seg_num = 0, max_seg_num = 0, max_round = 5, block_size = 100;
+    int64_t max_mega = 10000;
+
+    random_DG(n_sz, r_sz, t_sz, max_e_sz, "argfile", acyclic, gpro, rpro, nve, nue, ve, ue, vf, uf, T, dT, min_score, vfp, ufp, vfm, ufm, mat, mis, "local_file", "global_file", lseqlb, lsequb, gseqlb, gsequb, aseqlb, asequb, seq_num, "read_file", "truth_file", indel_rate, mut_rate, head_in, tail_in, apro, "random", threads_sz, max_extract, diff_thres, max_range, min_seg_num, max_seg_num, max_round, block_size, max_mega);
+}
+
+
+std::deque<std::string> get_dirs()
+{
+    const std::experimental::filesystem::path current_path(".");
+    std::experimental::filesystem::directory_iterator end_itr; // default construction yields past-the-end
+    std::deque<std::string> dirs;
+    for (std::experimental::filesystem::directory_iterator itr(current_path); itr != end_itr; ++itr)
+        if (std::experimental::filesystem::is_directory(itr->status()))
+            dirs.push_back(itr->path().filename().string());
+    return dirs;
+}
+
+std::deque<std::string> get_argfiles()
+{
+    const std::experimental::filesystem::path current_path(".");
+    std::experimental::filesystem::directory_iterator end_itr; // default construction yields past-the-end
+    std::deque<std::string> argfiles;
+    for (std::experimental::filesystem::directory_iterator itr(current_path); itr != end_itr; ++itr)
+        if (!std::experimental::filesystem::is_directory(itr->status()))
+        {
+            std::string str_tmp = itr->path().filename().string();
+            if (str_tmp.size() > 8 && str_tmp.substr(str_tmp.size() - 8, 8) == ".argfile")
+                argfiles.push_back(str_tmp);
+        }
+    return argfiles;
+}
+
+
+void run_sim(std::string sim_dir, bool para)
+{
+    chdir(sim_dir.c_str());
+    std::deque<std::string> dirs = get_dirs();
+    for (auto dir : dirs)
+    {
+        chdir(("./" + dir).c_str());
+        std::deque<std::string> argfiles = get_argfiles();
+        for (auto &argfile : argfiles)
+            test_Align("./", argfile, false, para);
+        chdir("..");
+    }
+    chdir("..");
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #endif

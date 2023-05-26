@@ -197,7 +197,8 @@ struct Align : Graph
         return swn;
     }
 
-    Align(std::string argfile, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel, std::string mgfile, int Omax_) : Graph(argfile, file2seq, file2browheel), fout(mgfile, std::ifstream::binary), Omax(Omax_)
+    Align(int argc, char **argv, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel, std::string mgfile, int Omax_)
+    : Graph(argc, argv, file2seq, file2browheel), fout(mgfile, std::ifstream::binary), Omax(Omax_)
     {
         apply_memory();
 

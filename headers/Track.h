@@ -29,7 +29,8 @@ struct Track : Graph
     std::map<Dot *, MegaRange> megadots_tail;
     std::deque<std::pair<Dot *, std::deque<Dot *>>> megasources;
 
-    Track(std::string argfile, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel, std::string run_name, int max_extract_, int64_t max_mega_, int diff_thres_, int max_range_, int min_seg_num_, int max_seg_num_) : Graph(argfile, file2seq, file2browheel), fout_align(run_name + ".alg"), fout_extract(run_name + ".ext"), fout_fail(run_name + ".fail"), fout_death(run_name + ".death"), max_extract(max_extract_), max_mega(max_mega_), diff_thres(diff_thres_), max_range(max_range_), min_seg_num(min_seg_num_), max_seg_num(max_seg_num_)
+    Track(int argc, char **argv, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel, std::string run, int max_extract_, int64_t max_mega_, int diff_thres_, int max_range_, int min_seg_num_, int max_seg_num_)
+    : Graph(argc, argv, file2seq, file2browheel), fout_align(run + ".alg"), fout_extract(run + ".ext"), fout_fail(run + ".fail"), fout_death(run + ".death"), max_extract(max_extract_), max_mega(max_mega_), diff_thres(diff_thres_), max_range(max_range_), min_seg_num(min_seg_num_), max_seg_num(max_seg_num_)
     {
     }
 

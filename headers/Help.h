@@ -2,7 +2,7 @@
 #define HELP_H
 void help()
 {
-    std::cout << "run_name = str;\n"
+    std::cout << "run = str;\n"
               << "// str is the prefix of all outputs\n"
               << "read_files = {\n"
               << "\tstr;\n"
@@ -10,9 +10,7 @@ void help()
               << "\t...\n"
               << "};\n"
               << "// the input reads\n"
-              << "index_threads_sz = int;\n"
-              << "// the number of worker threads (not including the main thread) used to index the reference\n"
-              << "align_threads_sz = int;\n"
+              << "threads_sz = int;\n"
               << "// the number of worker threads (not including the main thread) used to align the reads\n"
               << "max_round = int;\n"
               << "// the maximal possible round (start from 0)\n"
@@ -30,9 +28,6 @@ void help()
               << "// maximal number of end points of segments to track\n"
               << "block_size = int;\n"
               << "// the size of read batch distributed to an alignment workder\n"
-              << "ll = long;\n"
-              << "// the length of reference segment in parallel index\n"
-              << "// warning: shorter length does not mean faster index speed\n"
               << "nodes = {\n"
               << "\t{\n"
               << "\t\tname = str;\n"
