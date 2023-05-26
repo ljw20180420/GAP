@@ -634,13 +634,13 @@ struct Graph
                 std::deque<double> ues;
                 for (int j = i + 1; j < argc && strncmp(argv[j], "---", 3); ++j)
                 {
-                    if (!strcmp(argv[j], "--name"))
+                    if (!strcmp(argv[j], "--names"))
                         for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
                             names.emplace_back(argv[k]);
-                    if (!strcmp(argv[j], "--ve"))
+                    if (!strcmp(argv[j], "--ves"))
                         for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
                             ves.push_back(str2double(argv[k]));
-                    if (!strcmp(argv[j], "--ue"))
+                    if (!strcmp(argv[j], "--ues"))
                         for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
                             ues.push_back(str2double(argv[k]));
                 }
