@@ -101,7 +101,7 @@ struct Align : Memory, Graph
     std::vector<int> target_scc_szes;
     std::vector<int> node_scc_szes;
     std::ofstream fout;
-    size_t max_id;
+    size_t max_id=0;
 
     void alloc_initial(Dot **&ptr, int n, int S)
     {
@@ -140,7 +140,7 @@ struct Align : Memory, Graph
         for (auto &scc : sccs)
             for (auto node : scc.nodes)
             {
-                for (size_t i=0; i<targets.size(); ++i)
+                for (size_t i = 0; i < targets.size(); ++i)
                     if (targets[i] == node)
                     {
                         target_scc_szes[i] = scc.nodes.size();
@@ -313,7 +313,7 @@ struct Align : Memory, Graph
                 if (s == 0 || w == 0)
                     source_max(G[s][w], {&F[s][w], &E[s][w], &A[scc_sz - 1][w]}, {F[s][w].val, E[s][w].val, A[scc_sz - 1][w].val + (s == 0 ? 0 : edge->vfp + (s - 1) * edge->ufp) + edge->T});
                 else
-                    source_max(G[s][w], {&F[s][w], &E[s][w], &G[s - 1][w - 1], &A[scc_sz - 1][w]}, {F[s][w].val, E[s][w].val, G[s - 1][w - 1].val + edge->gamma[BroWheel::base2int(edge->seq[s-1])][BroWheel::base2int(O[w-1])], A[scc_sz - 1][w].val + (s == 0 ? 0 : edge->vfp + (s - 1) * edge->ufp) + edge->T});
+                    source_max(G[s][w], {&F[s][w], &E[s][w], &G[s - 1][w - 1], &A[scc_sz - 1][w]}, {F[s][w].val, E[s][w].val, G[s - 1][w - 1].val + edge->gamma[BroWheel::base2int(edge->seq[s - 1])][BroWheel::base2int(O[w - 1])], A[scc_sz - 1][w].val + (s == 0 ? 0 : edge->vfp + (s - 1) * edge->ufp) + edge->T});
             }
     }
 
@@ -334,35 +334,30 @@ struct Align : Memory, Graph
             edge->Cdelta[w].clear();
             edge->Cdelta[w].emplace_back(simzero.sr1, simnodes.size() - 1);
         }
-        auto simnode = simnodes.begin();
-        while (true)
+        std::list<SimNode>::iterator simprev = simnodes.begin(), simnode;
+        int c = 1;
+        int64_t sr1, sr2;
+        do
         {
-            int c;
-            if (simnode->sr1 <= simnode->sr2 && simnode->sz > 0)
-                c = 2;
-            else
-            {
-                do
-                {
-                    c = simnodes.front().c;
-                    simnodes.erase(simnodes.begin());
-                } while (c == 6 && !simnodes.empty());
-                if (simnodes.empty())
-                    break;
-                ++c;
-                simnode = simnodes.begin();
-            }
-            int64_t sr1 = simnode->sr1;
-            int64_t sr2 = simnode->sr2;
+            ++c;
+            sr1 = simprev->sr1;
+            sr2 = simprev->sr2;
             edge->browheel.PreRange(sr1, sr2, c);
-            simnodes.emplace_front(this, c, sr1, sr2, simnode->sz, O.size() + 1 - simnode->FG[0].w);
+        } while (sr1 > sr2 && c + 1 < 7);
+        if (sr1 > sr2)
+            simnodes.clear();
+        else
+        {
+            simnodes.emplace_front(this, c, sr1, sr2, simprev->sz, O.size() + 1 - simprev->FG[0].w);
             simnode = simnodes.begin();
-            auto simprev = std::next(simnode);
+        }
+        while (!simnodes.empty())
+        {
             std::vector<Do> E;
             for (size_t i = 0, j = 0, w = simprev->FG[j].w;;)
             {
                 double E_val = std::max((!E.empty() && size_t(E.back().w) == w - 1) ? E.back().E + edge->ue : -inf, (i > 0 && size_t(simnode->FG[i - 1].w) == w - 1) ? simnode->FG[i - 1].G + edge->ve : -inf);
-                double G_val = j>0 && size_t(simprev->FG[j - 1].w) == w - 1 ? simprev->FG[j - 1].G + edge->gamma[simnode->c][BroWheel::base2int(O[w-1])] : -inf;
+                double G_val = j > 0 && size_t(simprev->FG[j - 1].w) == w - 1 ? simprev->FG[j - 1].G + edge->gamma[simnode->c][BroWheel::base2int(O[w - 1])] : -inf;
                 if (E_val >= std::max(E0[w].E, simzero.FG[w].G + (O.size() - w) * edge->tail->ve))
                 {
                     E.emplace_back(w, E_val);
@@ -386,18 +381,46 @@ struct Align : Memory, Graph
                     }
                     ++i;
                 }
-                while (size_t(simprev->FG[j].w) <= w && j+1 < size_t(simprev->sz))
+                while (size_t(simprev->FG[j].w) <= w && j + 1 < size_t(simprev->sz))
                     ++j;
-                if (w < O.size() && (size_t(simprev->FG[j].w) == w || (i > 0 && size_t(simnode->FG[i - 1].w) == w) || (!E.empty() && size_t(E.back().w) == w)))
+                if (w < O.size() && (size_t(simprev->FG[j - 1].w) == w || size_t(simprev->FG[j].w) == w || (i > 0 && size_t(simnode->FG[i - 1].w) == w) || (!E.empty() && size_t(E.back().w) == w)))
                     ++w;
                 else if (size_t(simprev->FG[j].w) > w)
                     w = simprev->FG[j].w;
                 else
                 {
-                    simnode->sz=i;
+                    simnode->sz = i;
                     break;
                 }
             }
+            do
+            {
+                if (simnode->sr1 <= simnode->sr2 && simnode->sz > 0)
+                    c = 1;
+                else
+                {
+                    do
+                    {
+                        c = simnodes.front().c;
+                        simnodes.erase(simnodes.begin());
+                    } while (c == 6 && !simnodes.empty());
+                    if (simnodes.empty())
+                        break;
+                }
+                simprev = simnodes.begin();
+                do
+                {
+                    ++c;
+                    sr1 = simprev->sr1;
+                    sr2 = simprev->sr2;
+                    edge->browheel.PreRange(sr1, sr2, c);
+                } while (sr1 > sr2 && c + 1 < 7);
+                if (sr1 <= sr2)
+                    simnodes.emplace_front(this, c, sr1, sr2, simprev->sz, O.size() + 1 - simprev->FG[0].w);
+                else
+                    simprev->sz=0;
+                simnode = simnodes.begin();
+            } while (sr1 > sr2);
         }
     }
 
@@ -429,7 +452,7 @@ struct Align : Memory, Graph
             else
                 source_max(F0[s][w], {&F0[s - 1][w], &G0[s - 1][w]}, {F0[s - 1][w].val + edge->uf, G0[s - 1][w].val + edge->vf});
             if (s > 0 && w > 0)
-                source_max(G0[s][w], {&E[s][w], &F0[s][w], &G[s - 1][w - 1]}, {E[s][w].val, F0[s][w].val, G[s - 1][w - 1].val + edge->gamma[BroWheel::base2int(edge->seq[s-1])][BroWheel::base2int(O[w-1])]});
+                source_max(G0[s][w], {&E[s][w], &F0[s][w], &G[s - 1][w - 1]}, {E[s][w].val, F0[s][w].val, G[s - 1][w - 1].val + edge->gamma[BroWheel::base2int(edge->seq[s - 1])][BroWheel::base2int(O[w - 1])]});
             else
                 source_max(G0[s][w], {&E[s][w], &F0[s][w]}, {E[s][w].val, F0[s][w].val});
         }
@@ -447,8 +470,8 @@ struct Align : Memory, Graph
                 int64_t sr1 = edge->vs.front()->sr1;
                 int64_t sr2 = edge->vs.front()->sr2;
                 edge->browheel.PreRange(sr1, sr2, c);
-                edge->sncs.emplace_front(-inf, -inf, -inf, -inf, sr1, sr2, 1, edge->vs.front(), (SNC *)NULL);
-                edge->vs.front()->itcs[c - 2]=&edge->sncs.front();
+                edge->sncs.emplace_front(-inf, -inf, -inf, -inf, sr1, sr2, edge->vs.front()->lambda + 1, edge->vs.front(), (SNC *)NULL);
+                edge->vs.front()->itcs[c - 2] = &edge->sncs.front();
                 edge->vs.insert(std::next(edge->vs.begin()), &edge->sncs.front());
             }
             edge->C[0] = -inf;
@@ -460,7 +483,7 @@ struct Align : Memory, Graph
         {
             (*iter)->hatG = (*iter)->G0;
             if ((*iter)->itp != edge->vs.front() && (*iter)->itp->hatG == -inf && (*iter)->hatG == -inf)
-                iter=edge->vs.erase(iter);
+                iter = edge->vs.erase(iter);
             else
                 ++iter;
         }
@@ -476,7 +499,7 @@ struct Align : Memory, Graph
             (*iter)->E = std::max((*iter)->hatG + edge->ve, (*iter)->E + edge->ue);
             (*iter)->F0 = std::max((*iter)->itp->G0 + edge->vf, (*iter)->itp->F0 + edge->uf);
             int c = std::find((*iter)->itp->itcs, (*iter)->itp->itcs + 5, (*iter)) - (*iter)->itp->itcs + 2;
-            (*iter)->G0 = std::max(std::max((*iter)->E, (*iter)->F0), (*iter)->itp->hatG + edge->gamma[c][BroWheel::base2int(O[w-1])]);
+            (*iter)->G0 = std::max(std::max((*iter)->E, (*iter)->F0), (*iter)->itp->hatG + edge->gamma[c][BroWheel::base2int(O[w - 1])]);
             if ((*iter)->G0 < edge->vs.front()->G0)
             {
                 (*iter)->E = -inf;
@@ -541,6 +564,7 @@ struct Align : Memory, Graph
             fout.write((char *)&M->w, sizeof(Dot::w));
             fout.write((char *)&M->val, sizeof(Dot::val));
             fout.write((char *)&M->s_sz, sizeof(Dot::s_sz));
+            fout.write((char *)&M->lambda, sizeof(Dot::lambda));
             for (int i = 0; i < M->s_sz; ++i)
             {
                 if (M->sources[i]->s_sz >= 0)
@@ -570,8 +594,8 @@ struct Align : Memory, Graph
             {
                 size_t start = pair.first->browheel.SimSuffix(suf.first);
                 if (tracknodes.empty())
-                    tracknodes.emplace(tracknodes.begin(), this, tracknodes.end(), tracknodes.end(), pair.first->n, pair.first->browheel.start_rev(start, suf.second), O.size());
-                auto tracknode = tracknodes.begin();
+                    tracknodes.emplace_back(this, (TrackNode *)NULL, (TrackNode *)NULL, pair.first->n, pair.first->browheel.start_rev(start, suf.second), O.size(), 0);
+                auto tracknode = &tracknodes.front();
                 for (int w = tracknode->tau; w <= M->w; ++w)
                 {
                     if (w == 0)
@@ -579,14 +603,17 @@ struct Align : Memory, Graph
                     else
                         source_max(tracknode->E[w], {&tracknode->E[w - 1], &tracknode->G[w - 1]}, {tracknode->E[w - 1].val + pair.first->ue, tracknode->G[w - 1].val + pair.first->ve});
                     source_max(tracknode->F[w], {}, {});
-                    source_max(tracknode->G[w], {&tracknode->E[w], &tracknode->F[w], &A[node_scc_szes[-M->n - 4] - 1][w]}, {tracknode->E[w].val, tracknode->F[w].val, A[node_scc_szes[-M->n - 4] - 1][w].val + pair.first->T});
+                    source_max(tracknode->G[w], {&tracknode->E[w], &tracknode->F[w], &A[node_scc_szes[pair.first->tail - nodes.data()] - 1][w]}, {tracknode->E[w].val, tracknode->F[w].val, A[node_scc_szes[pair.first->tail - nodes.data()] - 1][w].val + pair.first->T});
                 }
                 tracknode->tau = std::max(tracknode->tau, M->w + 1);
                 for (int i = suf.second - 1; i >= 0; --i)
                 {
                     int c = pair.first->browheel.sequence(start + i);
-                    if (tracknode->itcs[c - 2] == tracknodes.end())
-                        tracknode->itcs[c - 2] = tracknodes.emplace(tracknodes.end(), this, tracknode, tracknodes.end(), pair.first->n, pair.first->browheel.start_rev(start, i), O.size());
+                    if (!tracknode->itcs[c - 2])
+                    {
+                        tracknodes.emplace_back(this, tracknode, (TrackNode *)NULL, pair.first->n, pair.first->browheel.start_rev(start, i), O.size(), tracknode->lambda + 1);
+                        tracknode->itcs[c - 2] = &tracknodes.back();
+                    }
                     tracknode = tracknode->itcs[c - 2];
                     for (int w = tracknode->tau; w <= M->w; ++w)
                     {
@@ -598,7 +625,7 @@ struct Align : Memory, Graph
                         if (w == 0)
                             source_max(tracknode->G[w], {&tracknode->E[w], &tracknode->F[w]}, {tracknode->E[w].val, tracknode->F[w].val});
                         else
-                            source_max(tracknode->G[w], {&tracknode->E[w], &tracknode->F[w], &tracknode->itp->G[w - 1]}, {tracknode->E[w].val, tracknode->F[w].val, tracknode->itp->G[w - 1].val + pair.first->gamma[c][BroWheel::base2int(O[w-1])]});
+                            source_max(tracknode->G[w], {&tracknode->E[w], &tracknode->F[w], &tracknode->itp->G[w - 1]}, {tracknode->E[w].val, tracknode->F[w].val, tracknode->itp->G[w - 1].val + pair.first->gamma[c][BroWheel::base2int(O[w - 1])]});
                     }
                     tracknode->tau = std::max(tracknode->tau, M->w + 1);
                 }
@@ -615,13 +642,15 @@ struct Align : Memory, Graph
                 if (tracknodes.empty())
                 {
                     alloc_initial(pair.first->G, pair.first->n, pair.first->browheel.start_rev(start, suf.second));
-                    tracknodes.emplace(tracknodes.begin(), this, tracknodes.end(), tracknodes.end(), pair.first->n, pair.first->browheel.start_rev(start, suf.second), O.size());
+                    for (size_t w=0; w<=O.size(); ++w)
+                        pair.first->G[w].lambda=0;
+                    tracknodes.emplace_back(this, (TrackNode *)NULL, (TrackNode *)NULL, pair.first->n, pair.first->browheel.start_rev(start, suf.second), O.size(), 0);
                 }
-                auto tracknode = tracknodes.begin();
+                auto tracknode = &tracknodes.front();
                 for (int w = tracknode->tau; w <= M->w; ++w)
                 {
                     if (w > 0)
-                        source_max(pair.first->G[w - 1], {&tracknode->G[w - 1], &A[node_scc_szes[-M->n - 4] - 1][w - 1]}, {tracknode->G[w - 1].val, A[node_scc_szes[-M->n - 4] - 1][w - 1].val + pair.first->T});
+                        source_max(pair.first->G[w - 1], {&tracknode->G[w - 1], &A[node_scc_szes[pair.first->tail - nodes.data()] - 1][w - 1]}, {tracknode->G[w - 1].val, A[node_scc_szes[pair.first->tail - nodes.data()] - 1][w - 1].val + pair.first->T});
                     if (w == 0)
                         source_max(tracknode->E[w], {}, {});
                     else
@@ -633,8 +662,11 @@ struct Align : Memory, Graph
                 for (int i = suf.second - 1; i >= 0; --i)
                 {
                     int c = pair.first->browheel.sequence(start + i);
-                    if (tracknode->itcs[c - 2] == tracknodes.end())
-                        tracknode->itcs[c - 2] = tracknodes.emplace(tracknodes.end(), this, tracknode, tracknodes.end(), pair.first->n, pair.first->browheel.start_rev(start, i), O.size());
+                    if (!tracknode->itcs[c - 2])
+                    {
+                        tracknodes.emplace_back(this, tracknode, (TrackNode *)NULL, pair.first->n, pair.first->browheel.start_rev(start, i), O.size(), tracknode->lambda + 1);
+                        tracknode->itcs[c - 2] = &tracknodes.back();
+                    }
                     tracknode = tracknode->itcs[c - 2];
                     for (int w = tracknode->tau; w <= M->w; ++w)
                     {
@@ -645,10 +677,10 @@ struct Align : Memory, Graph
                         source_max(tracknode->F[w], {&tracknode->itp->F[w], &tracknode->itp->G[w]}, {tracknode->itp->F[w].val + pair.first->uf, tracknode->itp->G[w].val + pair.first->vf});
                         if (w == 0)
                             source_max(tracknode->G[w], {&tracknode->E[w], &tracknode->F[w]}, {tracknode->E[w].val, tracknode->F[w].val});
-                        else if (tracknode->itp == tracknodes.begin())
-                            source_max(tracknode->G[w], {&tracknode->E[w], &tracknode->F[w], &pair.first->G[w - 1]}, {tracknode->E[w].val, tracknode->F[w].val, pair.first->G[w - 1].val + pair.first->gamma[c][BroWheel::base2int(O[w-1])]});
+                        else if (tracknode->itp == &tracknodes.front())
+                            source_max(tracknode->G[w], {&tracknode->E[w], &tracknode->F[w], &pair.first->G[w - 1]}, {tracknode->E[w].val, tracknode->F[w].val, pair.first->G[w - 1].val + pair.first->gamma[c][BroWheel::base2int(O[w - 1])]});
                         else
-                            source_max(tracknode->G[w], {&tracknode->E[w], &tracknode->F[w], &tracknode->G[w - 1]}, {tracknode->E[w].val, tracknode->F[w].val, tracknode->G[w - 1].val + pair.first->gamma[c][BroWheel::base2int(O[w-1])]});
+                            source_max(tracknode->G[w], {&tracknode->E[w], &tracknode->F[w], &tracknode->itp->G[w - 1]}, {tracknode->E[w].val, tracknode->F[w].val, tracknode->itp->G[w - 1].val + pair.first->gamma[c][BroWheel::base2int(O[w - 1])]});
                     }
                     tracknode->tau = std::max(tracknode->tau, M->w + 1);
                 }

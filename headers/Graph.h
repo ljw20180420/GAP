@@ -66,6 +66,7 @@ struct Dot // cannot use constructor because on Memory
     double val;
     Dot **sources; // apply on memory
     int s_sz;      // s_sz<0 means visited
+    int lambda;
     size_t id;
 };
 
@@ -103,14 +104,15 @@ struct EdgeLocalCircuit : EdgeLocal
 
 struct TrackNode
 {
-    std::list<TrackNode>::iterator itp;
-    std::list<TrackNode>::iterator itcs[5];
+    TrackNode* itp;
+    TrackNode* itcs[5];
     Dot *E;
     Dot *F;
     Dot *G;
     int tau = 0;
+    int lambda;
 
-    TrackNode(Memory *memory_, std::list<TrackNode>::iterator itp_, std::list<TrackNode>::iterator itc_, int n, int s, int W)
+    TrackNode(Memory *memory_, TrackNode* itp_, TrackNode* itc_, int n, int s, int W, int lambda_)
     {
         itp = itp_;
         for (int i = 0; i < 5; ++i)
@@ -118,6 +120,13 @@ struct TrackNode
         alloc_initial(memory_, E, n, s, W);
         alloc_initial(memory_, F, n, s, W);
         alloc_initial(memory_, G, n, s, W);
+        lambda=lambda_;
+        for (int w=0; w<=W; ++w)
+        {
+            E[w].lambda=lambda;
+            F[w].lambda=lambda;
+            G[w].lambda=lambda;
+        }
     }
 
     void alloc_initial(Memory *memory_, Dot *&ptr, int n, int s, int W)

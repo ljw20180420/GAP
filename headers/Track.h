@@ -11,35 +11,35 @@ struct Track : Memory, Graph
     Track(int argc, char **argv, std::map<std::string, std::string> &file2seq, std::map<std::string, BroWheel> &file2browheel, size_t chunk_sz_) : Graph(argc, argv, file2seq, file2browheel)
     {
         Initial(chunk_sz_);
-        int max_n=0;
+        int max_n = 0;
         for (auto &edge : local_crosses)
         {
-            if (edge.n>max_n)
-                max_n=edge.n;
+            if (edge.n > max_n)
+                max_n = edge.n;
             if (size_t(max_n) >= locals.size())
                 locals.resize(max_n + 1, NULL);
             locals[edge.n] = &edge;
         }
         for (auto &edge : local_circuits)
         {
-            if (edge.n>max_n)
-                max_n=edge.n;
+            if (edge.n > max_n)
+                max_n = edge.n;
             if (size_t(max_n) >= locals.size())
                 locals.resize(max_n + 1, NULL);
             locals[edge.n] = &edge;
         }
         for (auto &edge : global_crosses)
         {
-            if (edge.n>max_n)
-                max_n=edge.n;
+            if (edge.n > max_n)
+                max_n = edge.n;
             if (size_t(max_n) >= globals.size())
                 globals.resize(max_n + 1, NULL);
             globals[edge.n] = &edge;
         }
         for (auto &edge : global_circuits)
         {
-            if (edge.n>max_n)
-                max_n=edge.n;
+            if (edge.n > max_n)
+                max_n = edge.n;
             if (size_t(max_n) >= globals.size())
                 globals.resize(max_n + 1, NULL);
             globals[edge.n] = &edge;
@@ -105,6 +105,7 @@ struct Track : Memory, Graph
                         fins[f].read((char *)&dots[id].w, sizeof(Dot::w));
                         fins[f].read((char *)&dots[id].val, sizeof(Dot::val));
                         fins[f].read((char *)&dots[id].s_sz, sizeof(Dot::s_sz));
+                        fins[f].read((char *)&dots[id].lambda, sizeof(Dot::lambda));
                         dots[id].sources = heap_alloc<Dot *>(dots[id].s_sz);
                         for (int i = 0; i < dots[id].s_sz; ++i)
                         {
@@ -141,33 +142,55 @@ struct Track : Memory, Graph
             if (path.front()->s_sz == 0)
             {
                 fout_track << Oname << '\t' << ++track_num << '\t' << path.size() << '\n';
-                for (auto dot : path)
-                    fout_track << dot->n << '\t' << dot->s << '\t' << dot->w << '\t' << dot->val << '\n';
+                for (auto iter = path.begin(); iter != path.end();)
+                {
+                    if ((*iter)->n >= 0 && globals[(*iter)->n])
+                    {
+                        int n = (*iter)->n;
+                        auto iter_s = iter;
+                        do
+                        {
+                            ++iter;
+                        } while (iter != path.end() && (*iter)->n == n);
+                        int lambda = (*std::prev(iter))->lambda;
+                        size_t s = (*std::prev(iter))->s;
+                        do
+                        {
+                            fout_track << (*iter_s)->n << '\t' << s + (*iter_s)->lambda - lambda << '\t' << (*iter_s)->w << '\t' << (*iter_s)->val << '\n';
+                            ++iter_s;
+                        } while (iter_s != iter);
+                    }
+                    else
+                    {
+                        fout_track << (*iter)->n << '\t' << (*iter)->s << '\t' << (*iter)->w << '\t' << (*iter)->val << '\n';
+                        ++iter;
+                    }
+                }
                 std::list<std::array<char, 3>> align;
                 for (auto it1 = path.begin(), it2 = std::next(it1); it2 != std::prev(path.end()); ++it1, ++it2)
                 {
-                    if ((*it2)->s > (*it1)->s && (*it2)->w > (*it1)->w)
+                    if ((*it2)->w > (*it1)->w && ((*it2)->s > (*it1)->s || ((*it2)->n == (*it1)->n && (*it2)->n >= 0 && globals[(*it2)->n] && (*it2)->lambda > (*it1)->lambda)))
                     {
                         char c;
-                        if (globals[(*it1)->n] == NULL)
-                            c = locals[(*it1)->n]->seq[(*it1)->s];
+                        if (!globals[(*it2)->n])
+                            c = locals[(*it2)->n]->seq[(*it2)->s - 1];
                         else
                         {
-                            auto &browheel = globals[(*it1)->n]->browheel;
-                            c = BroWheel::int2base[browheel.sequence(browheel.start_rev((*it1)->s, 1))];
+                            auto &browheel = globals[(*it2)->n]->browheel;
+                            c = BroWheel::int2base[browheel.sequence(browheel.start_rev((*it2)->s, 0))];
                         }
-                        align.emplace_back(std::array<char, 3>{O[(*it1)->w], '|', c});
+                        align.emplace_back(std::array<char, 3>{O[(*it2)->w - 1], '|', c});
                     }
                     else
                     {
                         for (int w = (*it1)->w; w < (*it2)->w; ++w)
                             align.emplace_back(std::array<char, 3>{O[w], ' ', '-'});
                         int n = std::max((*it1)->n, (*it2)->n);
-                        if (n >= 0 && std::min((*it1)->n, (*it2)->n) < 0 && locals[n] == NULL)
+                        if (n >= 0 && std::min((*it1)->n, (*it2)->n) < 0 && !locals[n])
                             continue;
                         if (n >= 0)
                         {
-                            if (locals[n] != NULL)
+                            if (locals[n])
                             {
                                 int sup = (*it2)->n < 0 ? locals[n]->seq.size() : (*it2)->s;
                                 for (int s = (*it1)->s; s < sup; ++s)
@@ -176,8 +199,8 @@ struct Track : Memory, Graph
                             else
                             {
                                 auto &browheel = globals[n]->browheel;
-                                for (size_t s = (*it1)->s; s < (*it2)->s; ++s)
-                                    align.emplace_back(std::array<char, 3>{'-', ' ', BroWheel::int2base[browheel.sequence(browheel.start_rev(s, 1))]});
+                                for (size_t s = (*it2)->s + (*it1)->lambda - (*it2)->lambda + 1; s <= (*it2)->s; ++s)
+                                    align.emplace_back(std::array<char, 3>{'-', ' ', BroWheel::int2base[browheel.sequence(browheel.start_rev(s, 0))]});
                             }
                         }
                     }
@@ -189,19 +212,25 @@ struct Track : Memory, Graph
                         fout_align << ali[i];
                     fout_align << '\n';
                 }
-                Dot *dot_parent=*std::next(path.begin());
-                while (path.front()==dot_parent->sources[dot_parent->s_sz-1])
+                Dot *dot_parent = *std::next(path.begin());
+                while (path.front() == dot_parent->sources[dot_parent->s_sz - 1])
                 {
                     path.pop_front();
-                    dot_parent=*std::next(path.begin());
-                }
-                for (int i=0; i<dot_parent->s_sz; ++i)
-                    if (dot_parent->sources[i]==path.front())
+                    if (path.size() == 1)
                     {
                         path.pop_front();
-                        path.push_front(path.front()->sources[i+1]);
                         break;
                     }
+                    dot_parent = *std::next(path.begin());
+                }
+                if (!path.empty())
+                    for (int i = 0; i < dot_parent->s_sz; ++i)
+                        if (dot_parent->sources[i] == path.front())
+                        {
+                            path.pop_front();
+                            path.push_front(path.front()->sources[i + 1]);
+                            break;
+                        }
             }
             else
                 path.push_front(path.front()->sources[0]);

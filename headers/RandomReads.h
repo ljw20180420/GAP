@@ -1,5 +1,5 @@
-#ifndef TEST_H
-#define TEST_H
+#ifndef RANDOMREADS_H
+#define RANDOMREADS_H
 #include <cstdlib>
 #include <utility>
 #include <set>
@@ -80,8 +80,8 @@ void random_seq(Graph &graph, std::ofstream &fout_read, std::ofstream &fout_trut
                 global = node->out_global_circuits[rv - node->out_local_crosses.size() - node->out_local_circuits.size() - node->out_global_crosses.size()];
             len = aseqlb + rand() % (asequb - aseqlb);
             start = rand() % (global->browheel.sequence.size() - len + 1);
-            for (size_t i = start; i < start + len; ++i)
-                str.push_back(BroWheel::int2base[global->browheel.sequence(i)]);
+            for (size_t i = 1; i <= len; ++i)
+                str.push_back(BroWheel::int2base[global->browheel.sequence(global->browheel.start_rev(start, i))]);
             edge = global;
         }
         std::string head_str, mut, tail_str;
