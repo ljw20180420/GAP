@@ -290,48 +290,54 @@ struct Align : Memory, GraphCopy<U>
             return;
         Node<U> & NT=graph.nodes[global->tail];
         NodeCopy<U> & NTCP=this->nodecopys[global->tail];
-        for(size_t i=0; i<box.size(); i+=3)
+        U** robs=heap_alloc<U*>(box.size()/3);
+        robs[0]=heap_alloc<U>(box.size());
+        for(size_t i=0; i<box.size(); ++i)
+            robs[0][i]=box[i];
+        for(size_t i=1; i<box.size()/3; ++i)
+            robs[i]=robs[i-1]+3;
+        std::sort(robs,robs+box.size()/3,[](U* p1, U* p2) {return p1[0]>p2[0] || (p1[0]==p2[0] && p1[1]<p2[1]);});
+        adrs.clear();
+        size_t rr=0;
+        do
         {
             std::string seq;
-            seq.resize(box[i+2]);
-            U os=global->Bro.SimSuffix(box[i]);
-            adrs.clear();
-            for(U j=os,k=box[i+2]-1; j<os+box[i+2]; ++j,--k)
+            seq.resize(robs[rr][2]);
+            U os=global->Bro.SimSuffix(robs[rr][0]);
+            for(U j=os,k=robs[rr][2]-1; j<os+robs[rr][2]; ++j,--k)
                 seq[k]=global->G(j);
-            U* rob=heap_alloc<U>(3);
-            rob[0]=box[i];
-            rob[1]=box[i+1];
-            rob[2]=box[i+2];
-            Dot<U>** E=heap_alloc<Dot<U>*>(rob[2]+1);
-            Dot<U>** F=heap_alloc<Dot<U>*>(rob[2]+1);
-            Dot<U>** G=heap_alloc<Dot<U>*>(rob[2]+1);
-            alloc_initial(E, target->eid, rob[2], target->w, rob);
-            alloc_initial(F, target->eid, rob[2], target->w, rob);
-            alloc_initial(G, target->eid, rob[2], target->w, rob);
+            Dot<U>** E=heap_alloc<Dot<U>*>(seq.size()+1);
+            Dot<U>** F=heap_alloc<Dot<U>*>(seq.size()+1);
+            Dot<U>** G=heap_alloc<Dot<U>*>(seq.size()+1);
+            alloc_initial(E,target->eid,seq.size(),target->w);
+            alloc_initial(F,target->eid,seq.size(),target->w);
+            alloc_initial(G,target->eid,seq.size(),target->w);
             if(graph.cross[target->eid])
             {
-                CrossInitial(E,F,G,NTCP.tildeA[NT.tAsz-1],target->w,global->ve,global->ue,global->T);
-                for(int s=1; s<=rob[2]; ++s)
-                    CrossBody(seq,O,s,target->w,E,F,G,global->ve,global->ue,NULL,NULL,*global);
+                SetRob(target->w,G,seq.size(),robs,rr,box.size()/3);
+                CrossInitial(target->w,E,F,G,global->ve,global->ue,*global);
+                for(size_t s=1; s<=seq.size(); ++s)
+                    CrossBody(seq,O,s,target->w,E,F,G,global->ve,global->ue,*global,0);
             }
             else
             {
-                Dot<U>** H2=heap_alloc<Dot<U>*>(1);
-                alloc_initial(H2, target->eid, 0, target->w, rob);
-                H2[0][target->w].val=-inf;
+                Dot<U>** C=heap_alloc<Dot<U>*>(seq.size()+1);
+                Dot<U>** H=heap_alloc<Dot<U>*>(seq.size()+1);
+                alloc_initial(C,target->eid,seq.size(),target->w);
+                alloc_initial(H,target->eid,seq.size(),target->w);
+                SetRob(target->w,H,seq.size(),robs,rr,box.size()/3);
                 for(size_t s=0; s<=seq.size(); ++s)
                     E[s][0].val=F[s][0].val=G[s][0].val=-inf;
                 for(int wp=1; wp<=target->w; ++wp)
                 {
-                    source_max(H2[0][wp-1],{&NTCP.tildeA[NT.tAsz-1][wp-1]},{NTCP.tildeA[NT.tAsz-1][wp-1].val+global->T});
-                    CircuitInitial(wp,E,F,G,H2[0][wp-1],global->ve,global->ue);
-                    CircuitBody(seq,O,wp,1,E,F,G,H2[0][wp-1],H2[0][target->w],global->ve,global->ue,*global);
-                    for(size_t s=2; s<=seq.size(); ++s)
-                        CircuitBody(seq,O,wp,s,E,F,G,H2[0][target->w],H2[0][target->w],global->ve,global->ue,*global);
+                    CircuitInitial(wp,C,E,F,G,H,global->ve,global->ue,*global);
+                    for(size_t s=1; s<=seq.size(); ++s)
+                        CircuitBody(seq,O,wp,s,C,E,F,G,H,global->ve,global->ue,*global,0);
                 }
             }
-            adrs.push_back(&G[rob[2]][target->w]);
+            adrs.push_back(&G[seq.size()][target->w]);
         }
+        while(rr<box.size()/3);
         Dot<U>** sources=target->sources;
         int s_sz=target->s_sz;
         target->s_sz+=adrs.size();
@@ -342,6 +348,17 @@ struct Align : Memory, GraphCopy<U>
         for(size_t i=0; i<adrs.size(); ++i,++j)
             target->sources[j]=adrs[i];
         box.clear();
+    }
+    
+    void SetRob(int w, Dot<U>** GH, size_t X_sz, U** robs, size_t & rr, size_t robs_sz)
+    {
+        do
+        {
+            for(int wp=0; wp<=w; ++wp)
+                GH[X_sz-robs[rr][2]][wp].rob=robs[rr];
+            ++rr;
+        }
+        while(rr<robs_sz && robs[rr][1]>=robs[rr-1][0]);
     }
     
     void Mix(std::string & O)
@@ -382,9 +399,9 @@ struct Align : Memory, GraphCopy<U>
                 EdgeLocal<U> & edge=graph.locals[l];
                 EdgeLocalCopy<U> & edgecopy=this->localcopys[l];
                 EdgeAllocSpace(edge,edgecopy,O.size(),graph.tAsz[i]);
-                alloc_initial(edgecopy.E,edge.id,edge.seq.size(),O.size(),NULL);
-                alloc_initial(edgecopy.F,edge.id,edge.seq.size(),O.size(),NULL);
-                alloc_initial(edgecopy.G,edge.id,edge.seq.size(),O.size(),NULL);
+                alloc_initial(edgecopy.E,edge.id,edge.seq.size(),O.size());
+                alloc_initial(edgecopy.F,edge.id,edge.seq.size(),O.size());
+                alloc_initial(edgecopy.G,edge.id,edge.seq.size(),O.size());
             }
             for(int j=0; j<graph.global_C[i]; ++j,++g)
             {
@@ -432,10 +449,10 @@ struct Align : Memory, GraphCopy<U>
         if(tildeANT[0].val==-inf)
             return;
         
-        CrossInitial(edgecopy.E,edgecopy.F,edgecopy.G,tildeANT,O.size(),edge.ve[0],edge.ue[0],edge.T);
+        CrossInitial(O.size(),edgecopy.E,edgecopy.F,edgecopy.G,edge.ve[0],edge.ue[0],edge);
         for(size_t s=1; s<=edge.seq.size(); ++s)
         {
-            CrossBody(edge.seq,O,s,O.size(),edgecopy.E,edgecopy.F,edgecopy.G,edge.ve[s],edge.ue[s],tildeANT,edge.gfp,edge);
+            CrossBody(edge.seq,O,s,O.size(),edgecopy.E,edgecopy.F,edgecopy.G,edge.ve[s],edge.ue[s],edge,edge.gfp[s]);
         }
         edgecopy.B[0].val=-inf;
         adrs.clear();
@@ -464,36 +481,37 @@ struct Align : Memory, GraphCopy<U>
         update_cross(this->nodecopys[edge.head], O.size());
     }
     
-    void CrossInitial(Dot<U>** E, Dot<U>** F, Dot<U>** G, Dot<U>* tildeANT, int W, double ve, double ue, double T)
+    template <typename Y>
+    void CrossInitial(int W, Dot<U>** E, Dot<U>** F, Dot<U>** G, double ve, double ue, Y & edge)
     {
+        Node<U> & NT=graph.nodes[edge.tail];
+        NodeCopy<U> & NTCP=this->nodecopys[edge.tail];
+        Dot<U>* tildeANT=NTCP.tildeA[NT.tAsz-1];
         for(int j=0; j<=W; ++j)
             F[0][j].val=-inf;
         E[0][0].val=-inf;
-        source_max(G[0][0],{&tildeANT[0]},{tildeANT[0].val+T});
+        source_max(G[0][0],{&tildeANT[0]},{tildeANT[0].val+edge.T});
         for(int w=1; w<=W; ++w)
         {
             source_max(E[0][w],{&E[0][w-1],&G[0][w-1]},{E[0][w-1].val+ue,G[0][w-1].val+ve});
-            source_max(G[0][w],{&E[0][w],&tildeANT[w]},{E[0][w].val,tildeANT[w].val+T});
+            source_max(G[0][w],{&E[0][w],&tildeANT[w]},{E[0][w].val,tildeANT[w].val+edge.T});
         }
     }
     
     template <typename Y>
-    void CrossBody(std::string & seq, std::string & O, int s, int W, Dot<U>** E, Dot<U>** F, Dot<U>** G, double ve, double ue, Dot<U>* tildeANT, double* gfp, Y & edge)
+    void CrossBody(std::string & seq, std::string & O, int s, int W, Dot<U>** E, Dot<U>** F, Dot<U>** G, double ve, double ue, Y & edge, double gfps)
     {
+        Node<U> & NT=graph.nodes[edge.tail];
+        NodeCopy<U> & NTCP=this->nodecopys[edge.tail];
+        Dot<U>* tildeANT=NTCP.tildeA[NT.tAsz-1];
         for(int w=0; w<=W; ++w)
             source_max(F[s][w],{&F[s-1][w],&G[s-1][w]},{F[s-1][w].val+edge.uf[w],G[s-1][w].val+edge.vf[w]});
         E[s][0].val=-inf;
-        if(tildeANT)
-            source_max(G[s][0],{&F[s][0],&tildeANT[0]},{F[s][0].val,tildeANT[0].val+gfp[s]+edge.T});
-        else
-            source_max(G[s][0],{&F[s][0]},{F[s][0].val});
+        source_max(G[s][0],{&F[s][0],&tildeANT[0]},{F[s][0].val,tildeANT[0].val+gfps+edge.T});
         for(int w=1; w<=W; ++w)
         {
             source_max(E[s][w],{&E[s][w-1],&G[s][w-1]},{E[s][w-1].val+ue,G[s][w-1].val+ve});
-            if(tildeANT)
-                source_max(G[s][w],{&F[s][w],&E[s][w],&G[s-1][w-1],&tildeANT[w]},{F[s][w].val,E[s][w].val,G[s-1][w-1].val+edge.gamma[int(seq[s-1])][int(O[w-1])],tildeANT[w].val+gfp[s]+edge.T});
-            else
-                source_max(G[s][w],{&F[s][w],&E[s][w],&G[s-1][w-1]},{F[s][w].val,E[s][w].val,G[s-1][w-1].val+edge.gamma[int(seq[s-1])][int(O[w-1])]});
+            source_max(G[s][w],{&F[s][w],&E[s][w],&G[s-1][w-1],&tildeANT[w]},{F[s][w].val,E[s][w].val,G[s-1][w-1].val+edge.gamma[int(seq[s-1])][int(O[w-1])],tildeANT[w].val+gfps+edge.T});
         }
     }
     
@@ -705,8 +723,8 @@ struct Align : Memory, GraphCopy<U>
                 edgecopy.H1a[a]=alloc_initial(edge.id,O.size(),0);
                 edgecopy.H1b[a]=alloc_initial(edge.id,O.size(),edge.seq.size());
             }
-            alloc_initial(edgecopy.H2,edge.id,edge.seq.size(),O.size(),NULL);
-            alloc_initial(edgecopy.C,edge.id,edge.seq.size(),O.size(),NULL);
+            alloc_initial(edgecopy.H,edge.id,edge.seq.size(),O.size());
+            alloc_initial(edgecopy.C,edge.id,edge.seq.size(),O.size());
         }
         for(int gg=g; gg<g+graph.global_C[scc]; ++gg)
         {
@@ -805,7 +823,7 @@ struct Align : Memory, GraphCopy<U>
         EdgeLocalCopy<U> & edgecopy=this->localcopys[l];
         NodeCopy<U> & NTCP=this->nodecopys[edge.tail];
         NodeCopy<U> & NHCP=this->nodecopys[edge.head];
-        Dot<U> **E=edgecopy.E, **F=edgecopy.F, **G=edgecopy.G, *B=edgecopy.B, **C=edgecopy.C, **H2=edgecopy.H2, **A=edgecopy.A;
+        Dot<U> **E=edgecopy.E, **F=edgecopy.F, **G=edgecopy.G, *B=edgecopy.B, **C=edgecopy.C, **H=edgecopy.H, **A=edgecopy.A;
         double *ue=edge.ue, *ve=edge.ve, T=edge.T, *gfp=edge.gfp;
         std::vector<double> &uf=edge.uf, &vf=edge.vf;
         std::string & seq=edge.seq;
@@ -822,14 +840,10 @@ struct Align : Memory, GraphCopy<U>
         }
         else
         {
-            C[0][w-1].val=-inf;
-            source_max(H2[0][w-1],{&NTCP.tildeA[tAsz-1][w-1]},{NTCP.tildeA[tAsz-1][w-1].val+T});
-            CircuitInitial(w,E,F,G,H2[0][w-1],ve[0],ue[0]);
+            CircuitInitial(w,C,E,F,G,H,ve[0],ue[0],edge);
             for(size_t s=1; s<=seq.size(); ++s)
             {
-                source_max(C[s][w-1],{&C[s-1][w-1],&H2[s-1][w-1]},{C[s-1][w-1].val+uf[w-1],H2[s-1][w-1].val+vf[w-1]});
-                source_max(H2[s][w-1],{&C[s][w-1],&NTCP.tildeA[tAsz-1][w-1]},{C[s][w-1].val,NTCP.tildeA[tAsz-1][w-1].val+gfp[s]+T});
-                CircuitBody(seq,O,w,s,E,F,G,H2[s-1][w-1],H2[s][w-1],ve[s],ue[s],edge);
+                CircuitBody(seq,O,w,s,C,E,F,G,H,ve[s],ue[s],edge,edge.gfp[s]);
             }
             adrs.clear();
             vals.clear();
@@ -857,20 +871,31 @@ struct Align : Memory, GraphCopy<U>
         }
     }
     
-    void CircuitInitial(int w, Dot<U>** E, Dot<U>** F, Dot<U>** G, Dot<U> & H2, double ve, double ue)
+    template <typename Y>
+    void CircuitInitial(int w, Dot<U>** C, Dot<U>** E, Dot<U>** F, Dot<U>** G, Dot<U>** H, double ve, double ue, Y & edge)
     {
-        source_max(E[0][w],{&E[0][w-1],&H2},{E[0][w-1].val+ue,H2.val+ve});
+        Node<U> & NT=graph.nodes[edge.tail];
+        NodeCopy<U> & NTCP=this->nodecopys[edge.tail];
+        Dot<U>* tildeANT=NTCP.tildeA[NT.tAsz-1];
+        C[0][w-1].val=-inf;
+        source_max(H[0][w-1],{&tildeANT[w-1]},{tildeANT[w-1].val+edge.T});
+        source_max(E[0][w],{&E[0][w-1],&H[0][w-1]},{E[0][w-1].val+ue,H[0][w-1].val+ve});
         F[0][w].val=-inf;
         source_max(G[0][w],{&E[0][w]},{E[0][w].val});
     }
     
     template <typename Y>
-    void CircuitBody(std::string & seq, std::string & O, int w, int s, Dot<U>** E, Dot<U>** F, Dot<U>** G, Dot<U> & Hsm1, Dot<U> & Hs, double ve, double ue, Y & edge)
+    void CircuitBody(std::string & seq, std::string & O, int w, int s, Dot<U>** C, Dot<U>** E, Dot<U>** F, Dot<U>** G, Dot<U>** H, double ve, double ue, Y & edge, double gfps)
     {
-        source_max(E[s][w],{&G[s][w-1],&E[s][w-1],&Hs},{G[s][w-1].val+ve,E[s][w-1].val+ue,Hs.val+ve});
+        Node<U> & NT=graph.nodes[edge.tail];
+        NodeCopy<U> & NTCP=this->nodecopys[edge.tail];
+        Dot<U>* tildeANT=NTCP.tildeA[NT.tAsz-1];
+        source_max(C[s][w-1],{&C[s-1][w-1],&H[s-1][w-1]},{C[s-1][w-1].val+edge.uf[w-1],H[s-1][w-1].val+edge.vf[w-1]});
+        source_max(H[s][w-1],{&C[s][w-1],&tildeANT[w-1]},{C[s][w-1].val,tildeANT[w-1].val+gfps+edge.T});
+        source_max(E[s][w],{&G[s][w-1],&E[s][w-1],&H[s][w-1]},{G[s][w-1].val+ve,E[s][w-1].val+ue,H[s][w-1].val+ve});
         source_max(F[s][w],{&G[s-1][w],&F[s-1][w]},{G[s-1][w].val+edge.vf[w],F[s-1][w].val+edge.uf[w]});
         double gm=edge.gamma[int(seq[s-1])][int(O[w-1])];
-        source_max(G[s][w],{&E[s][w],&F[s][w],&G[s-1][w-1],&Hsm1},{E[s][w].val,F[s][w].val,G[s-1][w-1].val+gm,Hsm1.val+gm});
+        source_max(G[s][w],{&E[s][w],&F[s][w],&G[s-1][w-1],&H[s-1][w-1]},{E[s][w].val,F[s][w].val,G[s-1][w-1].val+gm,H[s-1][w-1].val+gm});
     }
     
     void CircuitIterationEdgeGlobal(int w, int g, std::string & O, int tAsz)
@@ -897,11 +922,11 @@ struct Align : Memory, GraphCopy<U>
         }
         else
         {
-            double H2=NTCP.tildeA[tAsz-1][w-1].val+T;
+            double H=NTCP.tildeA[tAsz-1][w-1].val+T;
             auto it=sncs.begin();
             it->Gp=it->G;
             it->F=-inf;
-            A[0][w].val=it->G=it->E=std::max(it->E+ue,H2+ve);
+            A[0][w].val=it->G=it->E=std::max(it->E+ue,H+ve);
             boxes[w].clear();
             boxes[w].push_back(it->sr1);
             boxes[w].push_back(it->sr2);
@@ -915,7 +940,7 @@ struct Align : Memory, GraphCopy<U>
                 double gm=edge.gamma[it->letter][int(O[w-1])];
                 it->G=std::max(std::max(it->E,it->F),it->itp->Gp+gm);
                 if(it->s==1)
-                    it->G=std::max(it->G,H2+gm);
+                    it->G=std::max(it->G,H+gm);
                 if(it->G<NTCP.tildeA[0][w].val+T)
                     it->G=it->F=-inf;
                 if(it->E+ue<NTCP.tildeA[0][w].val+T+ve)
@@ -1031,7 +1056,7 @@ struct Align : Memory, GraphCopy<U>
             }
     }
     
-    void alloc_initial(Dot<U>** EFG, int eid, int S, int W, U* rob)
+    void alloc_initial(Dot<U>** EFG, int eid, int S, int W)
     {      
         for(int s=0; s<=S; ++s)
         {
@@ -1041,7 +1066,7 @@ struct Align : Memory, GraphCopy<U>
                 EFG[s][w].eid=eid;
                 EFG[s][w].s=s;
                 EFG[s][w].w=w;
-                EFG[s][w].rob=rob;
+                EFG[s][w].rob=NULL;
                 EFG[s][w].visit=false;
             }
         }

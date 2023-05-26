@@ -564,7 +564,7 @@ struct EdgeLocalCopy
     Dot<U>** G;
     Dot<U>** H1a=NULL;
     Dot<U>** H1b;
-    Dot<U>** H2;
+    Dot<U>** H;
     Dot<U>** C;
     
     ~EdgeLocalCopy()
@@ -630,8 +630,8 @@ struct GraphCopy
                     nodecopys[graph.locals[l].head].siptr.push_back(localcopys[l].A);
                     localcopys[l].H1a=new Dot<T>*[2*EFGsz+2*(graph.tAsz[i]-1)];
                     localcopys[l].H1b=localcopys[l].H1a+graph.tAsz[i]-1;
-                    localcopys[l].H2=localcopys[l].H1b+graph.tAsz[i]-1;
-                    localcopys[l].C=localcopys[l].H2+EFGsz;
+                    localcopys[l].H=localcopys[l].H1b+graph.tAsz[i]-1;
+                    localcopys[l].C=localcopys[l].H+EFGsz;
                 }
             }
             for(int j=0; j<graph.global_C[i]; ++j,++e,++g)
