@@ -29,7 +29,7 @@ void process_and_write_single(std::queue<std::pair<std::string, std::string>> re
     while (!reads.empty())
     {
         align.Oname.swap(reads.front().first);
-        std::cerr << align.Oname << '\n'; // debug
+        // std::cerr << align.Oname << '\n'; // debug
         align.O.swap(reads.front().second);
         align.Mix();
         align.GetMinimalGraph();
@@ -44,7 +44,7 @@ void process_and_write(std::queue<std::pair<std::string, std::string>> reads, st
     while (!reads.empty())
     {
         align.Oname.swap(reads.front().first);
-        std::cerr << align.Oname << '\n'; // debug
+        // std::cerr << align.Oname << '\n'; // debug
         align.O.swap(reads.front().second);
         align.Mix();
         align.GetMinimalGraph();
@@ -263,11 +263,11 @@ void test_single_double(std::string argfile, int threads1_sz);
 
 int main(int argc, char **argv)
 {
-    // test_RandomReads("argfile", 24);
+    chdir("./test_RandomReads");
+    test_RandomReads("argfile", 24);
 
-    chdir("./test_CRISPR");
     // index_genome("argfile", 3);
-    test_CRISPR("argfile", 3);
+    // test_CRISPR("argfile", 3);
 
     // run_sim("./test_single_cut");
     // run_sim("./test_double_cut");
@@ -297,19 +297,25 @@ void test_RandomReads(std::string argfile, int threads1_sz)
     bool acyclic = false;
     double gpro = 0.5, rpro = 0, nve = 0, nue = 0, ve = -5, ue = -2, vf = -5, uf = -2, T = -10, vfp = 0, ufp = 0, vfm = 0, ufm = 0, mat = 1, mis = -3, indel_rate = 0.005, mut_rate = 0.005, apro = 0.5;
 
-    random_DG(n_sz, r_sz, t_sz, max_e_sz, "argfile", acyclic, gpro, rpro, nve, nue, ve, ue, vf, uf, T, vfp, ufp, vfm, ufm, mat, mis, "local_file", "global_file", lseqlb, lsequb, gseqlb, gsequb, aseqlb, asequb, seq_num, "read_file", "truth_file", indel_rate, mut_rate, head_in, tail_in, apro);
+    // random_DG(n_sz, r_sz, t_sz, max_e_sz, "argfile", acyclic, gpro, rpro, nve, nue, ve, ue, vf, uf, T, vfp, ufp, vfm, ufm, mat, mis, "local_file", "global_file", lseqlb, lsequb, gseqlb, gsequb, aseqlb, asequb, seq_num, "read_file", "truth_file", indel_rate, mut_rate, head_in, tail_in, apro);
 
     int argc;
     char **argv;
     std::vector<std::string> args;
     std::tie(argc, argv) = read_argfile(argfile, args);
 
-    thread_pool threads1(threads1_sz);
+    
     std::map<std::string, NameSeq> file2seq;
     std::map<std::string, BroWheel> file2browheel;
-    std::deque<std::string> read_files = read_reference_and_index(argc, argv, 300, threads1, file2seq, file2browheel, false);
 
-    std::deque<std::string> mg_files = parallel_align(128 * 1024 * 1024, threads1, argc, argv, file2seq, file2browheel, read_files, "Random");
+    thread_pool threads1(threads1_sz); // mt
+    // std::deque<std::string> read_files = read_reference_and_index(argc, argv, 300, threads1, file2seq, file2browheel, false); // mt
+    std::deque<std::string> read_files = load_index(argc, argv, file2seq, file2browheel); // mt
+    std::deque<std::string> mg_files = parallel_align(128 * 1024 * 1024, threads1, argc, argv, file2seq, file2browheel, read_files, "Random"); // mt
+
+    // std::deque<std::string> read_files = load_index(argc, argv, file2seq, file2browheel); // st
+    // std::string mg_file = single_align(128 * 1024 * 1024, argc, argv, file2seq, file2browheel, read_files, "Random"); // st
+    // std::deque<std::string> mg_files = {mg_file}; // st
 
     Track track(argc, argv, file2seq, file2browheel, 128 * 1024 * 1024);
     track.ReadTrack(mg_files, read_files, "Random", INT64_MAX, 1);

@@ -9,6 +9,18 @@
 
 constexpr static const double inf = std::numeric_limits<double>::infinity();
 
+struct Dot // cannot use constructor because on Memory
+{
+    int n; // n determines the type of Dot
+    size_t s;
+    int w;
+    double val;
+    Dot **sources; // apply on memory
+    int s_sz;      // s_sz<0 means visited
+    int lambda;
+    size_t id;
+};
+
 struct Node;
 
 struct Edge
@@ -69,18 +81,6 @@ struct EdgeLocal : Edge
         vfm = vfm_;
         ufm = ufm_;
     }
-};
-
-struct Dot // cannot use constructor because on Memory
-{
-    int n; // n determines the type of Dot
-    size_t s;
-    int w;
-    double val;
-    Dot **sources; // apply on memory
-    int s_sz;      // s_sz<0 means visited
-    int lambda;
-    size_t id;
 };
 
 struct EdgeLocalCross : EdgeLocal
@@ -157,7 +157,7 @@ struct TrackNode
 struct EdgeGlobal : Edge
 {
     BroWheel &browheel;
-    std::deque<double> C;
+    std::deque<std::deque<std::pair<int64_t, int>>> Cdelta;
     std::deque<TrackNode> tracknodes;
 
     EdgeGlobal(std::string name_, double gamma_[7][7], double ve_, double ue_, double vf_, double uf_, double T_, int n_, BroWheel &browheel_)
@@ -176,7 +176,26 @@ struct EdgeGlobalCross : EdgeGlobal
     }
 };
 
-struct SNC;
+struct SNC
+{
+    double E;
+    double F0;
+    double G0;
+    double hatG;
+    int8_t c;
+    int8_t idl;
+    int lambda;
+    size_t sr1;
+    size_t sr2;
+    size_t cid; // 0 means not try to add child yet
+    SNC *itp;
+    SNC *jump;
+
+    SNC(double E_, double F0_, double G0_, double hatG_, int8_t c_, int8_t idl_, int lambda_, size_t sr1_, size_t sr2_, size_t cid_, SNC *itp_, SNC *jump_)
+        : E(E_), F0(F0_), G0(G0_), hatG(hatG_), c(c_), idl(idl_), lambda(lambda_), sr1(sr1_), sr2(sr2_), cid(cid_), itp(itp_), jump(jump_)
+    {
+    }
+};
 
 struct EdgeGlobalCircuit : EdgeGlobal
 {
@@ -207,10 +226,11 @@ struct Node
     std::vector<EdgeGlobalCross *> in_global_crosses;
     std::vector<EdgeGlobalCircuit *> in_global_circuits;
     Dot Abar;
-    Dot **A;
-    Dot *B;
-    std::vector<std::map<EdgeGlobalCross *, std::deque<std::pair<size_t, int>>>> AdeltaCross;
-    std::vector<std::map<EdgeGlobalCircuit *, std::deque<std::pair<size_t, int>>>> AdeltaCircuit;
+    std::vector<std::deque<Dot>> A;
+    std::deque<Dot> B;
+    std::deque<std::deque<Dot *>> AdeltaDot;
+    std::deque<std::deque<EdgeGlobalCross *>> AdeltaCross;
+    std::deque<std::deque<EdgeGlobalCircuit *>> AdeltaCircuit;
 
     Node(std::string name_, double ve_, double ue_)
     {
@@ -462,6 +482,7 @@ struct Graph
             } while (top != node);
             for (auto nnode : sccs.front().nodes)
             {
+                nnode->A.resize(sccs.front().nodes.size());
                 for (auto &edge : locals)
                     if (edge.tail == nnode)
                     {
