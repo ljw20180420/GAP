@@ -14,671 +14,660 @@
 struct Do
 {
     int w;
-    double val;
+    double E;
+
+    Do(int w_, double E_)
+    {
+        w = w_;
+        E = E_;
+    }
 };
 
-template <typename U>
+struct Doo
+{
+    int w;
+    double F;
+    double G;
+};
+
 struct SimNode
 {
-    Memory &memory;
-    U letter;
-    U sr1;
-    U sr2;
-    Do *E;
-    Do *F;
-    Do *G;
-    int Efn;
-    int Ffn;
-    int Gfn;
+    Memory *memory;
+    int c;
+    size_t sr1;
+    size_t sr2;
+    Doo *FG;
+    int sz;
     char *now;
     size_t remain;
     size_t chunk_id;
 
-    SimNode(Memory &memory_, U letter_, U sr1p, U sr2p, int Efn_, int Ffn_, int Gfn_)
+    SimNode(Memory *memory_, int c_, size_t sr1_, size_t sr2_, int sz_, int alloc)
         : memory(memory_)
     {
-        letter = letter_;
-        edge.Bro.PreRange(sr1p, sr2p, letter);
-        sr1 = sr1p;
-        sr2 = sr2p;
+        c = c_;
+        sr1 = sr1_;
+        sr2 = sr2_;
 
-        now = memory.now;
-        remain = memory.remain;
-        chunk_id = memory.chunk_id;
-        Efn = Efn_;
-        Ffn = Ffn_;
-        Gfn = Gfn_;
-        E = memory.heap_alloc<Do>(Efn);
-        F = memory.heap_alloc<Do>(Ffn);
-        G = memory.heap_alloc<Do>(Gfn);
+        now = memory->now;
+        remain = memory->remain;
+        chunk_id = memory->chunk_id;
+        sz = sz_;
+        FG = memory->heap_alloc<Doo>(alloc);
     }
 
     ~SimNode()
     {
-        memory.now = now;
-        memory.remain = remain;
-        memory.chunk_id = chunk_id;
+        memory->now = now;
+        memory->remain = remain;
+        memory->chunk_id = chunk_id;
     }
 };
 
-struct Dot // cannot use constructor because on Memory
-{
-    int n; // n determines the type of Dot
-    size_t s;
-    int w;
-    double val;
-    Dot **sources; // apply on memory
-    int s_sz;      // s_sz<0 means visited
-};
-
-struct Ptr
-{
-    Dot Abar;
-    Dot *B;
-    Dot *C;
-    Dot *D;
-    Dot **A;
-    Dot **E;
-    Dot **F;
-    Dot **G;
-    Dot **F0;
-    Dot **G0;
-    Dot **D0;
-    Dot **DX;
-    std::set<std::pair<size_t,int>> Cdelta;
-    std::map<int,std::set<std::pair<size_t,int>>> Adelta;
-};
-
-template <typename T>
 struct SNC
 {
     double E;
     double F0;
     double G0;
     double hatG;
-    T sr1;
-    T sr2;
-    SNC *itp;
-    SNC *itcs[5]; // NULL means children are not added to the tree yet
+    size_t sr1;
+    size_t sr2;
+    int lambda;
+    std::list<SNC>::iterator itp;
+    std::list<SNC>::iterator itcs[5]; // end() means not try to add child yet, root means child does not exist.
+
+    SNC(double E_, double F0_, double G0_, double hatG_, size_t sr1_, size_t sr2_, int lambda_, std::list<SNC>::iterator itp_, std::list<SNC>::iterator itc_)
+    {
+        E = E_;
+        F0 = F0_;
+        G0 = G0_;
+        hatG = hatG_;
+        sr1 = sr1_;
+        sr2 = sr2_;
+        lambda = lambda_;
+        itp = itp_;
+        for (int i = 0; i < 5; ++i)
+            itcs[i] = itc_;
+    }
 };
 
-template <typename U>
-struct Align : Memory
+struct TrackNode
+{
+    std::list<TrackNode>::iterator itp;
+    std::list<TrackNode>::iterator itcs[5];
+    Dot *E;
+    Dot *F;
+    Dot *G;
+    int tau = 0;
+
+    TrackNode(Align *align_, std::list<TrackNode>::iterator itp_, std::list<TrackNode>::iterator itc_, int n, int s)
+    {
+        itp = itp_;
+        for (int i = 0; i < 5; ++i)
+            itcs[i] = itc_;
+        align_->alloc_initial(E, n, s);
+        align_->alloc_initial(F, n, s);
+        align_->alloc_initial(G, n, s);
+    }
+};
+
+struct Align : Memory, Graph
 {
     const static int ww = 3;
 
-    Graph<U> &graph;
-    std::stack<SimNode<U>> simnodes;
-    std::map<std::string, Ptr> name_ptr;
+    std::stack<SimNode> simnodes;
     std::string O;
+    std::string Oname;
+    Dot Q;
+    std::vector<int> target_scc_szes;
+    std::vector<int> node_scc_szes;
+    std::ofstream fout;
+    size_t max_id;
 
-    Align(Graph<U> &graph_, size_t chunk_sz_) : graph(graph_)
+    Align(int argc, char **argv, std::map<std::string, std::string> &file2seq, std::map<std::string, BroWheel> &file2browheel, size_t chunk_sz_, std::string file) : Graph(argc, argv, file2seq, file2browheel), fout(file, std::ifstream::binary)
     {
         Initial(chunk_sz_);
-        for (auto &node : graph.nodes)
+        for (auto &node : nodes)
         {
-            Ptr &ptr = name_ptr[node.first];
-            if (graph.roots.find(node.first) == graph.roots.end())
-                ptr.Abar.val = -inf;
-            else
-                ptr.Abar.val = 0;
-            ptr.Abar.n = -3;
-            ptr.Abar.s = 0;
-            ptr.Abar.w = 0;
-            ptr.Abar.s_sz = 0;
-            ptr.Abar.sources = NULL;
+            node.Abar.n = -2;
+            node.Abar.s = 0;
+            node.Abar.w = 0;
+            node.Abar.val = -inf;
+            node.Abar.s_sz = 0;
+            node.Abar.sources = NULL;
         }
-    }
-
-    int base2int(char c)
-    {
-        return (c + 6) >> 1 & 7;
+        for (auto root : roots)
+            root->Abar.val = 0;
+        for (auto &scc : sccs)
+            for (auto node : scc.nodes)
+            {
+                for (auto target : targets)
+                    if (target == node)
+                    {
+                        target_scc_szes[&target - targets.data()] = scc.nodes.size();
+                        break;
+                    }
+                for (int i=0; i<nodes.size(); ++i)
+                    if(&nodes[i] == node)
+                        node_scc_szes[i]=scc.nodes.size();
+            }
+        Q.n=-3;
+        Q.s=0;
+        Q.w=0;
     }
 
     void Mix()
     {
         clear();
-        for (auto &node : graph.nodes)
+        for (auto &scc : sccs)
         {
-            auto &ptr = name_ptr[node.first];
-            alloc_initial(ptr.A, -1, node.second.scc_ptr->node_names.size() - 1);
-            alloc_initial(ptr.B, -2, 0);
-        }
-        for (auto &scc : graph.sccs)
-        {
-            if (scc.node_names.size() != 0)
+            for (auto node : scc.nodes)
             {
-                for (auto &edge_name : scc.local_names)
+                alloc_initial(node->A, node-nodes.data()-4, scc.nodes.size() - 1);
+                alloc_initial(node->B, -1, 0);
+                node->AdeltaCross.resize(O.size() + 1);
+                node->AdeltaCircuit.resize(O.size() + 1);
+            }
+            for (auto edge : scc.local_circuits)
+            {
+                alloc_initial(edge->D, edge->n, 0);
+                alloc_initial(edge->E, edge->n, edge->seq.size());
+                alloc_initial(edge->F0, edge->n, edge->seq.size());
+                alloc_initial(edge->G0, edge->n, edge->seq.size());
+                alloc_initial(edge->G, edge->n, edge->seq.size());
+                alloc_initial(edge->D0, edge->n, scc.nodes.size() - 1);
+                alloc_initial(edge->DX, edge->n, scc.nodes.size() - 1);
+            }
+            for (auto edge : scc.global_circuits)
+            {
+                alloc_initial(edge->D0, edge->n, scc.nodes.size() - 1);
+                edge->C.resize(O.size() + 1);
+                edge->Cdelta.resize(O.size() + 1);
+            }
+            for (int w = 0; w <= O.size(); ++w)
+            {
+                for (auto edge : scc.local_circuits)
+                    CircuitIteration(w, edge, scc.nodes.size());
+                for (auto edge : scc.global_circuits)
+                    CircuitIterationGlobal(w, edge, scc.nodes.size());
+                for (auto node : scc.nodes)
                 {
-                    auto &ptr = name_ptr[edge_name];
-                    auto &edge = graph.locals[edge_name];
-                    alloc_initial(ptr.D0, edge.n, scc.node_names.size() - 1);
-                    alloc_initial(ptr.DX, edge.n, scc.node_names.size() - 1);
-                    alloc_initial(ptr.D, edge.n, 0);
-                    alloc_initial(ptr.E, edge.n, edge.seq.size());
-                    alloc_initial(ptr.F0, edge.n, edge.seq.size());
-                    alloc_initial(ptr.G0, edge.n, edge.seq.size());
-                    alloc_initial(ptr.G, edge.n, edge.seq.size());
-                }
-                for (auto &edge_name : scc.global_names)
-                {
-                    auto &ptr=name_ptr[edge_name];
-                    auto &edge = graph.globals[edge_name];
-                    alloc_initial(ptr.C, edge.n, 0);
-                    alloc_initial(ptr.D0, edge.n, scc.node_names.size() - 1);
-                }
-                for (int w=0; w<=O.size(); ++w)
-                {
-                    for (auto &edge_name : scc.local_names)
-                        CircuitIteration(w, edge_name);
-                    for (auto &edge_name : scc.global_names)
-                        CircuitIterationGlobal(w, edge_name);
-                    for (auto &node_name : scc.node_names)
+                    if (w == 0)
+                        source_max(node->B[w], {}, {});
+                    else
+                        source_max(node->B[w], {&node->B[w - 1], &node->A[scc.nodes.size() - 1][w - 1]}, {node->B[w - 1].val + node->ue, node->A[scc.nodes.size() - 1][w - 1].val + node->ve});
+                    std::vector<Dot *> adrs{&node->B[w]};
+                    std::vector<double> vals{node->B[w].val};
+                    for (auto edge : node->in_local_crosses)
+                        for (int s = 0; s <= edge->seq.size(); ++s)
+                        {
+                            adrs.push_back(&edge->G[s][w]);
+                            vals.push_back(edge->G[s][w].val + (s == edge->seq.size() ? 0 : edge->vfm + (edge->seq.size() - s - 1) * edge->ufm));
+                        }
+                    for (auto edge : node->in_local_circuits)
+                        for (int s = 0; s <= edge->seq.size(); ++s)
+                        {
+                            adrs.push_back(&edge->G0[s][w]);
+                            vals.push_back(edge->G0[s][w].val + (s == edge->seq.size() ? 0 : edge->vfm + (edge->seq.size() - s - 1) * edge->ufm));
+                        }
+                    if (w == 0)
                     {
-                        auto &ptr = name_ptr[node_name];
-                        auto &node = nodes[node_name];
-                        if (w == 0)
-                            source_max(ptr.B[w],{},{});
-                        else
-                            source_max(ptr.B[w],{&ptr.B[w-1],&ptr.A[scc.node_names.size()-1][w-1]},{ptr.B[w-1].val+node.ue,ptr.A[scc.node_names.size()-1][w-1]+node.ve});
-                        std::vector<Dot *> adrs{&ptr.B[w]};
-                        std::vector<double> vals{ptr.B[w].val};
-                        for (auto &edge_name : node.in_edges)
-                            
-                        source_max(ptr.A[0][w],{});
+                        adrs.push_back(&node->Abar);
+                        vals.push_back(node->Abar.val);
+                    }
+                    source_max(node->A[0][w], adrs.begin(), vals.begin(), vals.end());
+                    node->AdeltaCross[w].clear();
+                    for (auto edge : node->in_global_crosses)
+                        if (edge->C[w] >= node->A[0][w].val)
+                        {
+                            if (edge->C[w] > node->A[0][w].val)
+                            {
+                                node->A[0][w].val = edge->C[w];
+                                node->A[0][w].s_sz = 0;
+                                node->AdeltaCross[w].clear();
+                            }
+                            node->AdeltaCross[w][edge] = edge->Cdelta[w];
+                        }
+                    node->AdeltaCircuit[w].clear();
+                    for (auto edge : node->in_global_circuits)
+                        if (edge->C[w] >= node->A[0][w].val)
+                        {
+                            if (edge->C[w] > node->A[0][w].val)
+                            {
+                                node->A[0][w].val = edge->C[w];
+                                node->A[0][w].s_sz = 0;
+                                node->AdeltaCircuit[w].clear();
+                            }
+                            node->AdeltaCircuit[w][edge] = edge->Cdelta[w];
+                        }
+                }
+                for (int l = 1; l < scc.nodes.size(); ++l)
+                {
+                    for (auto edge : scc.global_circuits)
+                        source_max(edge->D0[l][w], {&edge->tail->A[l - 1][w]}, {edge->tail->A[l - 1][w].val + edge->T});
+                    for (auto edge : scc.local_circuits)
+                    {
+                        source_max(edge->D0[l][w], {&edge->tail->A[l - 1][w]}, {edge->tail->A[l - 1][w].val + edge->T});
+                        source_max(edge->DX[l][w], {&edge->tail->A[l - 1][w], &edge->D0[l][w]}, {edge->tail->A[l - 1][w].val + edge->vfp + (edge->seq.size() - 1) * edge->ufp + edge->T, edge->D0[l][w].val + edge->vf + (edge->seq.size() - 1) * edge->uf});
+                    }
+                    for (auto node : scc.nodes)
+                    {
+                        std::vector<Dot *> adrs{&node->A[0][w]};
+                        std::vector<double> vals{node->A[0][w].val};
+                        for (auto edge : node->in_local_circuits)
+                        {
+                            adrs.push_back(&edge->D0[l][w]);
+                            vals.push_back(edge->D0[l][w].val + edge->vfm + (edge->seq.size() - 1) * edge->ufm);
+                            adrs.push_back(&edge->DX[l][w]);
+                            vals.push_back(edge->DX[l][w].val);
+                        }
+                        for (auto edge : node->in_global_circuits)
+                        {
+                            adrs.push_back(&edge->D0[l][w]);
+                            vals.push_back(edge->D0[l][w].val);
+                        }
+                        source_max(node->A[l][w], adrs.begin(), vals.begin(), vals.end());
                     }
                 }
             }
-            else
+            for (auto edge : scc.local_crosses)
             {
-
+                alloc_initial(edge->E, edge->n, edge->seq.size());
+                alloc_initial(edge->F, edge->n, edge->seq.size());
+                alloc_initial(edge->G, edge->n, edge->seq.size());
+                CrossIteration(edge, scc.nodes.size());
+            }
+            for (auto edge : scc.global_crosses)
+            {
+                edge->C.resize(O.size() + 1);
+                edge->Cdelta.resize(O.size() + 1);
+                CrossIterationGlobal(edge, scc.nodes.size());
             }
         }
-        for (auto &edge_name : graph.edge_names)
+        std::vector<Dot *> adrs;
+        std::vector<double> vals;
+        for (int n = 0; n < targets.size(); ++n)
         {
-            auto &ptr = name_ptr[edge_name];
-            auto &edge = graph.globals.find(edge_name) == graph.globals.end() ? graph.locals[edge_name] : graph.globals[edge_name];
-            int scc_sz = edge.scc_ptr->node_names.size();
-            alloc_initial(ptr.D0, edge.n, scc_sz - 1);
-            if (graph.globals.find(edge_name) != graph.globals.end())
-                continue;
-            alloc_initial(ptr.DX, edge.n, scc_sz - 1);
-            if (scc_sz == 0)
-            {
-                alloc_initial(ptr.E, edge.n, edge.seq.size());
-                alloc_initial(ptr.F, edge.n, edge.seq.size());
-                alloc_initial(ptr.G, edge.n, edge.seq.size());
-            }
-            else
-            {
-                alloc_initial(ptr.D, edge.n, 0);
-                alloc_initial(ptr.E, edge.n, edge.seq.size());
-                alloc_initial(ptr.F0, edge.n, edge.seq.size());
-                alloc_initial(ptr.G0, edge.n, edge.seq.size());
-                alloc_initial(ptr.G, edge.n, edge.seq.size());
-            }
+            adrs.push_back(&targets[n]->A[target_scc_szes[n] - 1][O.size()]);
+            vals.push_back(targets[n]->A[target_scc_szes[n] - 1][O.size()].val);
         }
-        
+        source_max(Q, adrs.begin(), vals.begin(), vals.end());
     }
 
-    void CrossIteration(std::string &edge_name)
+    void CrossIteration(EdgeLocalCross *edge, int scc_sz)
     {
-        EdgeLocal &edge = graph.locals[edge_name];
-        Dot **A = name_prt[edge.tail].A;
-        Dot **&E = name_prt[edge_name].E;
-        Dot **&F = name_prt[edge_name].F;
-        Dot **&G = name_prt[edge_name].G;
-        int tail_scc_sz = graph.nodes[edge.tail].scc_ptr->node_names.size();
-        for (size_t s = 0; s <= edge.seq.size(); ++s)
+        Dot **A = edge->tail->A;
+        Dot **E = edge->E;
+        Dot **F = edge->F;
+        Dot **G = edge->G;
+        for (size_t s = 0; s <= edge->seq.size(); ++s)
             for (size_t w = 0; w <= O.size(); ++w)
             {
                 if (w == 0)
                     source_max(E[s][w], {}, {});
                 else
-                    source_max(E[s][w], {&E[s][w - 1], &G[s][w - 1]}, {E[s][w - 1].val + edge.ue, G[s][w - 1].val + edge.ve});
+                    source_max(E[s][w], {&E[s][w - 1], &G[s][w - 1]}, {E[s][w - 1].val + edge->ue, G[s][w - 1].val + edge->ve});
                 if (s == 0)
                     source_max(F[s][w], {}, {});
                 else
-                    source_max(F[s][w], {&F[s - 1][w], &G[s - 1][w]}, {F[s - 1][w].val + edge.uf, G[s - 1][w].val + edge.vf});
+                    source_max(F[s][w], {&F[s - 1][w], &G[s - 1][w]}, {F[s - 1][w].val + edge->uf, G[s - 1][w].val + edge->vf});
                 if (s > 0 && w > 0)
-                    source_max(G[s][w], {&F[s][w], &E[s][w], &A[tail_scc_sz - 1][w]}, {F[s][w].val, E[s][w].val, A[tail_scc_sz - 1][w].val + (s == 0 ? 0 : edge.vfp + (s - 1) * edge.ufp) + edge.T});
+                    source_max(G[s][w], {&F[s][w], &E[s][w], &A[scc_sz - 1][w]}, {F[s][w].val, E[s][w].val, A[scc_sz - 1][w].val + (s == 0 ? 0 : edge->vfp + (s - 1) * edge->ufp) + edge->T});
                 else
-                    source_max(G[s][w], {&F[s][w], &E[s][w], &G[s - 1][w - 1], &A[tail_scc_sz - 1][w]}, {F[s][w].val, E[s][w].val, G[s - 1][w - 1].val + edge.gamma[base2int(edge.seq[s])][base2int(O[w])], A[tail_scc_sz - 1][w].val + (s == 0 ? 0 : edge.vfp + (s - 1) * edge.ufp) + edge.T});
+                    source_max(G[s][w], {&F[s][w], &E[s][w], &G[s - 1][w - 1], &A[scc_sz - 1][w]}, {F[s][w].val, E[s][w].val, G[s - 1][w - 1].val + edge->gamma[BroWheel::base2int(edge->seq[s])][BroWheel::base2int(O[w])], A[scc_sz - 1][w].val + (s == 0 ? 0 : edge->vfp + (s - 1) * edge->ufp) + edge->T});
             }
     }
 
-    void CrossIterationGlobal(int g, std::string &O)
+    void CrossIterationGlobal(EdgeGlobalCross *edge, int scc_sz)
     {
-        EdgeGlobal<U> &edge = graph.globals[g];
-        EdgeGlobalCopy<U> &edgecopy = this->globalcopys[g];
-        Dot<U> *tildeANT = this->nodecopys[edge.tail].tildeA[graph.nodes[edge.tail].tAsz - 1];
-        if (tildeANT[0].val == -inf)
-            return;
-        Node<U> &NH = graph.nodes[edge.head];
-        double tve = NH.tve, tue = NH.tue;
-        BroWheel<U> &Bro = edge.Bro;
-        double ve = edge.ve, ue = edge.ue, T = edge.T;
-        std::vector<std::vector<U>> &boxes = edgecopy.boxes;
-
-        Dot<U> *A = edgecopy.A[0], *B = edgecopy.B;
-        for (size_t w = 0; w <= O.size(); ++w)
+        Dot **A = edge->tail->A;
+        std::list<SimNode> simnodes;
+        simnodes.emplace_front(this, -1, 0, edge->browheel.sequence.size() - 1, O.size() + 1, O.size() + 1);
+        auto &simzero = simnodes.back();
+        std::vector<Do> E0;
+        for (int w = 0; w <= O.size(); ++w)
         {
-            A[w].val = -inf;
-            boxes[w].resize(3);
-            boxes[w][0] = boxes[w][2] = 0;
-            boxes[w][1] = Bro.size() - 1;
+            E0.emplace_back(w, w > 0 ? std::max(E0[w - 1].E + edge->ue, simzero.FG[w - 1].G + edge->ve) : -inf);
+            simzero.FG[w].w = w;
+            simzero.FG[w].F = -inf;
+            simzero.FG[w].G = std::max(std::max(E0[w].E, simzero.FG[w].F), A[scc_sz - 1][w].val + edge->T);
+            edge->C[w] = simzero.FG[w].G;
+            edge->Cdelta[w].clear();
+            edge->Cdelta[w].emplace_back(simzero.sr1, simnodes.size() - 1);
         }
-        simnodes.emplace();
-        simnodes.top().sr1 = 0;
-        simnodes.top().sr2 = Bro.size() - 1;
-
-        triestates.emplace();
-        TrieState<U> &ts = triestates.top();
-        PushTrieState(ts, O.size() + 1, 0, O.size() + 1);
-        ts.E[0].w = ts.G[0].w = 0;
-        ts.E[0].val = -inf;
-        ts.G[0].val = tildeANT[0].val + T;
-        A[0].val = ts.G[0].val;
-        for (size_t g = 1; g <= O.size(); ++g)
+        auto simnode = simnodes.begin();
+        ;
+        while (true)
         {
-            ts.G[g].w = ts.E[g].w = g;
-            ts.E[g].val = std::max(ts.E[g - 1].val + ue, ts.G[g - 1].val + ve);
-            ts.G[g].val = std::max(ts.E[g].val, tildeANT[g].val + T);
-            A[g].val = ts.G[g].val;
-        }
-        simnodes.top().visit = true;
-        PushPre(edge);
-
-        while (!simnodes.empty())
-        {
-            if (simnodes.top().visit)
-            {
-                TrieState<U> &ts = triestates.top();
-                this->now = ts.now;
-                this->remain = ts.remain;
-                this->chunk_id = ts.chunk_id;
-                triestates.pop();
-                simnodes.pop();
-            }
+            int c;
+            if (simnode->sr1 <= simnode->sr2 && simnode->sz > 0)
+                c = 2;
             else
             {
-                TrieState<U> &tsp = triestates.top();
-                triestates.emplace();
-                TrieState<U> &ts = triestates.top();
-                PushTrieState(ts, O.size() - tsp.G[0].w + 1, tsp.Gfn, O.size() - tsp.G[0].w + 1);
-                CrossBodyGlobal(tsp, ts, edge, edgecopy, O, simnodes.top().letter, simnodes.top().sr1, simnodes.top().sr2, triestates.size() - 1);
-                simnodes.top().visit = true;
-                if (ts.Gfn > 0)
+                do
                 {
-                    if (simnodes.top().sr1 < simnodes.top().sr2)
-                        PushPre(edge);
-                    else
+                    c = simnodes.front().c;
+                    simnodes.erase(simnodes.begin());
+                } while (c == 6 && !simnodes.empty());
+                if (simnodes.empty())
+                    break;
+                ++c;
+                simnode = simnodes.begin();
+            }
+            int64_t sr1 = simnode->sr1;
+            int64_t sr2 = simnode->sr2;
+            edge->browheel.PreRange(sr1, sr2, c);
+            simnodes.emplace_front(this, c, sr1, sr2, simnode->sz, O.size() + 1 - simnode->FG[0].w);
+            simnode = simnodes.begin();
+            auto simprev = std::next(simnode);
+            std::vector<Do> E;
+            for (int i = 0, j = 0, w = simprev->FG[j].w;;)
+            {
+                double E_val = std::max((!E.empty() && E.back().w == w - 1) ? E.back().E + edge->ue : -inf, (i > 0 && simnode->FG[i - 1].w == w - 1) ? simnode->FG[i - 1].G + edge->ve : -inf);
+                double G_val = simprev->FG[j - 1].w == w - 1 ? simprev->FG[j - 1].G + edge->gamma[simnode->c][BroWheel::base2int(O[w])] : -inf;
+                if (E_val >= std::max(E0[w].E, simzero.FG[w].G + (O.size() - w) * edge->tail->ve))
+                {
+                    E.emplace_back(w, E_val);
+                    G_val = E_val > G_val ? E_val : G_val;
+                }
+                double F_val = j < simprev->sz && simprev->FG[j].w == w ? std::max(simprev->FG[j].F + edge->uf, simprev->FG[j].G + edge->vf) : -inf;
+                G_val = F_val > G_val ? F_val : G_val;
+                if (G_val >= simzero.FG[w].G)
+                {
+                    simnode->FG[i].w = w;
+                    simnode->FG[i].F = F_val;
+                    simnode->FG[i].G = G_val;
+                    if (G_val >= edge->C[w])
                     {
-                        U os = edge.Bro.SimSuffix(simnodes.top().sr1);
-                        if (--os >= 0)
+                        if (G_val > edge->C[w])
                         {
-                            TrieState<U> tssp, tss;
-                            PushTrieState(tssp, O.size() + 1, O.size() + 1, O.size() + 1);
-                            PushTrieState(tss, O.size() - ts.G[0].w + 1, ts.Gfn, O.size() - ts.G[0].w + 1);
-                            U letter = edge.G(os);
-                            U sr = simnodes.top().sr1;
-                            sr = Bro.C[letter - 1] + Bro.GetOcc(sr, letter);
-                            U seq_sz = triestates.size();
-                            CrossBodyGlobal(ts, tss, edge, edgecopy, O, letter, sr, sr, seq_sz);
-                            while (tss.Gfn > 0 && --os >= 0)
-                            {
-                                std::swap(tssp, tss);
-                                this->now = tss.now, this->remain = tss.remain, this->chunk_id = tss.chunk_id;
-                                tss.Efn = tss.Gfn = O.size() - tssp.G[0].w + 1;
-                                tss.Ffn = tssp.Gfn;
-                                tss.E = heap_alloc<Do>(tss.Efn);
-                                tss.F = heap_alloc<Do>(tss.Ffn);
-                                tss.G = heap_alloc<Do>(tss.Gfn);
-                                letter = edge.G(os);
-                                sr = Bro.C[letter - 1] + Bro.GetOcc(sr, letter);
-                                CrossBodyGlobal(tssp, tss, edge, edgecopy, O, letter, sr, sr, ++seq_sz);
-                            }
+                            edge->C[w] = G_val;
+                            edge->Cdelta[w].clear();
                         }
+                        edge->Cdelta[w].emplace_back(simnode->sr1, simnodes.size() - 1);
                     }
+                    ++i;
                 }
-            }
-        }
-        B[0].val = -inf;
-        A[0].s_sz = 0;
-        for (size_t w = 1; w <= O.size(); ++w)
-        {
-            source_max(B[w], {&B[w - 1], &A[w - 1]}, {B[w - 1].val + tue, A[w - 1].val + tve});
-            if (B[w].val >= A[w].val)
-            {
-                if (B[w].val > A[w].val)
-                    boxes[w].clear();
-                source_max(A[w], {&B[w]}, {B[w].val});
-            }
-            else
-                A[w].s_sz = 0;
-        }
-        ++this->nodecopys[edge.head].cid_now;
-        update_cross(this->nodecopys[edge.head], O.size());
-    }
-
-    void CrossBodyGlobal(TrieState<U> &tsp, TrieState<U> &ts, EdgeGlobal<U> &edge, EdgeGlobalCopy<U> &edgecopy, std::string &O, U letter, U sr1, U sr2, U seq_sz)
-    {
-        Dot<U> *tildeANT = this->nodecopys[edge.tail].tildeA[graph.nodes[edge.tail].tAsz - 1];
-        for (int g = 0, f = 0; g < ts.Ffn; ++g)
-        {
-            int w = ts.F[g].w = tsp.G[g].w;
-            ts.F[g].val = tsp.G[g].val + edgecopy.vf[w];
-            if (f < tsp.Ffn && w == tsp.F[f].w)
-            {
-                ts.F[g].val = std::max(ts.F[g].val, tsp.F[f].val + edgecopy.uf[w]);
-                ++f;
-            }
-        }
-        ts.E[0].w = ts.G[0].w = O.size() - ts.Gfn + 1;
-        ts.E[0].val = -inf;
-        if (ts.F[0].val < tildeANT[ts.G[0].w].val + edge.T)
-            ts.F[0].val = -inf;
-        ts.G[0].val = ts.F[0].val;
-        for (int g = 1, f = 1; g < ts.Gfn; ++g)
-        {
-            int w = ts.E[g].w = ts.G[g].w = ts.G[g - 1].w + 1;
-            ts.E[g].val = std::max(ts.E[g - 1].val + edge.ue, ts.G[g - 1].val + edge.ve);
-            if (ts.E[g].val + edge.ue < tildeANT[w].val + edge.T + edge.ve)
-                ts.E[g].val = -inf;
-            ts.G[g].val = ts.E[g].val;
-            if (tsp.G[f - 1].w == w - 1)
-                ts.G[g].val = std::max(ts.G[g].val, tsp.G[f - 1].val + edge.gamma[letter][int(O[w - 1])]);
-            if (f < ts.Ffn && ts.F[f].w == w)
-            {
-                ts.G[g].val = std::max(ts.G[g].val, ts.F[f].val);
-                ++f;
-            }
-            if (ts.G[g].val < tildeANT[w].val + edge.T)
-            {
-                ts.G[g].val = -inf;
-                if (ts.F[f - 1].w == w)
-                    ts.F[f - 1].val = -inf;
-            }
-        }
-        {
-            int *Xfns[2] = {&ts.Ffn, &ts.Gfn};
-            int i = 0;
-            for (Do *X : {ts.F, ts.G})
-            {
-                int XfnNew = 0;
-                for (int x = 0; x < *Xfns[i]; ++x)
-                    if (X[x].val != -inf)
-                    {
-                        if (x != XfnNew)
-                            X[XfnNew] = X[x];
-                        ++XfnNew;
-                    }
-                *Xfns[i] = XfnNew;
-                ++i;
-            }
-        }
-        for (int g = 0; g < ts.Gfn; ++g)
-        {
-            int w = ts.G[g].w;
-            if (ts.G[g].val >= edgecopy.A[0][w].val)
-            {
-                if (ts.G[g].val > edgecopy.A[0][w].val)
-                {
-                    edgecopy.A[0][w].val = ts.G[g].val;
-                    edgecopy.boxes[w].clear();
-                }
-                edgecopy.boxes[w].push_back(sr1);
-                edgecopy.boxes[w].push_back(sr2);
-                edgecopy.boxes[w].push_back(seq_sz);
+                while (simprev->FG[j].w <= w && j < simprev->sz - 1)
+                    ++j;
+                if (w < O.size() && (simprev->FG[j].w == w || (i > 0 && simnode->FG[i - 1].w == w) || E.back().w == w))
+                    ++w;
+                else if (simprev->FG[j].w > w)
+                    w = simprev->FG[j].w;
+                else
+                    break;
             }
         }
     }
 
-    void CircuitIteration(int w, std::string &edge_name)
+    void CircuitIteration(int w, EdgeLocalCircuit *edge, int scc_sz)
     {
-        EdgeLocal &edge = graph.locals[edge_name];
-        Dot **A = name_ptr[edge.tail].A;
-        Ptr &ptr = name_ptr[edge_name];
-        int tail_scc_sz = edge.scc_ptr->node_names.size();
+        Dot **A = edge->tail->A;
+        Dot *D = edge->D;
+        Dot **E = edge->E;
+        Dot **F0 = edge->F0;
+        Dot **G0 = edge->G0;
+        Dot **G = edge->G;
         if (w > 0)
+            source_max(D[w - 1], {&A[scc_sz - 1][w - 1]}, {A[scc_sz - 1][w - 1].val + edge->T});
+        for (int s = 0; s <= edge->seq.size(); ++s)
+        {
+            if (w > 0)
+                if (s > 0)
+                    source_max(G[s][w - 1], {&G0[s][w - 1], &D[w - 1], &A[scc_sz - 1][w - 1]}, {G0[s][w - 1].val, D[w - 1].val + edge->vf + (s - 1) * edge->uf, A[scc_sz - 1][w - 1].val + edge->vfp + (s - 1) * edge->ufp + edge->T});
+                else
+                    source_max(G[s][w - 1], {&G0[s][w - 1], &D[w - 1]}, {G0[s][w - 1].val, D[w - 1].val});
+            if (w == 0)
+                source_max(E[s][w], {}, {});
+            else
+                source_max(E[s][w], {&E[s][w - 1], &G[s][w - 1]}, {E[s][w - 1].val + edge->ue, G[s][w - 1].val + edge->ve});
+            if (s == 0)
+                source_max(F0[s][w], {}, {});
+            else
+                source_max(F0[s][w], {&F0[s - 1][w], &G0[s - 1][w]}, {F0[s - 1][w].val + edge->uf, G0[s - 1][w].val + edge->vf});
+            if (s > 0 && w > 0)
+                source_max(G0[s][w], {&E[s][w], &F0[s][w], &G[s - 1][w - 1]}, {E[s][w].val, F0[s][w].val, G[s - 1][w - 1].val + edge->gamma[BroWheel::base2int(edge->seq[s])][BroWheel::base2int(O[w])]});
+            else
+                source_max(G0[s][w], {&E[s][w], &F0[s][w]}, {E[s][w].val, F0[s][w].val});
+        }
     }
 
-    template <typename Y>
-    void CircuitInitial(int w, Dot<U> **C, Dot<U> **E, Dot<U> **F, Dot<U> **G, Dot<U> **H, double ve, double ue, Y &edge)
+    void CircuitIterationGlobal(int w, EdgeGlobalCircuit *edge, int scc_sz)
     {
-        Dot<U> *tildeANT = this->nodecopys[edge.tail].tildeA[graph.nodes[edge.tail].tAsz - 1];
-        C[0][w - 1].val = -inf;
-        source_max(H[0][w - 1], {&tildeANT[w - 1]}, {tildeANT[w - 1].val + edge.T});
-        source_max(E[0][w], {&E[0][w - 1], &H[0][w - 1]}, {E[0][w - 1].val + ue, H[0][w - 1].val + ve});
-        F[0][w].val = -inf;
-        source_max(G[0][w], {&E[0][w]}, {E[0][w].val});
-    }
-
-    template <typename Y, typename Z>
-    void CircuitBody(std::string &seq, std::string &O, int w, int s, Dot<U> **C, Dot<U> **E, Dot<U> **F, Dot<U> **G, Dot<U> **H, double ve, double ue, Y &edge, Z &edgecopy, double gfps)
-    {
-        Dot<U> *tildeANT = this->nodecopys[edge.tail].tildeA[graph.nodes[edge.tail].tAsz - 1];
-        source_max(C[s][w - 1], {&C[s - 1][w - 1], &H[s - 1][w - 1]}, {C[s - 1][w - 1].val + edgecopy.uf[w - 1], H[s - 1][w - 1].val + edgecopy.vf[w - 1]});
-        source_max(H[s][w - 1], {&C[s][w - 1], &tildeANT[w - 1]}, {C[s][w - 1].val, tildeANT[w - 1].val + gfps + edge.T});
-        source_max(E[s][w], {&G[s][w - 1], &E[s][w - 1], &H[s][w - 1]}, {G[s][w - 1].val + ve, E[s][w - 1].val + ue, H[s][w - 1].val + ve});
-        source_max(F[s][w], {&G[s - 1][w], &F[s - 1][w]}, {G[s - 1][w].val + edgecopy.vf[w], F[s - 1][w].val + edgecopy.uf[w]});
-        double gm = edge.gamma[int(seq[s - 1])][int(O[w - 1])];
-        source_max(G[s][w], {&E[s][w], &F[s][w], &G[s - 1][w - 1], &H[s - 1][w - 1]}, {E[s][w].val, F[s][w].val, G[s - 1][w - 1].val + gm, H[s - 1][w - 1].val + gm});
-    }
-
-    void CircuitIterationEdgeGlobal(int w, int g, std::string &O)
-    {
-        EdgeGlobal<U> &edge = graph.globals[g];
-        EdgeGlobalCopy<U> &edgecopy = this->globalcopys[g];
-        NodeCopy<U> &NTCP = this->nodecopys[edge.tail];
-        NodeCopy<U> &NHCP = this->nodecopys[edge.head];
-        std::forward_list<SNC<U> *> &sncs = edgecopy.sncs;
-        Dot<U> *B = edgecopy.B, **A = edgecopy.A;
-        BroWheel<U> &Bro = edge.Bro;
-        double T = edge.T, ue = edge.ue, ve = edge.ve;
-        std::vector<double> &uf = edgecopy.uf, &vf = edgecopy.vf;
-        std::vector<std::vector<U>> &boxes = edgecopy.boxes;
+        Dot **A = edge->tail->A;
         if (w == 0)
         {
-            sncs.emplace_front();
-            sncs.front() = memtree.heap_alloc<SNC<U>>(1);
-            sncs.front()->E = sncs.front()->F = sncs.front()->G = -inf;
-            sncs.front()->s = 0;
-            sncs.front()->sr1 = 0;
-            sncs.front()->sr2 = Bro.size() - 1;
-            sncs.front()->itcs = NULL;
-            B[0].val = -inf;
-            A[0][w].val = -inf;
+            edge->sncs.emplace(edge->sncs.begin(), -inf, -inf, -inf, -inf, 0, edge->browheel.sequence.size() - 1, 0, edge->sncs.end(), edge->sncs.end());
+            edge->vs.insert(edge->vs.begin(), edge->sncs.begin());
+            for (int c = 2; c <= 6; ++c)
+            {
+                int64_t sr1 = edge->vs.front()->sr1;
+                int64_t sr2 = edge->vs.front()->sr2;
+                edge->browheel.PreRange(sr1, sr2, c);
+                edge->vs.front()->itcs[c - 2] = edge->sncs.emplace(edge->sncs.begin(), -inf, -inf, -inf, -inf, sr1, sr2, 1, edge->vs.front(), edge->sncs.end());
+                edge->vs.insert(std::next(edge->vs.begin()), edge->sncs.begin());
+            }
+            edge->C[0] = -inf;
+            edge->Cdelta[0].clear();
+            return;
         }
-        else
+        edge->vs.front()->hatG = std::max(edge->vs.front()->G0, A[scc_sz - 1][w - 1].val + edge->T);
+        for (auto iter = std::next(edge->vs.begin()); iter != edge->vs.end(); ++iter)
         {
-            double H = NTCP.tildeA[graph.nodes[edge.tail].tAsz - 1][w - 1].val + T;
-            auto lit = sncs.begin();
-            SNC<U> *it = *lit;
-            it->Gp = it->G;
-            it->F = -inf;
-            A[0][w].val = it->G = it->E = std::max(it->E + ue, H + ve);
-            boxes[w].clear();
-            boxes[w].push_back(it->sr1);
-            boxes[w].push_back(it->sr2);
-            boxes[w].push_back(it->s);
-            InsertSNC(lit, sncs, edge);
-            while (lit != sncs.end())
-            {
-                it = *lit;
-                it->Gp = it->G;
-                it->E = std::max(it->G + ve, it->E + ue);
-                it->F = std::max(it->itp->G + vf[w], it->itp->F + uf[w]);
-                double gm = edge.gamma[it->letter][int(O[w - 1])];
-                it->G = std::max(std::max(it->E, it->F), it->itp->Gp + gm);
-                if (it->s == 1)
-                    it->G = std::max(it->G, H + gm);
-                if (it->G < NTCP.tildeA[0][w].val + T)
-                    it->G = it->F = -inf;
-                if (it->E + ue < NTCP.tildeA[0][w].val + T + ve)
-                    it->E = -inf;
-                if (it->G >= A[0][w].val)
-                {
-                    if (it->G > A[0][w].val)
-                    {
-                        A[0][w].val = it->G;
-                        boxes[w].clear();
-                    }
-                    boxes[w].push_back(it->sr1);
-                    boxes[w].push_back(it->sr2);
-                    boxes[w].push_back(it->s);
-                }
-                InsertSNC(lit, sncs, edge);
-            }
-            if (size_t(w) == O.size())
-                sncs.clear();
-            else
-            {
-                auto lit = sncs.begin(), nlit = std::next(lit);
-                while (nlit != sncs.end())
-                {
-                    SNC<U> *nit = *nlit;
-                    if (nit->G == -inf && nit->E == -inf && nit->itp->G == -inf)
-                    {
-                        nit->Gp = -inf;
-                        sncs.erase_after(lit);
-                    }
-                    else
-                        ++lit;
-                    nlit = std::next(lit);
-                }
-            }
-            if (B[w].val >= A[0][w].val)
-            {
-                if (B[w].val > A[0][w].val)
-                    boxes[w].clear();
-                source_max(A[0][w], {&B[w]}, {B[w].val});
-            }
-            else
-                A[0][w].s_sz = 0;
-            if (A[0][w].val >= NHCP.tildeA[0][w].val)
-            {
-                adrs.clear();
-                vals.clear();
-                for (int j = 0; j < NHCP.tildeA[0][w].s_sz; ++j)
-                {
-                    adrs.push_back(NHCP.tildeA[0][w].sources[j]);
-                    vals.push_back(NHCP.tildeA[0][w].val);
-                }
-                adrs.push_back(&A[0][w]);
-                vals.push_back(A[0][w].val);
-                source_max(NHCP.tildeA[0][w], adrs.begin(), vals.begin(), vals.end());
-            }
+            (*iter)->hatG = (*iter)->G0;
+            if ((*iter)->itp != edge->vs.front() && (*iter)->itp->hatG == -inf && (*iter)->hatG == -inf)
+                edge->vs.erase(iter);
         }
-    }
-
-    void InsertSNC(typename std::forward_list<SNC<U> *>::iterator &lit, std::forward_list<SNC<U> *> &sncs, EdgeGlobal<U> &edge)
-    {
-        SNC<U> *it = *lit;
-        if (it->G != -inf && it->Gp == -inf)
+        edge->vs.front()->E = std::max(edge->vs.front()->hatG + edge->ve, edge->vs.front()->E + edge->ue);
+        edge->vs.front()->F0 = -inf;
+        edge->vs.front()->G0 = std::max(edge->vs.front()->E, edge->vs.front()->F0);
+        edge->C[w] = edge->vs.front()->G0;
+        edge->Cdelta[w].clear();
+        edge->Cdelta[w].emplace_back(edge->vs.front()->sr1, edge->vs.front()->lambda);
+        for (auto iter = std::next(edge->vs.begin()); iter != edge->vs.end(); ++iter)
         {
-            if (it->itcs == NULL)
+            (*iter)->E = std::max((*iter)->hatG + edge->ve, (*iter)->E + edge->ue);
+            (*iter)->F0 = std::max((*iter)->itp->G0 + edge->vf, (*iter)->itp->F0 + edge->uf);
+            int c = find((*iter)->itp->itcs, (*iter)->itp->itcs + 5, (*iter)) - (*iter)->itp->itcs + 2;
+            (*iter)->G0 = std::max((*iter)->E, (*iter)->F0, (*iter)->itp->hatG + edge->gamma[c][BroWheel::base2int(O[w])]);
+            if ((*iter)->G0 < edge->vs.front()->G0)
             {
-                if (it->sr1 == it->sr2)
+                (*iter)->E = -inf;
+                (*iter)->F0 = -inf;
+                (*iter)->G0 = -inf;
+            }
+            if ((*iter)->G0 >= edge->C[w])
+            {
+                if ((*iter)->G0 > edge->C[w])
                 {
-                    if (it->itp->sr1 < it->itp->sr2)
-                        it->itcs_sz = edge.Bro.SimSuffix(it->sr1);
-                    if (it->itcs_sz > 0)
-                    {
-                        SNC<U> *nit = memtree.heap_alloc<SNC<U>>(1);
-                        nit->itcs_sz = it->itcs_sz - 1;
-                        nit->s = it->s + 1;
-                        nit->letter = edge.G(nit->itcs_sz);
-                        nit->sr1 = nit->sr2 = edge.Bro.C[nit->letter - 1] + edge.Bro.GetOcc(it->sr1, nit->letter);
-                        nit->E = nit->F = nit->G = -inf;
-                        nit->itp = it;
-                        nit->itcs = NULL;
-                        it->itcs = memtree.heap_alloc<SNC<U> *>(1);
-                        it->itcs[0] = nit;
-                    }
-                    else
-                        it->itcs = (SNC<U> **)(memtree.now);
+                    edge->C[w] = (*iter)->G0;
+                    edge->Cdelta[w].clear();
                 }
-                else
+                edge->Cdelta[w].emplace_back((*iter)->sr1, (*iter)->lambda);
+            }
+            if ((*iter)->G0 != -inf && (*iter)->hatG == -inf)
+                for (int c = 2; c <= 6; ++c)
                 {
-                    U left = it->sr2 - it->sr1 + 1;
-                    std::queue<SNC<U> *> itcs;
-                    for (U letter = 2; letter < 7; ++letter)
+                    if ((*iter)->itcs[c - 2] == edge->sncs.end())
                     {
-                        U sr1 = it->sr1, sr2 = it->sr2;
-                        edge.Bro.PreRange(sr1, sr2, letter);
+                        int64_t sr1 = (*iter)->sr1;
+                        int64_t sr2 = (*iter)->sr2;
+                        edge->browheel.PreRange(sr1, sr2, c);
                         if (sr1 <= sr2)
-                        {
-                            SNC<U> *nit = memtree.heap_alloc<SNC<U>>(1);
-                            itcs.push(nit);
-                            nit->sr1 = sr1;
-                            nit->sr2 = sr2;
-                            nit->s = it->s + 1;
-                            nit->letter = letter;
-                            nit->E = nit->F = nit->G = -inf;
-                            nit->itp = it;
-                            nit->itcs = NULL;
-                            left -= nit->sr2 - nit->sr1 + 1;
-                            if (left == 0)
-                                break;
-                        }
+                            (*iter)->itcs[c - 2] = edge->sncs.emplace(edge->sncs.begin(), -inf, -inf, -inf, -inf, sr1, sr2, (*iter)->lambda + 1, (*iter), edge->sncs.end());
+                        else
+                            (*iter)->itcs[c - 2] = edge->vs.front();
                     }
-                    it->itcs_sz = itcs.size();
-                    it->itcs = memtree.heap_alloc<SNC<U> *>(it->itcs_sz);
-                    for (int i = 0; i < it->itcs_sz; ++i)
-                    {
-                        it->itcs[i] = itcs.front();
-                        itcs.pop();
-                    }
+                    if ((*iter)->itcs[c - 2] != edge->vs.front() && (*iter)->itcs[c - 2]->hatG == -inf)
+                        edge->vs.insert(std::next(iter), (*iter)->itcs[c - 2]);
                 }
-            }
-            if (it->itcs_sz != 0)
+        }
+        if (w == O.size())
+        {
+            edge->sncs.clear();
+            edge->vs.clear();
+        }
+    }
+
+    void GetMinimalGraph()
+    {
+        int Onsz=Oname.size();
+        fout.write((char*)&Onsz,sizeof(Onsz));
+        fout.write(Oname.data(),sizeof(char)*Onsz);
+        std::queue<Dot *> dots;
+        size_t id = 0;
+        Q.id=id;
+        Q.s_sz=-Q.s_sz-1;
+        dots.push(&Q);
+        while (!dots.empty())
+        {
+            Dot *M=dots.front();
+            dots.pop();
+            M->s_sz=-M->s_sz-1;
+            if (M->n<-3 && M->s==0)
+                GlobalTrack(M);
+            fout.write((char*)&M->n,sizeof(Dot::n));
+            fout.write((char*)&M->s,sizeof(Dot::s));
+            fout.write((char*)&M->w,sizeof(Dot::w));
+            fout.write((char*)&M->val,sizeof(Dot::val));
+            fout.write((char*)&M->s_sz,sizeof(Dot::s_sz));
+            for (int i=0; i<M->s_sz; ++i)
             {
-                size_t sz;
-                if (it->sr1 == it->sr2)
-                    sz = 1;
-                else
-                    sz = it->itcs_sz;
-                for (size_t i = 0; i < sz; ++i)
+                if (M->sources[i]->s_sz>=0)
                 {
-                    SNC<U> *itc = it->itcs[i];
-                    if (itc->E == -inf && itc->G == -inf)
-                        sncs.emplace_after(lit, itc);
+                    M->sources[i]->id=++id;
+                    M->sources[i]->s_sz=-M->sources[i]->s_sz-1;
+                    dots.push(M->sources[i]);
                 }
+                fout.write((char*)&M->sources[i]->id,sizeof(M->sources[i]->id));
             }
         }
-        ++lit;
+        for (auto &edge : global_crosses)
+            edge.tracknodes.clear();
+        for (auto &edge : global_circuits)
+            edge.tracknodes.clear();
+        max_id=id>max_id ? id : max_id;
     }
 
-    void update_cross(NodeCopy<U> &nodecopy, int W)
+    void GlobalTrack(Dot *M)
     {
-        if (size_t(nodecopy.cid_now) == nodecopy.ciptr.size())
-            for (int w = 0; w <= W; ++w)
+        std::list<Dot *> add_sources;
+        for (auto &pair : nodes[-M->n-4].AdeltaCross[M->w])
+        {
+            Dot **A=pair.first->tail->A;
+            auto &tracknodes=pair.first->tracknodes;
+            for (auto &suf : pair.second)
             {
-                adrs.clear();
-                vals.clear();
-                if (nodecopy.barA)
+                size_t start=pair.first->browheel.SimSuffix(suf.first);
+                if (tracknodes.empty())
+                    tracknodes.emplace(tracknodes.begin(), this, NULL, tracknodes.end(), pair.first->n, pair.first->browheel.start_rev(start,suf.second));
+                auto tracknode=tracknodes.begin();
+                for (int w=tracknode->tau; w<=M->w; ++w)
                 {
-                    adrs.push_back(&nodecopy.barA[w]);
-                    vals.push_back(nodecopy.barA[w].val);
+                    if(w==0)
+                        source_max(tracknode->E[w],{},{});
+                    else
+                        source_max(tracknode->E[w],{&tracknode->E[w-1],&tracknode->G[w-1]},{tracknode->E[w-1].val+pair.first->ue,tracknode->G[w-1].val+pair.first->ve});
+                    source_max(tracknode->F[w],{},{});
+                    source_max(tracknode->G[w],{&tracknode->E[w],&tracknode->F[w],&A[node_scc_szes[-M->n-4]-1][w]},{tracknode->E[w].val,tracknode->F[w].val,A[node_scc_szes[-M->n-4]-1][w].val+pair.first->T});
                 }
-                for (Dot<U> **ptr : nodecopy.ciptr)
+                tracknode->tau=std::max(tracknode->tau,M->w+1);
+                for (size_t i=suf.second-1; i>=0; --i)
                 {
-                    adrs.push_back(&ptr[0][w]);
-                    vals.push_back(ptr[0][w].val);
+                    int c=pair.first->browheel.sequence(start+i);
+                    if (tracknode->itcs[c-2]==tracknodes.end())
+                        tracknode->itcs[c-2]=tracknodes.emplace(tracknodes.end(), this, tracknode, tracknodes.end(), pair.first->n, pair.first->browheel.start_rev(start,i));
+                    tracknode=tracknode->itcs[c-2];
+                    for (int w=tracknode->tau; w<=M->w; ++w)
+                    {
+                        if(w==0)
+                            source_max(tracknode->E[w],{},{});
+                        else
+                            source_max(tracknode->E[w],{&tracknode->E[w-1],&tracknode->G[w-1]},{tracknode->E[w-1].val+pair.first->ue,tracknode->G[w-1].val+pair.first->ve});
+                        source_max(tracknode->F[w],{&tracknode->itp->F[w],&tracknode->itp->G[w]},{tracknode->itp->F[w].val+pair.first->uf,tracknode->itp->G[w].val+pair.first->vf});
+                        if(w==0)
+                            source_max(tracknode->G[w],{&tracknode->E[w],&tracknode->F[w]},{tracknode->E[w].val,tracknode->F[w].val});
+                        else
+                            source_max(tracknode->G[w],{&tracknode->E[w],&tracknode->F[w],&tracknode->itp->G[w-1]},{tracknode->E[w].val,tracknode->F[w].val,tracknode->itp->G[w-1].val+pair.first->gamma[c][BroWheel::base2int(O[w])]});
+                    }
+                    tracknode->tau=std::max(tracknode->tau,M->w+1);
                 }
-                source_max(nodecopy.tildeA[0][w], adrs.begin(), vals.begin(), vals.end());
+                add_sources.push_back(&tracknode->G[M->w]);
+            }
+        }
+        for (auto &pair : nodes[-M->n-4].AdeltaCircuit[M->w])
+        {
+            Dot **A=pair.first->tail->A;
+            auto &tracknodes=pair.first->tracknodes;
+            for (auto &suf : pair.second)
+            {
+                size_t start=pair.first->browheel.SimSuffix(suf.first);
+                if (tracknodes.empty())
+                {
+                    alloc_initial(pair.first->G, pair.first->n, pair.first->browheel.start_rev(start,suf.second));
+                    tracknodes.emplace(tracknodes.begin(), this, NULL, tracknodes.end(), pair.first->n, pair.first->browheel.start_rev(start,suf.second));
+                }
+                auto tracknode=tracknodes.begin();
+                for (int w=tracknode->tau; w<=M->w; ++w)
+                {
+                    if(w>0)
+                        source_max(pair.first->G[w-1],{&tracknode->G[w-1], &A[node_scc_szes[-M->n-4]-1][w-1]},{tracknode->G[w-1].val,A[node_scc_szes[-M->n-4]-1][w-1].val+pair.first->T});
+                    if(w==0)
+                        source_max(tracknode->E[w],{},{});
+                    else
+                        source_max(tracknode->E[w],{&tracknode->E[w-1],&pair.first->G[w-1]},{tracknode->E[w-1].val+pair.first->ue,pair.first->G[w-1].val+pair.first->ve});
+                    source_max(tracknode->F[w],{},{});
+                    source_max(tracknode->G[w],{&tracknode->E[w],&tracknode->F[w]},{tracknode->E[w].val,tracknode->F[w].val});
+                }
+                tracknode->tau=std::max(tracknode->tau,M->w+1);
+                for (size_t i=suf.second-1; i>=0; --i)
+                {
+                    int c=pair.first->browheel.sequence(start+i);
+                    if (tracknode->itcs[c-2]==tracknodes.end())
+                        tracknode->itcs[c-2]=tracknodes.emplace(tracknodes.end(), this, tracknode, tracknodes.end(), pair.first->n, pair.first->browheel.start_rev(start,i));
+                    tracknode=tracknode->itcs[c-2];
+                    for (int w=tracknode->tau; w<=M->w; ++w)
+                    {
+                        if (w==0)
+                            source_max(tracknode->E[w],{},{});
+                        else
+                            source_max(tracknode->E[w],{&tracknode->E[w-1],&tracknode->G[w-1]},{tracknode->E[w-1].val+pair.first->ue,tracknode->G[w-1].val+pair.first->ve});
+                        source_max(tracknode->F[w],{&tracknode->itp->F[w],&tracknode->itp->G[w]},{tracknode->itp->F[w].val+pair.first->uf,tracknode->itp->G[w].val+pair.first->vf});
+                        if (w==0)
+                            source_max(tracknode->G[w],{&tracknode->E[w],&tracknode->F[w]},{tracknode->E[w].val,tracknode->F[w].val});
+                        else if (tracknode->itp==tracknodes.begin())
+                            source_max(tracknode->G[w],{&tracknode->E[w],&tracknode->F[w],&pair.first->G[w-1]},{tracknode->E[w].val,tracknode->F[w].val,pair.first->G[w-1].val+pair.first->gamma[c][BroWheel::base2int(O[w])]});
+                        else
+                            source_max(tracknode->G[w],{&tracknode->E[w],&tracknode->F[w],&tracknode->G[w-1]},{tracknode->E[w].val,tracknode->F[w].val,tracknode->G[w-1].val+pair.first->gamma[c][BroWheel::base2int(O[w])]});
+                    }
+                    tracknode->tau=std::max(tracknode->tau,M->w+1);
+                }
+                add_sources.push_back(&tracknode->G[M->w]);
+            }
+        }
+        Dot **old_sources=M->sources;
+        int old_s_sz=M->s_sz;
+        M->s_sz+=add_sources.size();
+        M->sources=heap_alloc<Dot *>(M->s_sz);
+        auto iter=add_sources.begin();
+        for (int i=0; i<M->s_sz; ++i)
+            if (i<old_s_sz)
+                M->sources[i]=old_sources[i];
+            else
+            {
+                M->sources[i]=*iter;
+                ++iter;
             }
     }
 
-    void alloc_initial(Dot **ptr, int n, int S)
+    void alloc_initial(Dot **&ptr, int n, int S)
     {
         ptr = heap_alloc<Dot *>(S + 1);
         for (int s = 0; s <= S; ++s)
-            alloc_initial(ptr[s], int n, int s);
+            alloc_initial(ptr[s], n, s);
     }
 
-    void alloc_initial(Dot *ptr, int n, int s)
+    void alloc_initial(Dot *&ptr, int n, int s)
     {
         ptr = heap_alloc<Dot>(O.size() + 1);
         for (int w = 0; w <= O.size(); ++w)

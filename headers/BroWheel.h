@@ -15,16 +15,15 @@
 #include <experimental/filesystem>
 #include "Threadpool.h"
 
-template <typename T>
 struct BinVec
 {
-    T sigma;
-    T ww;
-    T sz;
+    int sigma;
+    int ww;
+    size_t sz;
 
     std::vector<char> BV;
 
-    BinVec(T sigma_)
+    BinVec(int sigma_)
     {
         sigma=sigma_;
         sigma2ww();
@@ -33,7 +32,7 @@ struct BinVec
     void sigma2ww()
     {
         ww=0;
-        T sigma_=sigma;
+        int sigma_=sigma;
         while(sigma_>0)
         {
             sigma_/=2;
@@ -41,18 +40,18 @@ struct BinVec
         }
     }
 
-    void resize(T N)
+    void resize(size_t N)
     {
         BV.resize((ww*N+CHAR_BIT-1)/CHAR_BIT);
         sz=N;
     }
     
-    bool getbit(T j)
+    bool getbit(size_t j)
     {
         return BV[j/CHAR_BIT]<<(j%CHAR_BIT) & 128;
     }
 
-    void setbit(T j, bool logic)
+    void setbit(size_t j, bool logic)
     {
         if(logic)
             BV[j/CHAR_BIT]|=128>>(j%CHAR_BIT);
@@ -60,10 +59,10 @@ struct BinVec
             BV[j/CHAR_BIT]&=~(128>>(j%CHAR_BIT));
     }
 
-    T operator()(T i)
+    int operator()(size_t i)
     {
-        T j=ww*i;
-        T c=getbit(j);
+        size_t j=ww*i;
+        int c=getbit(j);
         while(j<ww*(i+1)-1)
         {
             c<<=1;
@@ -72,9 +71,9 @@ struct BinVec
         return c;
     }
     
-    void set(T i, T c)
+    void set(size_t i, int c)
     {
-        T j=ww*(i+1);
+        size_t j=ww*(i+1);
         while(j>ww*i)
         {
             setbit(--j, c & 1);
@@ -82,7 +81,7 @@ struct BinVec
         }
     }
 
-    void push_back(T c)
+    void push_back(int c)
     {
         resize(++sz);
         set(sz-1,c);
@@ -94,12 +93,12 @@ struct BinVec
         sz=0;
     }
 
-    void reserve(T N)
+    void reserve(size_t N)
     {
         BV.reserve((N*ww+CHAR_BIT-1)/CHAR_BIT);
     }
 
-    T size()
+    size_t size()
     {
         return sz;
     }
@@ -112,35 +111,34 @@ struct BinVec
 
     void saveBinVec(std::ofstream & fout)
     {
-        fout.write((char*)&sigma,sizeof(T));
-        fout.write((char*)&sz,sizeof(T));
-        T tmp=BV.size();
-        fout.write((char*)&tmp,sizeof(T));
+        fout.write((char*)&sigma,sizeof(sigma));
+        fout.write((char*)&sz,sizeof(sz));
+        size_t tmp=BV.size();
+        fout.write((char*)&tmp,sizeof(tmp));
         fout.write(BV.data(),BV.size());
     }
 
     void loadBinVec(std::ifstream & fin)
     {
-        fin.read((char*)&sigma,sizeof(T));
+        fin.read((char*)&sigma,sizeof(sigma));
         sigma2ww();
-        fin.read((char*)&sz,sizeof(T));
-        T tmp;
-        fin.read((char*)&tmp,sizeof(T));
+        fin.read((char*)&sz,sizeof(sz));
+        size_t tmp;
+        fin.read((char*)&tmp,sizeof(tmp));
         BV.resize(tmp);
         fin.read(BV.data(),tmp);
         BV.shrink_to_fit();
     }
 };
 
-template <typename T>
-struct RankVec : BinVec<T>
+struct RankVec : BinVec
 {
-    T** R1=NULL;
+    size_t** R1=NULL;
     uint16_t** R2=NULL;
-    const T b1=8;
-    const T b2=256*32;
+    const static int b1=8;
+    const static int b2=256*32;
 
-    RankVec(T sigma_) : BinVec<T>::BinVec(sigma_)
+    RankVec(int sigma_) : BinVec(sigma_)
     {}
 
     ~RankVec()
@@ -166,42 +164,42 @@ struct RankVec : BinVec<T>
     }
 
     template <typename U>
-    void apply(U** & R, T block_size)
+    void apply(U** & R, int block_size)
     {
-        T sz=(this->size()-1)/block_size+2;
+        size_t sz=(this->size()-1)/block_size+2;
         release(R);
         R=new U*[this->sigma];
         R[0]=new U[this->sigma*sz];
-        for(T i=1; i<this->sigma; ++i)
+        for(int i=1; i<this->sigma; ++i)
             R[i]=R[i-1]+sz;
     }
 
-    T count(T cutoff_size)
+    size_t count(size_t cutoff_size)
     {
-        for(T c=0; c<this->sigma; ++c)
+        for(int c=0; c<this->sigma; ++c)
         {
             R1[c][0]=0;
             R2[c][0]=0;
         }
-        T j1=0;
-        for(T i=0, j2=0; i<cutoff_size; ++i)
+        size_t j1=0;
+        for(size_t i=0, j2=0; i<cutoff_size; ++i)
         {
             if(i%(b1*b2)==0)
             {
                 ++j1;
-                for(T c=0; c<this->sigma; ++c)
+                for(int c=0; c<this->sigma; ++c)
                     R1[c][j1]=R1[c][j1-1];
             }
             if(i%b1==0)
             {
                 ++j2;
-                for(T c=0; c<this->sigma; ++c)
+                for(int c=0; c<this->sigma; ++c)
                     if(j2%b2==0)
                         R2[c][j2]=0;
                     else
                         R2[c][j2]=R2[c][j2-1];
             }
-            T c=(*this)(i);
+            int c=(*this)(i);
             if(c>0)
             {
                 ++R1[c-1][j1];
@@ -212,10 +210,12 @@ struct RankVec : BinVec<T>
         return j1;
     }
 
-    T rank(T c, T i)
+    size_t rank(int c, int64_t i)
     {
-        T r=R1[c-1][i/(b1*b2)]+R2[c-1][i/b1];
-        for(T j=(i/b1)*b1; j<=i; ++j)
+        if (i<0)
+            return 0;
+        size_t r=R1[c-1][i/(b1*b2)]+R2[c-1][i/b1];
+        for(size_t j=(i/b1)*b1; j<=i; ++j)
             if((*this)(j)==c)
                 ++r;
         return r;
@@ -224,34 +224,34 @@ struct RankVec : BinVec<T>
     void saveRankVec(std::ofstream & fout)
     {
         this->saveBinVec(fout);
-        T sz=(this->size()-1)/(b1*b2)+2;
-        fout.write((char*)R1[0],this->sigma*sz*sizeof(T));
+        size_t sz=(this->size()-1)/(b1*b2)+2;
+        fout.write((char*)R1[0],this->sigma*sz*sizeof(R1[0][0]));
         sz=(this->size()-1)/b1+2;
-        fout.write((char*)R2[0],this->sigma*sz*sizeof(u_int16_t));
+        fout.write((char*)R2[0],this->sigma*sz*sizeof(R2[0][0]));
     }
 
     void loadRankVec(std::ifstream & fin)
     {
         this->loadBinVec(fin);
         apply_memory();
-        T sz=(this->size()-1)/(b1*b2)+2;
-        fin.read((char*)R1[0],this->sigma*sz*sizeof(T));
+        size_t sz=(this->size()-1)/(b1*b2)+2;
+        fin.read((char*)R1[0],this->sigma*sz*sizeof(R1[0][0]));
         sz=(this->size()-1)/b1+2;
-        fin.read((char*)R2[0],this->sigma*sz*sizeof(u_int16_t));
+        fin.read((char*)R2[0],this->sigma*sz*sizeof(R2[0][0]));
     }
 };
 
-template <typename T>
 struct BroWheel
 {
-    const T block_size=64*1024;
-    const static T sigma=6;
-    BinVec<T> sequence=BinVec<T>(sigma);
-    RankVec<T> bwt=RankVec<T>(sigma);
-    std::array<T,sigma> C;
-    const T f=16;
-    RankVec<T> sra=RankVec<T>(1);
-    T* ssa=NULL;
+    const static int block_size=64*1024;
+    const static int sigma=6;
+    const static std::string int2base;
+    BinVec sequence=BinVec(sigma);
+    RankVec bwt=RankVec(sigma);
+    std::array<size_t,sigma> C;
+    const static int f=16;
+    RankVec sra=RankVec(1);
+    size_t* ssa=NULL;
 
     ~BroWheel()
     {
@@ -261,7 +261,7 @@ struct BroWheel
 
     void readin(std::list<std::string> & files, bool reverse)
     {
-        T sequence_sz=0;
+        size_t sequence_sz=0;
         std::experimental::filesystem::path path=std::experimental::filesystem::current_path();
         for(auto file : files)
             sequence_sz+=std::experimental::filesystem::file_size(path/file);
@@ -276,7 +276,7 @@ struct BroWheel
             do
             {
                 fin.read(str,block_size);
-                for(T i=0; i<(fin.good()?block_size:fin.gcount()); ++i)
+                for(int i=0; i<(fin.good()?block_size:fin.gcount()); ++i)
                 {
                     if(!isspace(str[i]))
                     {
@@ -303,19 +303,19 @@ struct BroWheel
         sequence.set(sequence.size()-1,0);
         sequence.shrink_to_fit();
         if(reverse)
-            for(T i=0,j=sequence.size()-2; i<j; ++i,--j)
+            for(size_t i=0,j=sequence.size()-2; i<j; ++i,--j)
             {
-                T c=sequence(i);
+                int c=sequence(i);
                 sequence.set(i,sequence(j));
                 sequence.set(j,c);
             }
         delete[] str;
     }
 
-    void to_T(T h, T t, T* SAI)
+    void to_T(size_t h, size_t t, int64_t* SAI)
     {
-        T bsf=((sizeof(T)*CHAR_BIT)/sequence.ww-1)*sequence.ww;
-        T i=t-1;
+        int bsf=((sizeof(int64_t)*CHAR_BIT-1)/sequence.ww-1)*sequence.ww;
+        size_t i=t-1;
         SAI[i-h]=sequence(i)<<bsf;
         while(i>h)
         {
@@ -324,54 +324,54 @@ struct BroWheel
         }
     }
 
-    void index(T ll, thread_pool & threads1, thread_pool & thread2)
+    void index(size_t ll, thread_pool & threads1, thread_pool & thread2)
     {
-        T ssa_sz=(sequence.size()+f-1)/f;
-        T* SA=new T[(threads1.size()+1)*(4*ll-1)+ssa_sz];
-        T* SAI=SA+2*ll-1;
-        T* SAmem=SAI+2*ll;
-        T* SAImem=SAmem+threads1.size()*(2*ll-1);
-        T* rssa=SAImem+threads1.size()*2*ll;
+        size_t ssa_sz=(sequence.size()+f-1)/f;
+        int64_t* SA=new int64_t[(threads1.size()+1)*(4*ll-1)+ssa_sz];
+        int64_t* SAI=SA+2*ll-1;
+        int64_t* SAmem=SAI+2*ll;
+        int64_t* SAImem=SAmem+threads1.size()*(2*ll-1);
+        int64_t* rssa=SAImem+threads1.size()*2*ll;
         if(ssa)
             delete[] ssa;
-        ssa=new T[ssa_sz];
+        ssa=new size_t[ssa_sz];
         bwt.resize(sequence.size());
         bwt.apply_memory();
         sra.resize(sequence.size());
         sra.apply_memory();
-        BinVec<T> bwtt(sigma);
+        BinVec bwtt(sigma);
         bwtt.resize(sequence.size());
         
-        T N=sequence.size()/ll-1;
-        std::queue<std::future<std::tuple<T*,T*,T>>> futures1;
-        T m=(0>N-threads1.size()?0:N-threads1.size());
-        for(T n=N-1; n>=m; --n)
+        size_t N=sequence.size()/ll-1;
+        std::queue<std::future<std::tuple<int64_t*,int64_t*,int64_t>>> futures1;
+        size_t m=(0>N-threads1.size()?0:N-threads1.size());
+        for(size_t n=N-1; n>=m; --n)
            futures1.push(threads1.submit(std::bind(&BroWheel::SegmentSort, this, n, ll, SAmem, SAImem, threads1.size())));
         
-        T st=std::max(T(0),N*ll);
+        size_t st=std::max(size_t(0),N*ll);
         GetSA(st, sequence.size(), SA, SAI);
         bwt.set(SAI[0],0);
-        T cutoff_size=sequence.size()-st;
-        for(T i=1; i<cutoff_size; ++i)
+        size_t cutoff_size=sequence.size()-st;
+        for(size_t i=1; i<cutoff_size; ++i)
             bwt.set(SAI[i],sequence(st+i-1));
-        T R1_tail=bwt.count(cutoff_size);
-        for(T c=1; c<sigma; ++c)
+        size_t R1_tail=bwt.count(cutoff_size);
+        for(int c=1; c<sigma; ++c)
             C[c]=C[c-1]+bwt.R1[c-1][R1_tail];
         
-        for(T n=N-1; n>=0; --n)
+        for(size_t n=N-1; n>=0; --n)
         {
-            T *SAn, *SAIn, pn;
+            int64_t *SAn, *SAIn, pn;
             std::tie(SAn,SAIn,pn)=futures1.front().get();
             futures1.pop();
             std::future<void> future2=thread2.submit(std::bind(&BroWheel::RelativeOrder, this, SAI, SAIn, n, ll));
-            for(T i=0; i<pn; i+=2)
+            for(size_t i=0; i<pn; i+=2)
                 SortSplit(SAn, SAIn[i], SAIn[i+1], NULL, SAI);
             future2.wait();
             bwt.set(SAI[0],sequence((n+1)*ll-1));
-            for(T i=0; i<ll; ++i)
+            for(size_t i=0; i<ll; ++i)
                 SAI[SAn[i]]=SAIn[SAn[i]+ll]+i+1;
             cutoff_size+=ll;
-            for(T i=0, j=0, k=0; i<cutoff_size; ++i)
+            for(size_t i=0, j=0, k=0; i<cutoff_size; ++i)
             {
                 if(k>=ll || i!=SAI[SAn[k]])
                     bwtt.set(i,bwt(j++));
@@ -391,15 +391,15 @@ struct BroWheel
             }
             std::swap(bwt.BV,bwtt.BV);
             R1_tail=bwt.count(cutoff_size);
-            for(T c=1; c<sigma; ++c)
+            for(int c=1; c<sigma; ++c)
                 C[c]=C[c-1]+bwt.R1[c-1][R1_tail];
         }
         
-        for(T k=ssa_sz-1, i=0, j=cutoff_size-2; k>=0; --k)
+        for(size_t k=ssa_sz-1, i=0, j=cutoff_size-2; k>=0; --k)
         {
             while(j>=k*f)
             {
-                T c=bwt(i);
+                int c=bwt(i);
                 i=C[c-1]+this->bwt.rank(c,i);
                 --j;
             }
@@ -407,7 +407,7 @@ struct BroWheel
             sra.set(i,1);
         }
         sra.count(sra.size());
-        for(T k=0; k<ssa_sz; ++k)
+        for(size_t k=0; k<ssa_sz; ++k)
             ssa[sra.rank(1,rssa[k])-1]=k*f;
         delete[] SA;
     }
@@ -417,10 +417,10 @@ struct BroWheel
         std::ofstream fout(file, std::ios::binary);
         sequence.saveBinVec(fout);
         bwt.saveRankVec(fout);
-        fout.write((char*)C.data(),sigma*sizeof(T));
+        fout.write((char*)C.data(),sigma*sizeof(C[0]));
         sra.saveRankVec(fout);
-        T ssa_sz=(sequence.size()+f-1)/f;
-        fout.write((char*)ssa,ssa_sz*sizeof(T));
+        size_t ssa_sz=(sequence.size()+f-1)/f;
+        fout.write((char*)ssa,ssa_sz*sizeof(*ssa));
         fout.close();
     }
 
@@ -429,95 +429,91 @@ struct BroWheel
         std::ifstream fin(file, std::ios::binary);
         sequence.loadBinVec(fin);
         bwt.loadRankVec(fin);
-        fin.read((char*)C.data(),sigma*sizeof(T));
+        fin.read((char*)C.data(),sigma*sizeof(C[0]));
         sra.loadRankVec(fin);
-        T ssa_sz=(sequence.size()+f-1)/f;
+        size_t ssa_sz=(sequence.size()+f-1)/f;
         if(ssa)
             delete[] ssa;
-        ssa=new T[ssa_sz];
-        fin.read((char*)ssa,ssa_sz*sizeof(T));
+        ssa=new size_t[ssa_sz];
+        fin.read((char*)ssa,ssa_sz*sizeof(*ssa));
         fin.close();
     }
     
-    void RelativeOrder(T* SAI, T* SAIn, T n, T ll)
+    void RelativeOrder(int64_t* SAI, int64_t* SAIn, size_t n, size_t ll)
     {
-        T c=sequence((n+1)*ll-1);
+        int c=sequence((n+1)*ll-1);
         SAIn[2*ll-1]=C[c-1]+bwt.rank(c,SAI[0]);
-        for(T i=ll-2; i>=0; --i)
+        for(size_t i=ll-2; i>=0; --i)
         {
             c=sequence(n*ll+i);
+            int64_t detp=SAIn[i+ll+1]; // debug
             SAIn[i+ll]=C[c-1]+bwt.rank(c,SAIn[i+ll+1]);
         }
     }
 
-    std::tuple<T*,T*,T> SegmentSort(T n, T ll, T* SAmem, T* SAImem, T para_sz)
+    std::tuple<int64_t*,int64_t*,int64_t> SegmentSort(size_t n, size_t ll, int64_t* SAmem, int64_t* SAImem, int para_sz)
     {
-        T* SA=SAmem+(n%para_sz)*(2*ll-1);
-        T* SAI=SAImem+(n%para_sz)*2*ll;
+        int64_t* SA=SAmem+(n%para_sz)*(2*ll-1);
+        int64_t* SAI=SAImem+(n%para_sz)*2*ll;
         GetSA(n*ll, (n+2)*ll-1, SA, SAI);
-        T p=GetALS(n*ll, (n+2)*ll-1, SA, SAI, ll);
+        int64_t p=GetALS(n*ll, (n+2)*ll-1, SA, SAI, ll);
         return std::make_tuple(SA,SAI,p);
     }
     
-    std::tuple<T,T*> OffSet(T* S, T S_sz)
+    std::tuple<size_t,size_t*> OffSet(int* S, size_t S_sz)
     {
-        T c=S[S_sz-1];
-        T i=C[c-1]+1, j;
-        if(c==sigma)
-            j=bwt.size()-1;
-        else
-            j=C[c];
-        for(T p=S_sz-2; p>=0; --p)
+        int64_t i=0, j=bwt.size()-1;
+        for(size_t p=S_sz-1; p>=0; --p)
             PreRange(i,j,S[p]);
-        T O_sz=j-i+1;
-        T* O=new T[O_sz];
-        for(T k=i; k<=j; ++k)
+        size_t O_sz=j-i+1;
+        size_t* O=new size_t[O_sz];
+        for(size_t k=i; k<=j; ++k)
             O[k-i]=SimSuffix(k);
         return std::make_tuple(O_sz,O);
     }
     
-    T SimSuffix(T i)
+    size_t SimSuffix(size_t i)
     {
-        T j=0;
+        int j=0;
         while(sra(i)==0)
         {
-            T c=bwt(i);
+            int c=bwt(i);
             i=C[c-1]+bwt.rank(c,i);
             ++j;
         }
         return ssa[sra.rank(1,i)-1]+j;
     }
     
-    void PreRange(T& i, T& j, T c)
+    void PreRange(int64_t& i, int64_t& j, int c)
     {
         i=C[c-1]+bwt.rank(c,i-1)+1;
         j=C[c-1]+bwt.rank(c,j);
     }
     
-    T GetALS(T h, T t, T* SA, T* SAI, T ll)
+    int64_t GetALS(size_t h, size_t t, int64_t* SA, int64_t* SAI, size_t ll)
     {
-        T sz=t-h;
-        for(T i=0; i<ll; ++i)
+        size_t sz=t-h;
+        for(size_t i=0; i<ll; ++i)
             SA[SAI[i]]=i;
-        for(T i=0, j=0; i<sz; ++i)
+        for(size_t i=0, j=0; i<sz; ++i)
             if(SA[i]>=0 && SA[i]<ll)
             {
                 SA[j]=SA[i];
                 SAI[SA[j]]=j;
                 ++j;
             }
-        for(T i=0, k=0; i<ll; ++i)
+        for(size_t i=0, k=0; i<ll; ++i)
             if(SAI[i]!=ll-1)
             {
-                T j=SA[SAI[i]+1];
+                int64_t j=SA[SAI[i]+1];
                 while(i+k<sz && j+k<sz && sequence(i+k+h)==sequence(j+k+h))
                     ++k;
                 SAI[SAI[i]+ll]=k;
                 if(k>0)
                     --k;
             }
-        T p=0;
-        for(T i=0; i<ll-1; ++i)
+        int64_t p=0;
+        for(size_t i=0; i<ll-1; ++i)
             if(SAI[i+ll]>=ll)
             {
                 if(i==0 || SAI[i-1+ll]<ll)
@@ -528,19 +524,19 @@ struct BroWheel
         return p;
     }
 
-    void GetSA(T h, T t, T* SA, T* SAI)
+    void GetSA(size_t h, size_t t, int64_t* SA, int64_t* SAI)
     {
-        T sz=t-h;
+        size_t sz=t-h;
         to_T(h,t,SAI);
-        for(T i=0; i<sz; ++i)
+        for(size_t i=0; i<sz; ++i)
             SA[i]=i;
         SAI[sz]=0;
         SortSplit(SA, 0, sz-1, SAI, SAI);
-        T* SAIh=SAI+(sizeof(T)*CHAR_BIT)/sequence.ww;
+        int64_t* SAIh=SAI+(sizeof(int64_t)*CHAR_BIT-1)/sequence.ww;
         while(SA[0]>-sz)
         {
-            T i=0;
-            T k=0;
+            int64_t i=0;
+            int64_t k=0;
             do
             {
                 if(SA[i]<0)
@@ -555,7 +551,7 @@ struct BroWheel
                         SA[i+k]=k;
                         k=0;
                     }
-                    T j=SAI[SA[i]];
+                    int64_t j=SAI[SA[i]];
                     SortSplit(SA, i, j, SAI, SAIh);
                     i=j+1;
                 }
@@ -567,29 +563,29 @@ struct BroWheel
         }
     }
 
-    void SortSplit(T* SA, T p1, T p2, T* SAI, T* SAIh)
+    void SortSplit(int64_t* SA, int64_t p1, int64_t p2, int64_t* SAI, int64_t* SAIh)
     {
-        T n=p2-p1+1;
+        int64_t n=p2-p1+1;
         if(n<7)
         {
             InsertionSort(SA, p1, p2, SAI, SAIh);
             return;
         }
-        T m=p1+n/2;
-        T v=SAIh[SA[m]];
+        int64_t m=p1+n/2;
+        int64_t v=SAIh[SA[m]];
         if(n>7)
         {
-            T v1=SAIh[SA[p1]], v2=SAIh[SA[p2]];
+            int64_t v1=SAIh[SA[p1]], v2=SAIh[SA[p2]];
             if(n>40)
             {
-                T s=n/8;
+                int64_t s=n/8;
                 v1=med3(v1,SAIh[SA[p1+s]],SAIh[SA[p1+2*s]]);
                 v=med3(SAIh[SA[m-s]],v,SAIh[SA[m+s]]);
                 v2=med3(SAIh[SA[p2-2*s]],SAIh[SA[p2-s]],v2);
             }
             v=med3(v1,v,v2);
         }
-        T pa=p1, pb=p1, pc=p2, pd=p2;
+        int64_t pa=p1, pb=p1, pc=p2, pd=p2;
         while(true)
         {
             while(pb<=pc && SAIh[SA[pb]]<=v)
@@ -608,11 +604,11 @@ struct BroWheel
                 break;
             std::swap(SA[pb++],SA[pc--]);
         }
-        T s=std::min(pa-p1,pb-pa);
-        for(T i=p1,j=pb-s; i<p1+s; ++i,++j)
+        int64_t s=std::min(pa-p1,pb-pa);
+        for(int64_t i=p1,j=pb-s; i<p1+s; ++i,++j)
             std::swap(SA[i],SA[j]);
         s=std::min(p2-pd,pd-pc);
-        for(T i=p2,j=pc+s; i>p2-s; --i,--j)
+        for(int64_t i=p2,j=pc+s; i>p2-s; --i,--j)
             std::swap(SA[i],SA[j]);
         pa=p1+pb-pa;
         pc=p2-pd+pc;
@@ -632,7 +628,7 @@ struct BroWheel
             SortSplit(SA, pc+1, p2, SAI, SAIh);
     }
 
-    T med3(T a, T b, T c)
+    int64_t med3(int64_t a, int64_t b, int64_t c)
     {
         if(a>b)
             if(b>c) return b;
@@ -644,11 +640,11 @@ struct BroWheel
             else return c;
     }
 
-    void InsertionSort(T* SA, T p1, T p2, T* SAI, T* SAIh)
+    void InsertionSort(int64_t* SA, int64_t p1, int64_t p2, int64_t* SAI, int64_t* SAIh)
     {
-        for(T i=p1+1; i<=p2; ++i)
+        for(int64_t i=p1+1; i<=p2; ++i)
         {
-            T j=i;
+            int64_t j=i;
             while(j>p1 && SAIh[SA[j]]<SAIh[SA[j-1]])
             {
                 std::swap(SA[j],SA[j-1]);
@@ -657,14 +653,14 @@ struct BroWheel
         }
         if(SAI)
         {
-            T k=p1;
-            T v=SAIh[SA[k]];
-            for(T i=p1+1; i<=p2; ++i)
+            int64_t k=p1;
+            int64_t v=SAIh[SA[k]];
+            for(int64_t i=p1+1; i<=p2; ++i)
             {
-                T u=SAIh[SA[i]];
+                int64_t u=SAIh[SA[i]];
                 if(u>v)
                 {
-                    for(T j=k; j<i; ++j)
+                    for(int64_t j=k; j<i; ++j)
                         SAI[SA[j]]=i-1;
                     if(i-k==1)
                         SA[k]=-1;
@@ -672,11 +668,21 @@ struct BroWheel
                     v=u;
                 }
             }
-            for(T j=k; j<=p2; ++j)
+            for(int64_t j=k; j<=p2; ++j)
                 SAI[SA[j]]=p2;
             if(k==p2)
                 SA[k]=-1;
         }
+    }
+
+    size_t start_rev(size_t start, int len)
+    {
+        return sequence.size()-1-start-len;
+    }
+
+    static int base2int(char c)
+    {
+        return (c + 6) >> 1 & 7;
     }
 };
 
