@@ -160,7 +160,7 @@ struct SNC;
 struct EdgeGlobalCircuit : EdgeGlobal
 {
     std::list<SNC> sncs;
-    std::list<std::list<SNC>::iterator> vs;
+    std::list<SNC *> vs;
 
     Dot *G;
     Dot **D0;

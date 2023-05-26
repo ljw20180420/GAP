@@ -72,10 +72,10 @@ struct SNC
     size_t sr1;
     size_t sr2;
     int lambda;
-    std::list<SNC>::iterator itp;
-    std::list<SNC>::iterator itcs[5]; // end() means not try to add child yet, root means child does not exist.
+    SNC *itp;
+    SNC *itcs[5]; // NULL means not try to add child yet, root means child does not exist.
 
-    SNC(double E_, double F0_, double G0_, double hatG_, size_t sr1_, size_t sr2_, int lambda_, std::list<SNC>::iterator itp_, std::list<SNC>::iterator itc_)
+    SNC(double E_, double F0_, double G0_, double hatG_, size_t sr1_, size_t sr2_, int lambda_, SNC *itp_, SNC *itc_)
     {
         E = E_;
         F0 = F0_;
@@ -440,15 +440,16 @@ struct Align : Memory, Graph
         Dot **A = edge->tail->A;
         if (w == 0)
         {
-            edge->sncs.emplace(edge->sncs.begin(), -inf, -inf, -inf, -inf, 0, edge->browheel.sequence.size() - 1, 0, edge->sncs.end(), edge->sncs.end());
-            edge->vs.insert(edge->vs.begin(), edge->sncs.begin());
+            edge->sncs.emplace_front(-inf, -inf, -inf, -inf, 0, edge->browheel.sequence.size() - 1, 0, (SNC *)NULL, (SNC *)NULL);
+            edge->vs.insert(edge->vs.begin(), &edge->sncs.front());
             for (int c = 2; c <= 6; ++c)
             {
                 int64_t sr1 = edge->vs.front()->sr1;
                 int64_t sr2 = edge->vs.front()->sr2;
                 edge->browheel.PreRange(sr1, sr2, c);
-                edge->vs.front()->itcs[c - 2] = edge->sncs.emplace(edge->sncs.begin(), -inf, -inf, -inf, -inf, sr1, sr2, 1, edge->vs.front(), edge->sncs.end());
-                edge->vs.insert(std::next(edge->vs.begin()), edge->sncs.begin());
+                edge->sncs.emplace_front(-inf, -inf, -inf, -inf, sr1, sr2, 1, edge->vs.front(), (SNC *)NULL);
+                edge->vs.front()->itcs[c - 2]=&edge->sncs.front();
+                edge->vs.insert(std::next(edge->vs.begin()), &edge->sncs.front());
             }
             edge->C[0] = -inf;
             edge->Cdelta[0].clear();
@@ -474,7 +475,7 @@ struct Align : Memory, Graph
         {
             (*iter)->E = std::max((*iter)->hatG + edge->ve, (*iter)->E + edge->ue);
             (*iter)->F0 = std::max((*iter)->itp->G0 + edge->vf, (*iter)->itp->F0 + edge->uf);
-            int c = find((*iter)->itp->itcs, (*iter)->itp->itcs + 5, (*iter)) - (*iter)->itp->itcs + 2;
+            int c = std::find((*iter)->itp->itcs, (*iter)->itp->itcs + 5, (*iter)) - (*iter)->itp->itcs + 2;
             (*iter)->G0 = std::max(std::max((*iter)->E, (*iter)->F0), (*iter)->itp->hatG + edge->gamma[c][BroWheel::base2int(O[w-1])]);
             if ((*iter)->G0 < edge->vs.front()->G0)
             {
@@ -494,13 +495,16 @@ struct Align : Memory, Graph
             if ((*iter)->G0 != -inf && (*iter)->hatG == -inf)
                 for (int c = 2; c <= 6; ++c)
                 {
-                    if ((*iter)->itcs[c - 2] == edge->sncs.end())
+                    if (!(*iter)->itcs[c - 2])
                     {
                         int64_t sr1 = (*iter)->sr1;
                         int64_t sr2 = (*iter)->sr2;
                         edge->browheel.PreRange(sr1, sr2, c);
                         if (sr1 <= sr2)
-                            (*iter)->itcs[c - 2] = edge->sncs.emplace(edge->sncs.begin(), -inf, -inf, -inf, -inf, sr1, sr2, (*iter)->lambda + 1, (*iter), edge->sncs.end());
+                        {
+                            edge->sncs.emplace_front(-inf, -inf, -inf, -inf, sr1, sr2, (*iter)->lambda + 1, (*iter), (SNC *)NULL);
+                            (*iter)->itcs[c - 2] = &edge->sncs.front();
+                        }
                         else
                             (*iter)->itcs[c - 2] = edge->vs.front();
                     }
