@@ -1,6 +1,7 @@
 #ifndef BROWHEEL_H
 #define BROWHEEL_H
 
+#include <limits>
 #include <vector>
 #include <string>
 #include <cstdint>
@@ -75,7 +76,7 @@ template <typename T>
 struct BinWord
 {
     static const int ww=3;
-    static const int r=(sizeof(T)*8-2)/ww;
+    static const int r=(sizeof(T)*CHAR_BIT)/ww;
     static const int bsf=(r-1)*ww;
     static const int block_size=64*1024;
 
@@ -150,9 +151,9 @@ struct BinWord
     T operator()(T i)
     {
         T j=ww*i, v=BV[j]<<1;
-        if(BV[++j]) ++v;
+        v+=BV[++j];
         v<<=1;
-        if(BV[++j]) ++v;
+        v+=BV[++j];
         return v;
     }
     
@@ -182,12 +183,12 @@ struct BinWord
     
     void to_chars(char* bytes)
     {
-        T sz=(BV.size()+sizeof(char)-1)/sizeof(char);
+        T sz=(BV.size()+CHAR_BIT-1)/CHAR_BIT;
         T j=0;
         for(T i=0; i<sz; ++i)
         {
             bytes[i]=0;
-            for(T k=sizeof(char)-1; (k>-1)&&(j<BV.size()); --k,++j)
+            for(T k=CHAR_BIT-1; (k>-1)&&(j<BV.size()); --k,++j)
                 bytes[i]|= BV[j]<<k;
         }
     }
@@ -196,10 +197,10 @@ struct BinWord
     {
         BV.resize(BV_sz);
         BV.shrink_to_fit();
-        T sz=(BV.size()+sizeof(char)-1)/sizeof(char);
+        T sz=(BV.size()+CHAR_BIT-1)/CHAR_BIT;
         T j=0;
         for(T i=0; i<sz; ++i)
-            for(T k=7; (k>-1)&&(j<BV.size()); --k,++j)
+            for(T k=CHAR_BIT-1; (k>-1)&&(j<BV.size()); --k,++j)
                 BV[j]=bytes[i] & 1UL<<k;
     }
 };
@@ -259,12 +260,6 @@ struct BroWheel : BinWord<T>, Memory
         T BWT_sz=G.size()-st;
         for(T i=1; i<BWT_sz; ++i)
             this->set(SAI[i],G(st+i-1));
-        for(T i=0; i<sigma; ++i)
-        {
-            C[i]=0;
-            Occ1[i][0]=0;
-            Occ2[i][0]=0;
-        }
         CountBWT(BWT_sz);
         
         for(T n=N-1; n>=0; --n)
@@ -349,7 +344,7 @@ struct BroWheel : BinWord<T>, Memory
         std::ofstream fout(outfile, std::ios::binary);
         T BV_sz=G.BV.size();
         fout.write((char*)&BV_sz,sizeof(T));
-        T sz=(BV_sz+7)/8;
+        T sz=(BV_sz+CHAR_BIT-1)/CHAR_BIT;
         char* bytes=new char[sz];
         G.to_chars(bytes);
         fout.write(bytes,sz);
@@ -378,7 +373,7 @@ struct BroWheel : BinWord<T>, Memory
         std::ifstream fin(infile, std::ios::binary);
         T BV_sz;
         fin.read((char*)&BV_sz,sizeof(T));
-        T sz=(BV_sz+7)/8;
+        T sz=(BV_sz+CHAR_BIT-1)/CHAR_BIT;
         char* bytes=new char[sz];
         fin.read(bytes,sz);
         G.from_chars(bytes,BV_sz);
@@ -440,33 +435,36 @@ struct BroWheel : BinWord<T>, Memory
 
     void CountBWT(T BWT_sz)
     {
+        for(T i=0; i<sigma; ++i)
+        {
+            C[i]=0;
+            Occ1[i][0]=0;
+            Occ2[i][0]=0;
+        }
         T j1=0;
         for(T i=0, j2=0; i<BWT_sz; ++i)
         {
             if(i%oo2==0)
             {
                 ++j1;
+                for(T j=0; j<sigma; ++j)
+                    Occ1[j][j1]=Occ1[j][j1-1];
+            }
+            if(i%oo==0)
+            {
                 ++j2;
                 for(T j=0; j<sigma; ++j)
-                {
-                    Occ1[j][j1]=Occ1[j][j1-1];
-                    Occ2[j][j2]=0;
-                }
-            }
-            else
-            {
-                if(i%oo==0)
-                {
-                    ++j2;
-                    for(T j=0; j<sigma; ++j)
+                    if(j2%oo==0)
+                        Occ2[j][j2]=0;
+                    else
                         Occ2[j][j2]=Occ2[j][j2-1];
-                }
             }
             T tmp=(*this)(i)-1;
             if(tmp>=0)
             {
                 ++Occ1[tmp][j1];
-                ++Occ2[tmp][j2];
+                if(j2%oo!=0)
+                    ++Occ2[tmp][j2];
             }
         }
         for(T i=1; i<sigma; ++i)
@@ -475,9 +473,7 @@ struct BroWheel : BinWord<T>, Memory
     
     T GetOcc(T i, T c)
     {
-        T tmp=Occ1[c-1][(i+1)/oo2];
-        if(((i+1)/oo)%oo!=0)
-            tmp+=Occ2[c-1][(i+1)/oo];
+        T tmp=Occ1[c-1][(i+1)/oo2]+Occ2[c-1][(i+1)/oo];
         for(T j=i-(i+1)%oo+1; j<=i; ++j)
             if((*this)(j)==c)
                 ++tmp;
@@ -585,11 +581,8 @@ struct BroWheel : BinWord<T>, Memory
         T sz=t-h;
         G.to_T(h,t,SAI);
         for(T i=0; i<sz; ++i)
-        {
-            SAI[i]+=sz-1;
             SA[i]=i;
-        }
-        SAI[sz]=-1;
+        SAI[sz]=0;
         SortSplit(SA, 0, sz-1, SAI, SAI, true);
         T* SAIh=SAI+this->r;
         while(SA[0]>-sz)
