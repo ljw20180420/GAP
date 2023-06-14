@@ -29,12 +29,12 @@ struct Track : Graph
     std::map<Dot *, MegaRange> megadots_tail;
     std::deque<std::pair<Dot *, std::deque<Dot *>>> megasources;
 
-    Track(int argc, char **argv, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel, std::string run, int max_extract_, int64_t max_mega_, int diff_thres_, int max_range_, int min_seg_num_, int max_seg_num_)
-    : Graph(argc, argv, file2seq, file2browheel), fout_align(run + ".alg"), fout_extract(run + ".ext"), fout_fail(run + ".fail"), fout_death(run + ".death"), max_extract(max_extract_), max_mega(max_mega_), diff_thres(diff_thres_), max_range(max_range_), min_seg_num(min_seg_num_), max_seg_num(max_seg_num_)
+    Track(int argc, char **argv, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel, int max_extract_, int64_t max_mega_, int diff_thres_, int max_range_, int min_seg_num_, int max_seg_num_)
+    : Graph(argc, argv, file2seq, file2browheel), fout_align("alg"), fout_extract("ext"), fout_fail("fail"), fout_death("death"), max_extract(max_extract_), max_mega(max_mega_), diff_thres(diff_thres_), max_range(max_range_), min_seg_num(min_seg_num_), max_seg_num(max_seg_num_)
     {
     }
 
-    int64_t ReadTrack(std::deque<std::string> mg_files, std::deque<std::string> read_files)
+    void ReadTrack(std::deque<std::string> mg_files, std::deque<std::pair<std::string, std::string>> &reads_total)
     {
         std::vector<std::ifstream> fins;
         for (auto &file : mg_files)
@@ -61,66 +61,51 @@ struct Track : Graph
         }
         dots.resize(max_id + 1);
         int64_t seq_num = 0;
-        std::string Oname, O, plr, quality;
-        auto iter = read_files.begin();
-        std::ifstream fin_seq(*iter);
-        int64_t not_failed_by_unalign = 0;
-        while (iter != read_files.end())
+        for (std::pair<std::string, std::string> &pair : reads_total)
         {
-            if (std::getline(std::getline(fin_seq, Oname), O))
+            ++seq_num;
+            for (int64_t f = 0; f < fins.size(); ++f)
             {
-                ++seq_num;
-                if (Oname[0] == '@')
-                    std::getline(std::getline(fin_seq, plr), quality);
-                for (int64_t f = 0; f < fins.size(); ++f)
+                if (Onames[f] == pair.first)
                 {
-                    if (Onames[f] == Oname)
+                    int64_t id = -1;
+                    int64_t uid = 0;
+                    do
                     {
-                        int64_t id = -1;
-                        int64_t uid = 0;
-                        do
+                        ++id;
+                        fins[f].read((char *)&dots[id].n, sizeof(Dot::n));
+                        fins[f].read((char *)&dots[id].s, sizeof(Dot::s));
+                        fins[f].read((char *)&dots[id].w, sizeof(Dot::w));
+                        fins[f].read((char *)&dots[id].val, sizeof(Dot::val));
+                        fins[f].read((char *)&dots[id].s_sz, sizeof(Dot::s_sz));
+                        fins[f].read((char *)&dots[id].lambda, sizeof(Dot::lambda));
+                        dots[id].fs = sources.offset;
+                        for (int i = 0; i < dots[id].s_sz; ++i)
                         {
-                            ++id;
-                            fins[f].read((char *)&dots[id].n, sizeof(Dot::n));
-                            fins[f].read((char *)&dots[id].s, sizeof(Dot::s));
-                            fins[f].read((char *)&dots[id].w, sizeof(Dot::w));
-                            fins[f].read((char *)&dots[id].val, sizeof(Dot::val));
-                            fins[f].read((char *)&dots[id].s_sz, sizeof(Dot::s_sz));
-                            fins[f].read((char *)&dots[id].lambda, sizeof(Dot::lambda));
-                            dots[id].fs = sources.offset;
-                            for (int i = 0; i < dots[id].s_sz; ++i)
-                            {
-                                int64_t idd;
-                                fins[f].read((char *)&idd, sizeof(idd));
-                                sources.emplace_back(&dots[idd]);
-                                uid = idd > uid ? idd : uid;
-                            }
-                        } while (id < uid);
-
-                        not_failed_by_unalign += BackTrack(&dots[0], Oname, O, plr, quality);
-
-                        sources.clear();
-                        if (fzs[f] - fins[f].tellg() > sizeof(int64_t))
-                        {
-                            int Onsz;
-                            fins[f].read((char *)&Onsz, sizeof(Onsz));
-                            Onames[f].resize(Onsz);
-                            fins[f].read((char *)Onames[f].data(), sizeof(char) * Onsz);
+                            int64_t idd;
+                            fins[f].read((char *)&idd, sizeof(idd));
+                            sources.emplace_back(&dots[idd]);
+                            uid = idd > uid ? idd : uid;
                         }
-                        break;
+                    } while (id < uid);
+
+                    BackTrack(&dots[0], pair.first, pair.second);
+
+                    sources.clear();
+                    if (fzs[f] - fins[f].tellg() > sizeof(int64_t))
+                    {
+                        int Onsz;
+                        fins[f].read((char *)&Onsz, sizeof(Onsz));
+                        Onames[f].resize(Onsz);
+                        fins[f].read((char *)Onames[f].data(), sizeof(char) * Onsz);
                     }
+                    break;
                 }
             }
-            else
-            {
-                fin_seq.close();
-                fin_seq.open(*(++iter));
-            }
         }
-        return not_failed_by_unalign;
     }
 
-    int BackTrack(Dot *pQ, std::string &Oname, std::string &O, std::string &plr, std::string &quality)
+    void BackTrack(Dot *pQ, std::string &Oname, std::string &O)
     {
         megasources.clear();
         megadots_head.clear();
@@ -177,21 +162,13 @@ struct Track : Graph
             {
                 fout_fail << Oname << '\n'
                       << O << '\n';
-                if (Oname[0] == '@')
-                    fout_fail << plr << '\n'
-                          << quality << '\n';
-                return 1;
             }
             else
             {
                 fout_death << Oname << '\n'
                       << O << '\n';
-                if (Oname[0] == '@')
-                    fout_death << plr << '\n'
-                          << quality << '\n';
             }
         }
-        return 0;
     }
 
     void source_until(int64_t i)

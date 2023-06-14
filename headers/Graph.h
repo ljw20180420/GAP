@@ -45,7 +45,7 @@ struct Edge
         {-inf, -inf, -3, -3, 1, -3, -3},
         {-inf, -inf, -3, -3, -3, 1, -3},
         {-inf, -inf, -3, -3, -3, -3, 1}};
-    double ve, ue, vf, uf, T, dT, min_score;
+    double ve, ue, vf, uf, T, min_score;
     Node *tail;
     Node *head;
 };
@@ -677,7 +677,7 @@ struct Graph
             {
                 std::deque<std::array<double, 49>> gammas;
                 std::deque<std::string> names, tails, heads;
-                std::deque<double> ves, ues, vfs, ufs, Ts, dTs, min_scores, vfps, ufps, vfms, ufms;
+                std::deque<double> ves, ues, vfs, ufs, Ts, min_scores, vfps, ufps, vfms, ufms;
                 for (int j = i + 1; j < argc && strncmp(argv[j], "---", 3); ++j)
                 {
                     if (!strcmp(argv[j], "--gammas"))
@@ -724,10 +724,6 @@ struct Graph
                     if (!strcmp(argv[j], "--Ts"))
                         for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
                             Ts.emplace_back(str2double(argv[k]));
-
-                    if (!strcmp(argv[j], "--dTs"))
-                        for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
-                            dTs.emplace_back(str2double(argv[k]));
 
                     if (!strcmp(argv[j], "--min_scores"))
                         for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
@@ -780,7 +776,6 @@ struct Graph
                     local.vf = beyond_access(vfs, j, -5.0);
                     local.uf = beyond_access(ufs, j, -2.0);
                     local.T = beyond_access(Ts, j, -10.0);
-                    local.dT = beyond_access(dTs, j, -5.0);
                     local.min_score = beyond_access(min_scores, j, 20.0);
                     local.vfp = beyond_access(vfps, j, 0.0);
                     local.ufp = beyond_access(ufps, j, 0.0);
@@ -804,7 +799,7 @@ struct Graph
             {
                 std::deque<std::array<double, 49>> gammas;
                 std::deque<std::string> names, tails, heads, reverse_complements;
-                std::deque<double> ves, ues, vfs, ufs, Ts, dTs, min_scores;
+                std::deque<double> ves, ues, vfs, ufs, Ts, min_scores;
                 for (int j = i + 1; j < argc && strncmp(argv[j], "---", 3); ++j)
                 {
                     if (!strcmp(argv[j], "--gammas"))
@@ -852,10 +847,6 @@ struct Graph
                         for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
                             Ts.emplace_back(str2double(argv[k]));
 
-                    if (!strcmp(argv[j], "--dTs"))
-                        for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
-                            dTs.emplace_back(str2double(argv[k]));
-
                     if (!strcmp(argv[j], "--min_scores"))
                         for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
                             min_scores.emplace_back(str2double(argv[k]));
@@ -895,7 +886,6 @@ struct Graph
                     global.vf = beyond_access(vfs, j, -5.0);
                     global.uf = beyond_access(ufs, j, -2.0);
                     global.T = beyond_access(Ts, j, -10.0);
-                    global.dT = beyond_access(dTs, j, -5.0);
                     global.min_score = beyond_access(min_scores, j, 20.0);
 
                     global.pbrowheel = &file2browheel[global.name];
