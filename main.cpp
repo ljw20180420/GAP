@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <ctime>
 #include "headers/Help.h"
+#include <boost/program_options.hpp>
 
 struct Parallel_Align
 {
@@ -20,10 +21,10 @@ struct Parallel_Align
     std::map<std::string, BroWheel> file2browheel;
     Graph graph;
 
-    std::string read_file;
+    std::string input;
     std::deque<std::pair<std::string, std::string>> reads_total;
-    int threads_sz = 24, max_extract = 1, diff_thres = 10, max_range = 10, min_seg_num = 0, max_seg_num = 0, block_size = 100;
-    int64_t max_mega = 10000;
+    int threads_sz, max_extract, diff_thres, max_range, min_seg_num, max_seg_num, block_size;
+    int64_t max_mega;
     int Omax;
     std::atomic<int> block_num;
     std::deque<std::string> mg_files;
@@ -31,30 +32,12 @@ struct Parallel_Align
     Parallel_Align(int argc_, char **argv_)
         : argc(argc_), argv(argv_), graph(argc, argv, file2seq, file2browheel)
     {
-        for (int i = 1; i < argc; ++i)
-        {
-            if (!strcmp(argv[i], "---read"))
-                read_file = argv[i+1];
-            if (!strcmp(argv[i], "---threads_sz"))
-                threads_sz = std::stoi(argv[i + 1]);
-            if (!strcmp(argv[i], "---max_extract"))
-                max_extract = std::stoi(argv[i + 1]);
-            if (!strcmp(argv[i], "---diff_thres"))
-                diff_thres = std::stoi(argv[i + 1]);
-            if (!strcmp(argv[i], "---max_range"))
-                max_range = std::stoi(argv[i + 1]);
-            if (!strcmp(argv[i], "---min_seg_num"))
-                min_seg_num = std::stoi(argv[i + 1]);
-            if (!strcmp(argv[i], "---max_seg_num"))
-                max_seg_num = std::stoi(argv[i + 1]);
-            if (!strcmp(argv[i], "---max_mega"))
-                max_mega = std::stoi(argv[i + 1]);
-            if (!strcmp(argv[i], "---block_size"))
-                block_size = std::stoi(argv[i + 1]);
-        }
+    }
 
+    void set_Omax_graph_draw()
+    {
         Omax = 0;
-        std::ifstream fin(read_file);
+        std::ifstream fin(input);
         int64_t preg = 0;
         while (fin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'))
         {
@@ -122,7 +105,7 @@ struct Parallel_Align
     {
         Align align(argc, argv, file2seq, file2browheel, "mg", Omax);
 
-        std::ifstream fin(read_file);
+        std::ifstream fin(input);
         for (std::queue<std::pair<std::string, std::string>> reads=fill_block(fin); !reads.empty(); reads=fill_block(fin))
             process_and_write_single(std::move(reads), align);
         fin.close();
@@ -146,7 +129,7 @@ struct Parallel_Align
         int max_block = 2 * threads_sz;
         block_num.store(0);
         std::deque<std::future<void>> futures;
-        std::ifstream fin(read_file);
+        std::ifstream fin(input);
         for (std::queue<std::pair<std::string, std::string>> reads=fill_block(fin); !reads.empty(); reads=fill_block(fin))
         {
             while (block_num.load() >= max_block)
@@ -183,35 +166,57 @@ struct Parallel_Align
 
 int main(int argc, char **argv)
 {
-    if (!strcmp(argv[1], "-h"))
+    Parallel_Align parallel_align(argc, argv);
+
+    boost::program_options::options_description general_options("general options"), index_options("index options"), parallel_options("parallel options"), output_options("output options"), map_options("map options"), all_options("all options");
+    general_options.add_options()
+        ("help,h", "help screen")
+        ("input", boost::program_options::value<std::string>(&parallel_align.input), "input");
+    index_options.add_options()
+        ("index", boost::program_options::value<std::vector<std::string>>()->multitoken(), "index ref_file in forward/both strands");
+    parallel_options.add_options()
+        ("threads_sz", boost::program_options::value<int>(&parallel_align.threads_sz)->default_value(24), "# of align threads")
+        ("block_size", boost::program_options::value<int>(&parallel_align.block_size)->default_value(10), "size of reads batch");
+    output_options.add_options()
+        ("max_range", boost::program_options::value<int>(&parallel_align.max_range)->default_value(10), "max map pos to show per seg")
+        ("max_extract", boost::program_options::value<int>(&parallel_align.max_extract)->default_value(1), "max best maps to extract")
+        ("max_mega", boost::program_options::value<int64_t>(&parallel_align.max_mega)->default_value(10000), "max steps to track map graph");
+    map_options.add_options()
+        ("diff_thres", boost::program_options::value<int>(&parallel_align.diff_thres)->default_value(10), "min bps to distinct two maps")
+        ("min_seg_num", boost::program_options::value<int>(&parallel_align.min_seg_num)->default_value(0), "min map segments, 0 means no restriction")
+        ("max_seg_num", boost::program_options::value<int>(&parallel_align.max_seg_num)->default_value(0), "max map segments, 0 means no restriction");
+
+    all_options.add(general_options).add(index_options).add(parallel_options).add(output_options).add(map_options);
+    boost::program_options::variables_map vm;
+    boost::program_options::command_line_parser parser{argc, argv};
+    boost::program_options::store(parser.options(all_options).allow_unregistered().run(), vm);
+    boost::program_options::notify(vm);
+
+    if (vm.count("help"))
     {
-        help();
-        return 0;
+        std::cout << all_options << '\n';
+        return EXIT_SUCCESS;
     }
 
-    if (!strcmp(argv[1], "--index"))
+    if (vm.count("index"))
     {
-        BroWheel browheel;
+        std::vector<std::string> index = vm["index"].as<std::vector<std::string>>();
         bool reverse_complement = false;
-        std::string fasta;
-        for (int i = 2; i < argc; ++i)
-        {
-            if (!strcmp(argv[i], "-r"))
-                reverse_complement = true;
-            if (!strcmp(argv[i], "-f"))
-                fasta = argv[i + 1];
-        }
-        browheel.readin(fasta, true, reverse_complement);
+        if (index.size()>1 && !strcasecmp(index[1].c_str(), "reverse"))
+            reverse_complement = true;
+        BroWheel browheel;
+        browheel.readin(index[0], true, reverse_complement);
         thread_pool threads1(3), thread2(1);
         browheel.index(150000000, threads1, thread2);
         browheel.saveBroWheel();
-        return 0;
+        return EXIT_SUCCESS;
     }
 
-    Parallel_Align parallel_align(argc, argv);
+    parallel_align.set_Omax_graph_draw();
     parallel_align.load_index();
+    // parallel_align.single_align();
     parallel_align.parallel_align();
     parallel_align.track();
 
-    return 0;
+    return EXIT_SUCCESS;
 }
