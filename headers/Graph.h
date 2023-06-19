@@ -146,7 +146,6 @@ struct TrackTree
 
 struct EdgeGlobal : Edge
 {
-    bool reverse_complement;
     BroWheel *pbrowheel;
     TrackTree tracktree;
 };
@@ -798,7 +797,7 @@ struct Graph
             if (!strcmp(argv[i], "---globals"))
             {
                 std::deque<std::array<double, 49>> gammas;
-                std::deque<std::string> names, tails, heads, reverse_complements;
+                std::deque<std::string> names, tails, heads;
                 std::deque<double> ves, ues, vfs, ufs, Ts, min_scores;
                 for (int j = i + 1; j < argc && strncmp(argv[j], "---", 3); ++j)
                 {
@@ -850,15 +849,11 @@ struct Graph
                     if (!strcmp(argv[j], "--min_scores"))
                         for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
                             min_scores.emplace_back(str2double(argv[k]));
-
-                    if (!strcmp(argv[j], "--r"))
-                        for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
-                            reverse_complements.emplace_back(argv[k]);
                 }
 
-                if (names.size() > heads.size() || names.size() > tails.size() || names.size() > reverse_complements.size())
+                if (names.size() > heads.size() || names.size() > tails.size())
                 {
-                    std::cerr << "head or tail or reverse_complement number is not enough for long references\n";
+                    std::cerr << "head or tail number is not enough for long references\n";
                     exit(EXIT_FAILURE);
                 }
                 for (int j = 0; j < names.size(); ++j)
@@ -889,17 +884,6 @@ struct Graph
                     global.min_score = beyond_access(min_scores, j, 20.0);
 
                     global.pbrowheel = &file2browheel[global.name];
-                    
-                    transform(reverse_complements[j].begin(), reverse_complements[j].end(), reverse_complements[j].begin(), ::tolower);
-                    if (reverse_complements[j] == "true")
-                        global.reverse_complement = true;
-                    else if (reverse_complements[j] == "false")
-                        global.reverse_complement = false;
-                    else
-                    {
-                        std::cerr << "reverse_complement must be true or false\n";
-                        exit(EXIT_FAILURE);
-                    }
 
                     globals.push_back(global);
                 }

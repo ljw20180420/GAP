@@ -759,7 +759,7 @@ struct Align : Graph
                 tracknodes[tracktree.idx].tau = std::max(tracknodes[tracktree.idx].tau, swn.w + 1);
                 for (int i = globalsuffix.lambda - 1; i >= 0; --i)
                 {
-                    int c = edge->pbrowheel->sequence(start + i);
+                    int c = BroWheel::base2int(edge->pbrowheel->sequence[start + i]);
                     if (tracknodes[tracktree.idx].cidxs[c - 2] < 0)
                     {
                         tracktree.emplace_back(-1, edge->n, edge->pbrowheel->sequence.size() - 1 - start - i, dots[tracktree.shiftE].lambda + 1);
@@ -796,7 +796,7 @@ struct Align : Graph
                 tracknodes[tracktree.idx].tau = std::max(tracknodes[tracktree.idx].tau, swn.w + 1);
                 for (int i = globalsuffix.lambda - 1; i >= 0; --i)
                 {
-                    int c = edge->pbrowheel->sequence(start + i);
+                    int c = BroWheel::base2int(edge->pbrowheel->sequence[start + i]);
                     if (tracknodes[tracktree.idx].cidxs[c - 2] < 0)
                     {
                         tracktree.emplace_back(-1, edge->n, edge->pbrowheel->sequence.size() - 1 - start - i, dots[tracktree.shiftE].lambda + 1);

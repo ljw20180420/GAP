@@ -246,8 +246,7 @@ struct BroWheel
     const static std::string int2base;
     std::string file;
     bool reverse;
-    bool reverse_complement;
-    BinVec sequence=BinVec(sigma);
+    std::string sequence;
     RankVec bwt=RankVec(sigma);
     std::array<int64_t,sigma> C;
     const static int f=16;
@@ -261,78 +260,49 @@ struct BroWheel
             delete[] ssa;
     }
 
-    void readin(std::string file_, bool reverse_, bool reverse_complement_)
+    void readin(std::string file_, bool reverse_)
     {
         file=file_;
         reverse=reverse_;
-        reverse_complement=reverse_complement_;
         readin();
     }
 
     void readin()
     {
-        int64_t sequence_sz=std::filesystem::file_size(file);
         sequence.clear();
-        if (reverse_complement)
-            sequence.reserve(2*sequence_sz);
-        else
-            sequence.reserve(sequence_sz);
-        std::string str;
+        name_cumlen.clear();
+        sequence.reserve(std::filesystem::file_size(file));
         std::ifstream fin(file);
-        int64_t seqlen=0;
-        while (std::getline(fin, str))
+        size_t seqlen = 0;
+        for (std::string str; std::getline(fin, str); )
         {
             if (str[0]=='>')
             {
-                if(!name_cumlen.empty())
+                if (!name_cumlen.empty())
                 {
-                    sequence.push_back(1);
-                    name_cumlen.back().second=seqlen;
+                    name_cumlen.back().second = seqlen;
+                    sequence.push_back('L');
                 }
-                seqlen=0;
-                name_cumlen.emplace_back(std::move(str), 0);
+                seqlen = 0;
+                name_cumlen.emplace_back(str, 0);
             }
             else
             {
-                for (int64_t i=0; i<str.size(); ++i)
-                    sequence.push_back((str[i]+6)>>1);
-                seqlen+=str.size();
+                seqlen += str.size();
+                sequence.append(std::move(str));
             }
+            
         }
-        sequence.push_back(1);
-        name_cumlen.back().second=seqlen;
+        name_cumlen.back().second = seqlen;
+        sequence.push_back('K');
 
         if(reverse)
         {
-            for(int64_t i=0,j=sequence.size()-2; i<j; ++i,--j)
-            {
-                int c=sequence(i);
-                sequence.set(i,sequence(j));
-                sequence.set(j,c);
-            }
-            for(int64_t i=0,j=name_cumlen.size()-1; i<j; ++i,--j)
+            std::reverse(sequence.begin(), sequence.end()-1);
+            for(int64_t i=0, j=name_cumlen.size()-1; i<j; ++i, --j)
                 std::swap(name_cumlen[i], name_cumlen[j]);
         }
-        if(reverse_complement)
-        {
-            for (int64_t i=sequence.size()-2; i>=0; --i)
-            {
-                int c=sequence(i);
-                if (c>2)
-                {
-                    if (c<5)
-                        c+=2;
-                    else
-                        c-=2;
-                }
-                sequence.push_back(c);
-            }
-            sequence.push_back(0);
-            for (int64_t i=name_cumlen.size()-1; i>=0; --i)
-                name_cumlen.emplace_back(name_cumlen[i].first+"_RC", name_cumlen[i].second);
-        }
-        else
-            sequence.set(sequence.size()-1,0);
+
         int64_t tmp=name_cumlen[0].second;
         name_cumlen[0].second=0;
         for (int64_t i=1; i<name_cumlen.size(); ++i)
@@ -344,15 +314,27 @@ struct BroWheel
 
     void to_T(int64_t h, int64_t t, int64_t* SAI)
     {
-        int64_t bsf=((sizeof(int64_t)*CHAR_BIT-1)/sequence.ww-1)*sequence.ww;
-        int64_t i=t-1;
-        SAI[i-h]=sequence(i)<<bsf;
+        int64_t bsf=((sizeof(int64_t)*CHAR_BIT-1)/bwt.ww-1)*bwt.ww;
+        int64_t i=t;
+        SAI[i-h]=int64_t(-1)<<bsf;
         while(i>h)
         {
             --i;
-            SAI[i-h]=(SAI[i-h+1]>>sequence.ww)+(sequence(i)<<bsf);
+            SAI[i-h]=(SAI[i-h+1]>>bwt.ww)+(int64_t(base2int(sequence[i]))<<bsf);
         }
     }
+
+    // void to_T(int64_t h, int64_t t, int64_t* SAI)
+    // {
+    //     int64_t bsf=((sizeof(int64_t)*CHAR_BIT-1)/bwt.ww-1)*bwt.ww;
+    //     int64_t i=t-1;
+    //     SAI[i-h]=base2int(sequence[i])<<bsf;
+    //     while(i>h)
+    //     {
+    //         --i;
+    //         SAI[i-h]=(SAI[i-h+1]>>bwt.ww)+(base2int(sequence[i])<<bsf);
+    //     }
+    // }
 
     void index(int64_t ll, thread_pool & threads1, thread_pool & thread2)
     {
@@ -383,7 +365,7 @@ struct BroWheel
         bwt.set(SAI[0],0);
         int64_t cutoff_size=sequence.size()-st;
         for(int64_t i=1; i<cutoff_size; ++i)
-            bwt.set(SAI[i],sequence(st+i-1));
+            bwt.set(SAI[i],base2int(sequence[st+i-1]));
         int64_t R1_tail=bwt.count(cutoff_size);
         C[0]=0;
         for(int c=1; c<sigma; ++c)
@@ -399,7 +381,7 @@ struct BroWheel
             for(int64_t i=0; i<pn; i+=2)
                 SortSplit(SAn, SAIn[i], SAIn[i+1], NULL, SAI);
             future2.wait();
-            bwt.set(SAI[0],sequence((n+1)*ll-1));
+            bwt.set(SAI[0],base2int(sequence[(n+1)*ll-1]));
             for(int64_t i=0; i<ll; ++i)
                 SAI[SAn[i]]=SAIn[SAn[i]+ll]+i+1;
             cutoff_size+=ll;
@@ -410,7 +392,7 @@ struct BroWheel
                 else
                 {
                     if(SAn[k]>0)
-                        bwtt.set(i,sequence(n*ll+SAn[k]-1));
+                        bwtt.set(i,base2int(sequence[n*ll+SAn[k]-1]));
                     else
                         bwtt.set(i,0);
                     ++k;
@@ -448,7 +430,7 @@ struct BroWheel
     {
         for(int64_t i=0, j=cutoff_size-2; j>=0; --j)
         {
-            if (bwt(i)!=sequence(j))
+            if (bwt(i)!=base2int(sequence[j]))
                 return false;
             int c=bwt(i);
             i=C[c-1]+this->bwt.rank(c,i);
@@ -460,8 +442,9 @@ struct BroWheel
     {
         std::ofstream fout(file+".idx", std::ios::binary);
         fout.write((char*)&reverse,sizeof(reverse));
-        fout.write((char*)&reverse_complement,sizeof(reverse_complement));
-        sequence.saveBinVec(fout);
+        int64_t tmp=sequence.size();
+        fout.write((char*)&tmp,sizeof(tmp));
+        fout.write(sequence.data(),sequence.size());
 
         int64_t name_cumlen_sz = name_cumlen.size();
         fout.write((char*)&name_cumlen_sz,sizeof(name_cumlen_sz));
@@ -493,8 +476,11 @@ struct BroWheel
 
         std::ifstream fin(file+".idx", std::ios::binary);
         fin.read((char*)&reverse,sizeof(reverse));
-        fin.read((char*)&reverse_complement,sizeof(reverse_complement));
-        sequence.loadBinVec(fin);
+        int64_t tmp;
+        fin.read((char*)&tmp,sizeof(tmp));
+        sequence.resize(tmp);
+        fin.read(sequence.data(),tmp);
+        sequence.shrink_to_fit();
 
         int64_t name_cumlen_sz;
         fin.read((char*)&name_cumlen_sz,sizeof(name_cumlen_sz));
@@ -521,11 +507,11 @@ struct BroWheel
     
     void RelativeOrder(int64_t* SAI, int64_t* SAIn, int64_t n, int64_t ll)
     {
-        int c=sequence((n+1)*ll-1);
+        int c=base2int(sequence[(n+1)*ll-1]);
         SAIn[2*ll-1]=C[c-1]+bwt.rank(c,SAI[0]);
         for(int64_t i=ll-2; i>=0; --i)
         {
-            c=sequence(n*ll+i);
+            c=base2int(sequence[n*ll+i]);
             SAIn[i+ll]=C[c-1]+bwt.rank(c,SAIn[i+ll+1]);
         }
     }
@@ -585,7 +571,7 @@ struct BroWheel
             if(SAI[i]!=ll-1)
             {
                 int64_t j=SA[SAI[i]+1];
-                while(i+k<sz && j+k<sz && sequence(i+k+h)==sequence(j+k+h))
+                while(i+k<sz && j+k<sz && sequence[i+k+h]==sequence[j+k+h])
                     ++k;
                 SAI[SAI[i]+ll]=k;
                 if(k>0)
@@ -609,9 +595,8 @@ struct BroWheel
         to_T(h,t,SAI);
         for(int64_t i=0; i<sz; ++i)
             SA[i]=i;
-        SAI[sz]=-1;
         SortSplit(SA, 0, sz-1, SAI, SAI);
-        int64_t* SAIh=SAI+(sizeof(int64_t)*CHAR_BIT-1)/sequence.ww;
+        int64_t* SAIh=SAI+(sizeof(int64_t)*CHAR_BIT-1)/bwt.ww;
         while(SA[0]>-sz)
         {
             int64_t i=0;
@@ -641,6 +626,45 @@ struct BroWheel
             SAIh+=(SAIh-SAI);
         }
     }
+
+    // void GetSA(int64_t h, int64_t t, int64_t* SA, int64_t* SAI)
+    // {
+    //     int64_t sz=t-h;
+    //     to_T(h,t,SAI);
+    //     for(int64_t i=0; i<sz; ++i)
+    //         SA[i]=i;
+    //     SAI[sz]=-1;
+    //     SortSplit(SA, 0, sz-1, SAI, SAI);
+    //     int64_t* SAIh=SAI+(sizeof(int64_t)*CHAR_BIT-1)/bwt.ww;
+    //     while(SA[0]>-sz)
+    //     {
+    //         int64_t i=0;
+    //         int64_t k=0;
+    //         do
+    //         {
+    //             if(SA[i]<0)
+    //             {
+    //                 k+=SA[i];
+    //                 i-=SA[i];
+    //             }
+    //             else
+    //             {
+    //                 if(k<0)
+    //                 {
+    //                     SA[i+k]=k;
+    //                     k=0;
+    //                 }
+    //                 int64_t j=SAI[SA[i]];
+    //                 SortSplit(SA, i, j, SAI, SAIh);
+    //                 i=j+1;
+    //             }
+    //         }
+    //         while(i<sz);
+    //         if(k<0)
+    //             SA[i+k]=k;
+    //         SAIh+=(SAIh-SAI);
+    //     }
+    // }
 
     void SortSplit(int64_t* SA, int64_t p1, int64_t p2, int64_t* SAI, int64_t* SAIh)
     {
@@ -734,12 +758,16 @@ struct BroWheel
                     std::swap(SA[j++], SA[k]);
                 else
                     --k;
-            SAI[SA[i]]=j-1;
+
+            if (SAI)
+                SAI[SA[i]]=j-1;
+
             if (j-i==1)
                 SA[i++]=-1;
             else
                 for (++i; i<j; ++i)
-                    SAI[SA[i]]=j-1;
+                    if (SAI)
+                        SAI[SA[i]]=j-1;
         }
     }
 

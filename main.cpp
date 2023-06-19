@@ -56,20 +56,6 @@ struct Parallel_Align
     {
         for (auto &pair : file2browheel)
             pair.second.loadBroWheel(pair.first);
-        for (EdgeGlobalCross &global : graph.global_crosses)
-            if (file2browheel[global.name].reverse_complement != global.reverse_complement)
-            {
-                std::cerr << "the long reference " << global.name << " is required to be "
-                          << global.reverse_complement << ", but the index is " << file2browheel[global.name].reverse_complement << '\n';
-                exit(EXIT_FAILURE);
-            }
-        for (EdgeGlobalCircuit &global : graph.global_circuits)
-            if (file2browheel[global.name].reverse_complement != global.reverse_complement)
-            {
-                std::cerr << "the long reference " << global.name << " is required to be "
-                          << global.reverse_complement << ", but the index is " << file2browheel[global.name].reverse_complement << '\n';
-                exit(EXIT_FAILURE);
-            }
     }
 
     std::queue<std::pair<std::string, std::string>> fill_block(std::ifstream &fin)
@@ -173,7 +159,7 @@ int main(int argc, char **argv)
         ("help,h", "help screen")
         ("input", boost::program_options::value<std::string>(&parallel_align.input), "input");
     index_options.add_options()
-        ("index", boost::program_options::value<std::vector<std::string>>()->multitoken(), "index ref_file in forward/both strands");
+        ("index", boost::program_options::value<std::string>(), "reference file to index");
     parallel_options.add_options()
         ("threads_sz", boost::program_options::value<int>(&parallel_align.threads_sz)->default_value(24), "# of align threads")
         ("block_size", boost::program_options::value<int>(&parallel_align.block_size)->default_value(10), "size of reads batch");
@@ -200,12 +186,8 @@ int main(int argc, char **argv)
 
     if (vm.count("index"))
     {
-        std::vector<std::string> index = vm["index"].as<std::vector<std::string>>();
-        bool reverse_complement = false;
-        if (index.size()>1 && !strcasecmp(index[1].c_str(), "reverse"))
-            reverse_complement = true;
         BroWheel browheel;
-        browheel.readin(index[0], true, reverse_complement);
+        browheel.readin(vm["index"].as<std::string>(), true);
         thread_pool threads1(3), thread2(1);
         browheel.index(150000000, threads1, thread2);
         browheel.saveBroWheel();
@@ -214,9 +196,26 @@ int main(int argc, char **argv)
 
     parallel_align.set_Omax_graph_draw();
     parallel_align.load_index();
-    // parallel_align.single_align();
     parallel_align.parallel_align();
     parallel_align.track();
+
+    // int64_t h = 6191354650;
+    // int64_t t = 6191354749;
+    // BroWheel browheel;
+    // browheel.readin("hg19.with.revcomp.fa", true);
+    // int64_t ll = 50;
+    // int64_t* SA=new int64_t[2*ll-1];
+    // int64_t* SAI=new int64_t[2*ll];
+    // browheel.GetSA(h, t, SA, SAI);
+
+    // BroWheel browheel;
+    // browheel.loadBroWheel("test.low.fa");
+    // std::ofstream fout("test.low.fa.my.bwt");
+    // for (int i=0; i<browheel.bwt.size(); ++i)
+    //     fout << BroWheel::int2base[browheel.bwt(i)];
+    // fout << '\n';
+    // fout.close();
+    // std::cout << browheel.sequence << '\n';
 
     return EXIT_SUCCESS;
 }
