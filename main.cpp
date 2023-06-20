@@ -190,6 +190,7 @@ int main(int argc, char **argv)
         browheel.readin(vm["index"].as<std::string>(), true);
         thread_pool threads1(3), thread2(1);
         browheel.index(150000000, threads1, thread2);
+        // browheel.index(50, threads1, thread2);
         browheel.saveBroWheel();
         return EXIT_SUCCESS;
     }
@@ -209,10 +210,11 @@ int main(int argc, char **argv)
     // browheel.GetSA(h, t, SA, SAI);
 
     // BroWheel browheel;
-    // browheel.loadBroWheel("test.low.fa");
-    // std::ofstream fout("test.low.fa.my.bwt");
+    // browheel.loadBroWheel("test.fa");
+    // std::cerr << browheel.bwt.size() << '\n';
+    // std::ofstream fout("test.fa.my.bwt");
     // for (int i=0; i<browheel.bwt.size(); ++i)
-    //     fout << BroWheel::int2base[browheel.bwt(i)];
+    //     fout << BroWheel::int2base[browheel.bwt[i]];
     // fout << '\n';
     // fout.close();
     // std::cout << browheel.sequence << '\n';

@@ -13,131 +13,27 @@
 #include <algorithm>
 #include <filesystem>
 #include "Threadpool.h"
+#include "gsufsort/external/gsacak.h"
 
-struct BinVec
+void gsufsortSA(std::string &sequence)
 {
-    int sigma;
-    int ww;
-    int64_t sz;
+    gsacak(unsigned char *s, uint_t *SA, NULL, NULL, sequence.size())
+    gSACA_K(uint_t *s, uint_t *SA,
+  uint_t n, unsigned int K,
+  int cs, uint_t separator, int level)
+    sacak(sequence.data, uint_t *SA, uint_t n)
+}
 
-    std::vector<char> BV;
 
-    BinVec(int sigma_)
-    {
-        sigma=sigma_;
-        sigma2ww();
-    }
-
-    void sigma2ww()
-    {
-        ww=0;
-        int sigma_=sigma;
-        while(sigma_>0)
-        {
-            sigma_/=2;
-            ++ww;
-        }
-    }
-
-    void resize(int64_t N)
-    {
-        BV.resize((ww*N+CHAR_BIT-1)/CHAR_BIT);
-        sz=N;
-    }
-    
-    bool getbit(int64_t j)
-    {
-        return BV[j/CHAR_BIT]<<(j%CHAR_BIT) & 128;
-    }
-
-    void setbit(int64_t j, bool logic)
-    {
-        if(logic)
-            BV[j/CHAR_BIT]|=128>>(j%CHAR_BIT);
-        else
-            BV[j/CHAR_BIT]&=~(128>>(j%CHAR_BIT));
-    }
-
-    int64_t operator()(int64_t i)
-    {
-        int64_t j=ww*i;
-        int64_t c=getbit(j);
-        while(j<ww*(i+1)-1)
-        {
-            c<<=1;
-            c+=getbit(++j);
-        }
-        return c;
-    }
-    
-    void set(int64_t i, int c)
-    {
-        int64_t j=ww*(i+1);
-        while(j>ww*i)
-        {
-            setbit(--j, c & 1);
-            c/=2;
-        }
-    }
-
-    void push_back(int c)
-    {
-        resize(++sz);
-        set(sz-1,c);
-    }
-
-    void clear()
-    {
-        BV.clear();
-        sz=0;
-    }
-
-    void reserve(int64_t N)
-    {
-        BV.reserve((N*ww+CHAR_BIT-1)/CHAR_BIT);
-    }
-
-    int64_t size()
-    {
-        return sz;
-    }
-
-    void shrink_to_fit()
-    {
-        BV.resize((sz*ww+CHAR_BIT-1)/CHAR_BIT);
-        BV.shrink_to_fit();
-    }
-
-    void saveBinVec(std::ofstream & fout)
-    {
-        fout.write((char*)&sigma,sizeof(sigma));
-        fout.write((char*)&sz,sizeof(sz));
-        int64_t tmp=BV.size();
-        fout.write((char*)&tmp,sizeof(tmp));
-        fout.write(BV.data(),BV.size());
-    }
-
-    void loadBinVec(std::ifstream & fin)
-    {
-        fin.read((char*)&sigma,sizeof(sigma));
-        sigma2ww();
-        fin.read((char*)&sz,sizeof(sz));
-        int64_t tmp;
-        fin.read((char*)&tmp,sizeof(tmp));
-        BV.resize(tmp);
-        fin.read(BV.data(),tmp);
-        BV.shrink_to_fit();
-    }
-};
-
-struct RankVec : BinVec
+struct RankVec
 {
     int64_t** R1=NULL;
     uint16_t** R2=NULL;
     const static int b1=8;
     const static int b2=256*32;
+    int sigma;
 
-    RankVec(int sigma_) : BinVec(sigma_)
+    RankVec(int sigma_) : sigma(sigma_)
     {}
 
     ~RankVec()
@@ -156,26 +52,26 @@ struct RankVec : BinVec
         }
     }
 
-    void apply_memory()
+    void apply_memory(int64_t vsz)
     {
-        apply(R1, b1*b2);
-        apply(R2, b1);
+        apply(R1, b1*b2, vsz);
+        apply(R2, b1, vsz);
     }
 
     template <typename U>
-    void apply(U** & R, int block_size)
+    void apply(U** & R, int block_size, int64_t vsz)
     {
-        int64_t sz=(this->size()-1)/block_size+2;
+        int64_t sz=(vsz-1)/block_size+2;
         release(R);
-        R=new U*[this->sigma];
-        R[0]=new U[this->sigma*sz];
-        for(int i=1; i<this->sigma; ++i)
+        R=new U*[sigma];
+        R[0]=new U[sigma*sz];
+        for(int i=1; i<sigma; ++i)
             R[i]=R[i-1]+sz;
     }
 
-    int64_t count(int64_t cutoff_size)
+    int64_t count(int64_t cutoff_size, std::vector<int8_t> &data)
     {
-        for(int c=0; c<this->sigma; ++c)
+        for(int c=0; c<sigma; ++c)
         {
             R1[c][0]=0;
             R2[c][0]=0;
@@ -186,19 +82,19 @@ struct RankVec : BinVec
             if(i%(b1*b2)==0)
             {
                 ++j1;
-                for(int c=0; c<this->sigma; ++c)
+                for(int c=0; c<sigma; ++c)
                     R1[c][j1]=R1[c][j1-1];
             }
             if(i%b1==0)
             {
                 ++j2;
-                for(int c=0; c<this->sigma; ++c)
+                for(int c=0; c<sigma; ++c)
                     if(j2%b2==0)
                         R2[c][j2]=0;
                     else
                         R2[c][j2]=R2[c][j2-1];
             }
-            int c=(*this)(i);
+            int c=data[i];
             if(c>0)
             {
                 ++R1[c-1][j1];
@@ -209,33 +105,31 @@ struct RankVec : BinVec
         return j1;
     }
 
-    int64_t rank(int c, int64_t i)
+    int64_t rank(int c, int64_t i, std::vector<int8_t> &data)
     {
         if (i<0)
             return 0;
         int64_t r=R1[c-1][i/(b1*b2)]+R2[c-1][i/b1];
         for(int64_t j=(i/b1)*b1; j<=i; ++j)
-            if((*this)(j)==c)
+            if(data[j]==c)
                 ++r;
         return r;
     }
 
-    void saveRankVec(std::ofstream & fout)
+    void saveRankVec(std::ofstream & fout, int64_t vsz)
     {
-        this->saveBinVec(fout);
-        int64_t sz=(this->size()-1)/(b1*b2)+2;
+        int64_t sz=(vsz-1)/(b1*b2)+2;
         fout.write((char*)R1[0],this->sigma*sz*sizeof(R1[0][0]));
-        sz=(this->size()-1)/b1+2;
+        sz=(vsz-1)/b1+2;
         fout.write((char*)R2[0],this->sigma*sz*sizeof(R2[0][0]));
     }
 
-    void loadRankVec(std::ifstream & fin)
+    void loadRankVec(std::ifstream & fin, int64_t vsz)
     {
-        this->loadBinVec(fin);
-        apply_memory();
-        int64_t sz=(this->size()-1)/(b1*b2)+2;
+        apply_memory(vsz);
+        int64_t sz=(vsz-1)/(b1*b2)+2;
         fin.read((char*)R1[0],this->sigma*sz*sizeof(R1[0][0]));
-        sz=(this->size()-1)/b1+2;
+        sz=(vsz-1)/b1+2;
         fin.read((char*)R2[0],this->sigma*sz*sizeof(R2[0][0]));
     }
 };
@@ -247,10 +141,12 @@ struct BroWheel
     std::string file;
     bool reverse;
     std::string sequence;
-    RankVec bwt=RankVec(sigma);
+    std::vector<int8_t> bwt;
+    RankVec bwtRank = RankVec(sigma);
     std::array<int64_t,sigma> C;
     const static int f=16;
-    RankVec sra=RankVec(1);
+    std::vector<int8_t> sra;
+    RankVec sraRank = RankVec(1);
     int64_t* ssa=NULL;
     std::vector<std::pair<std::string, int64_t>> name_cumlen;
 
@@ -314,13 +210,13 @@ struct BroWheel
 
     void to_T(int64_t h, int64_t t, int64_t* SAI)
     {
-        int64_t bsf=((sizeof(int64_t)*CHAR_BIT-1)/bwt.ww-1)*bwt.ww;
+        int64_t bsf=((sizeof(int64_t)*CHAR_BIT-1)/3-1)*3;
         int64_t i=t;
         SAI[i-h]=int64_t(-1)<<bsf;
         while(i>h)
         {
             --i;
-            SAI[i-h]=(SAI[i-h+1]>>bwt.ww)+(int64_t(base2int(sequence[i]))<<bsf);
+            SAI[i-h]=(SAI[i-h+1]>>3)+(int64_t(base2int(sequence[i]))<<bsf);
         }
     }
 
@@ -332,14 +228,11 @@ struct BroWheel
         int64_t* SAmem=SAI+2*ll;
         int64_t* SAImem=SAmem+threads1.size()*(2*ll-1);
         int64_t* rssa=SAImem+threads1.size()*2*ll;
-        if(ssa)
-            delete[] ssa;
-        ssa=new int64_t[ssa_sz];
+        
         bwt.resize(sequence.size());
-        bwt.apply_memory();
-        sra.resize(sequence.size());
-        sra.apply_memory();
-        std::string bwtt;
+        bwtRank.apply_memory(bwt.size());
+
+        std::vector<int8_t> bwtt;
         bwtt.resize(sequence.size());
         
         int64_t N=sequence.size()/ll-1;
@@ -350,14 +243,14 @@ struct BroWheel
 
         int64_t st=std::max(int64_t(0),N*ll);
         GetSA(st, sequence.size(), SA, SAI);
-        bwt.set(SAI[0],0);
+        bwt[SAI[0]] = 0;
         int64_t cutoff_size=sequence.size()-st;
         for(int64_t i=1; i<cutoff_size; ++i)
-            bwt.set(SAI[i],base2int(sequence[st+i-1]));
-        int64_t R1_tail=bwt.count(cutoff_size);
+            bwt[SAI[i]] = base2int(sequence[st+i-1]);
+        int64_t R1_tail=bwtRank.count(cutoff_size, bwt);
         C[0]=0;
         for(int c=1; c<sigma; ++c)
-            C[c]=C[c-1]+bwt.R1[c-1][R1_tail];
+            C[c]=C[c-1]+bwtRank.R1[c-1][R1_tail];
 
         for(int64_t n=N-1; n>=0; --n)
         {
@@ -369,50 +262,57 @@ struct BroWheel
             for(int64_t i=0; i<pn; i+=2)
                 SortSplit(SAn, SAIn[i], SAIn[i+1], NULL, SAI);
             future2.wait();
-            bwt.set(SAI[0],base2int(sequence[(n+1)*ll-1]));
+            bwt[SAI[0]] = base2int(sequence[(n+1)*ll-1]);
             for(int64_t i=0; i<ll; ++i)
                 SAI[SAn[i]]=SAIn[SAn[i]+ll]+i+1;
             cutoff_size+=ll;
             for(int64_t i=0, j=0, k=0; i<cutoff_size; ++i)
             {
                 if(k>=ll || i!=SAI[SAn[k]])
-                    bwtt[i] = int2base[bwt(j++)];
+                    bwtt[i] = bwt[j++];
                 else
                 {
                     if(SAn[k]>0)
-                        bwtt[i] = sequence[n*ll+SAn[k]-1];
+                        bwtt[i] = base2int(sequence[n*ll+SAn[k]-1]);
                     else
-                        bwtt[i] = 'K';
+                        bwtt[i] = 0;
                     ++k;
                 }
             }
+
             if(m>0)
             {
                --m;
                futures1.push(threads1.submit(std::bind(&BroWheel::SegmentSort, this, m, ll, SAmem, SAImem, threads1.size())));
             }
-            for(int64_t i=0; i<cutoff_size; ++i)
-                bwt.set(i, base2int(bwtt[i]));
-            // std::swap(bwt.BV,bwtt.BV);
-            R1_tail=bwt.count(cutoff_size);
+            std::swap(bwt,bwtt);
+            R1_tail=bwtRank.count(cutoff_size, bwt);
             for(int c=1; c<sigma; ++c)
-                C[c]=C[c-1]+bwt.R1[c-1][R1_tail];
+                C[c]=C[c-1]+bwtRank.R1[c-1][R1_tail];
         }
+        bwtt.clear();
 
+        sra.clear();
+        sra.resize(sequence.size(), 0);
+        sraRank.apply_memory(sra.size());
         for(int64_t k=ssa_sz-1, i=0, j=cutoff_size-2; k>=0; --k)
         {
             while(j>=k*f)
             {
-                int c=bwt(i);
-                i=C[c-1]+this->bwt.rank(c,i);
+                int c=bwt[i];
+                i=C[c-1]+this->bwtRank.rank(c,i,bwt);
                 --j;
             }
             rssa[k]=i;
-            sra.set(i,1);
+            sra[i] = 1;
         }
-        sra.count(sra.size());
+
+        sraRank.count(sra.size(), sra);
+        if(ssa)
+            delete[] ssa;
+        ssa=new int64_t[ssa_sz];
         for(int64_t k=0; k<ssa_sz; ++k)
-            ssa[sra.rank(1,rssa[k])-1]=k*f;
+            ssa[sraRank.rank(1, rssa[k], sra)-1]=k*f;
         delete[] SA;
     }
 
@@ -420,10 +320,10 @@ struct BroWheel
     {
         for(int64_t i=0, j=cutoff_size-2; j>=0; --j)
         {
-            if (bwt(i)!=base2int(sequence[j]))
+            if (bwt[i]!=base2int(sequence[j]))
                 return false;
-            int c=bwt(i);
-            i=C[c-1]+this->bwt.rank(c,i);
+            int c=bwt[i];
+            i=C[c-1]+this->bwtRank.rank(c,i,bwt);
         }
         return true;
     }
@@ -446,9 +346,18 @@ struct BroWheel
             fout.write((char*)&name_cumlen[i].second,sizeof(name_cumlen[i].second));
         }
 
-        bwt.saveRankVec(fout);
+        tmp = bwt.size();
+        fout.write((char*)&tmp,sizeof(tmp));
+        fout.write((char*)bwt.data(),bwt.size());
+        bwtRank.saveRankVec(fout, tmp);
+
         fout.write((char*)C.data(),sigma*sizeof(C[0]));
-        sra.saveRankVec(fout);
+
+        tmp = sra.size();
+        fout.write((char*)&tmp,sizeof(tmp));
+        fout.write((char*)sra.data(),sra.size());
+        sraRank.saveRankVec(fout, tmp);
+
         int64_t ssa_sz=(sequence.size()+f-1)/f;
         fout.write((char*)ssa,ssa_sz*sizeof(*ssa));
         fout.close();
@@ -484,9 +393,18 @@ struct BroWheel
             fin.read((char*)&name_cumlen[i].second,sizeof(name_cumlen[i].second));
         }
 
-        bwt.loadRankVec(fin);
+        fin.read((char*)&tmp,sizeof(tmp));
+        bwt.resize(tmp);
+        fin.read((char*)bwt.data(),tmp);
+        bwtRank.loadRankVec(fin, tmp);
+
         fin.read((char*)C.data(),sigma*sizeof(C[0]));
-        sra.loadRankVec(fin);
+
+        fin.read((char*)&tmp,sizeof(tmp));
+        sra.resize(tmp);
+        fin.read((char*)sra.data(),tmp);
+        sraRank.loadRankVec(fin, tmp);
+
         int64_t ssa_sz=(sequence.size()+f-1)/f;
         if(ssa)
             delete[] ssa;
@@ -498,11 +416,11 @@ struct BroWheel
     void RelativeOrder(int64_t* SAI, int64_t* SAIn, int64_t n, int64_t ll)
     {
         int c=base2int(sequence[(n+1)*ll-1]);
-        SAIn[2*ll-1]=C[c-1]+bwt.rank(c,SAI[0]);
+        SAIn[2*ll-1]=C[c-1]+bwtRank.rank(c, SAI[0], bwt);
         for(int64_t i=ll-2; i>=0; --i)
         {
             c=base2int(sequence[n*ll+i]);
-            SAIn[i+ll]=C[c-1]+bwt.rank(c,SAIn[i+ll+1]);
+            SAIn[i+ll]=C[c-1]+bwtRank.rank(c, SAIn[i+ll+1], bwt);
         }
     }
 
@@ -530,19 +448,19 @@ struct BroWheel
     int64_t SimSuffix(int64_t i)
     {
         int j=0;
-        while(sra(i)==0)
+        while(sra[i]==0)
         {
-            int c=bwt(i);
-            i=C[c-1]+bwt.rank(c,i);
+            int c=bwt[i];
+            i=C[c-1]+bwtRank.rank(c,i,bwt);
             ++j;
         }
-        return ssa[sra.rank(1,i)-1]+j;
+        return ssa[sraRank.rank(1,i,sra)-1]+j;
     }
     
     void PreRange(int64_t& i, int64_t& j, int c)
     {
-        i=C[c-1]+bwt.rank(c,i-1)+1;
-        j=C[c-1]+bwt.rank(c,j);
+        i=C[c-1]+bwtRank.rank(c,i-1,bwt)+1;
+        j=C[c-1]+bwtRank.rank(c,j,bwt);
     }
     
     int64_t GetALS(int64_t h, int64_t t, int64_t* SA, int64_t* SAI, int64_t ll)
@@ -586,7 +504,7 @@ struct BroWheel
         for(int64_t i=0; i<sz; ++i)
             SA[i]=i;
         SortSplit(SA, 0, sz-1, SAI, SAI);
-        int64_t* SAIh=SAI+(sizeof(int64_t)*CHAR_BIT-1)/bwt.ww;
+        int64_t* SAIh=SAI+(sizeof(int64_t)*CHAR_BIT-1)/3;
         while(SA[0]>-sz)
         {
             int64_t i=0;
