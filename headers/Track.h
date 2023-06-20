@@ -407,7 +407,7 @@ struct Track : Graph
                     else
                         align_ref.push_back('-');
 
-                    if (align_ref.back() == align_query.back())
+                    if (std::tolower(align_ref.back()) == std::tolower(align_query.back()))
                         align_mid.push_back('|');
                     else
                         align_mid.push_back(' ');

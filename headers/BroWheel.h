@@ -324,18 +324,6 @@ struct BroWheel
         }
     }
 
-    // void to_T(int64_t h, int64_t t, int64_t* SAI)
-    // {
-    //     int64_t bsf=((sizeof(int64_t)*CHAR_BIT-1)/bwt.ww-1)*bwt.ww;
-    //     int64_t i=t-1;
-    //     SAI[i-h]=base2int(sequence[i])<<bsf;
-    //     while(i>h)
-    //     {
-    //         --i;
-    //         SAI[i-h]=(SAI[i-h+1]>>bwt.ww)+(base2int(sequence[i])<<bsf);
-    //     }
-    // }
-
     void index(int64_t ll, thread_pool & threads1, thread_pool & thread2)
     {
         int64_t ssa_sz=(sequence.size()+f-1)/f;
@@ -351,7 +339,7 @@ struct BroWheel
         bwt.apply_memory();
         sra.resize(sequence.size());
         sra.apply_memory();
-        BinVec bwtt(sigma);
+        std::string bwtt;
         bwtt.resize(sequence.size());
         
         int64_t N=sequence.size()/ll-1;
@@ -388,13 +376,13 @@ struct BroWheel
             for(int64_t i=0, j=0, k=0; i<cutoff_size; ++i)
             {
                 if(k>=ll || i!=SAI[SAn[k]])
-                    bwtt.set(i,bwt(j++));
+                    bwtt[i] = int2base[bwt(j++)];
                 else
                 {
                     if(SAn[k]>0)
-                        bwtt.set(i,base2int(sequence[n*ll+SAn[k]-1]));
+                        bwtt[i] = sequence[n*ll+SAn[k]-1];
                     else
-                        bwtt.set(i,0);
+                        bwtt[i] = 'K';
                     ++k;
                 }
             }
@@ -403,7 +391,9 @@ struct BroWheel
                --m;
                futures1.push(threads1.submit(std::bind(&BroWheel::SegmentSort, this, m, ll, SAmem, SAImem, threads1.size())));
             }
-            std::swap(bwt.BV,bwtt.BV);
+            for(int64_t i=0; i<cutoff_size; ++i)
+                bwt.set(i, base2int(bwtt[i]));
+            // std::swap(bwt.BV,bwtt.BV);
             R1_tail=bwt.count(cutoff_size);
             for(int c=1; c<sigma; ++c)
                 C[c]=C[c-1]+bwt.R1[c-1][R1_tail];
@@ -626,45 +616,6 @@ struct BroWheel
             SAIh+=(SAIh-SAI);
         }
     }
-
-    // void GetSA(int64_t h, int64_t t, int64_t* SA, int64_t* SAI)
-    // {
-    //     int64_t sz=t-h;
-    //     to_T(h,t,SAI);
-    //     for(int64_t i=0; i<sz; ++i)
-    //         SA[i]=i;
-    //     SAI[sz]=-1;
-    //     SortSplit(SA, 0, sz-1, SAI, SAI);
-    //     int64_t* SAIh=SAI+(sizeof(int64_t)*CHAR_BIT-1)/bwt.ww;
-    //     while(SA[0]>-sz)
-    //     {
-    //         int64_t i=0;
-    //         int64_t k=0;
-    //         do
-    //         {
-    //             if(SA[i]<0)
-    //             {
-    //                 k+=SA[i];
-    //                 i-=SA[i];
-    //             }
-    //             else
-    //             {
-    //                 if(k<0)
-    //                 {
-    //                     SA[i+k]=k;
-    //                     k=0;
-    //                 }
-    //                 int64_t j=SAI[SA[i]];
-    //                 SortSplit(SA, i, j, SAI, SAIh);
-    //                 i=j+1;
-    //             }
-    //         }
-    //         while(i<sz);
-    //         if(k<0)
-    //             SA[i+k]=k;
-    //         SAIh+=(SAIh-SAI);
-    //     }
-    // }
 
     void SortSplit(int64_t* SA, int64_t p1, int64_t p2, int64_t* SAI, int64_t* SAIh)
     {
