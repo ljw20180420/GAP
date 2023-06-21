@@ -53,17 +53,20 @@ struct Edge
 struct NameSeq
 {
     std::string name;
-    std::string seq;
+    std::vector<int8_t> seq;
 
     void readin(std::string file)
     {
+        std::string str;
         if (!std::filesystem::exists(file))
         {
             std::cerr << "reference file " << file << " does not exist\n";
             exit (EXIT_FAILURE);
         }
         std::ifstream fin(file);
-        std::getline(std::getline(fin, name), seq);
+        std::getline(std::getline(fin, name), str);
+        for (int i=0; i<str.size(); ++i)
+            seq.push_back(BroWheel::base2int[str[i]]);
     }
 };
 

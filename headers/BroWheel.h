@@ -242,7 +242,7 @@ struct BroWheel
         name_cumlen.clear();
         sequence.reserve(std::filesystem::file_size(file));
         std::ifstream fin(file);
-        for (std::string name, str; std::getline(std::getline(fin, name), str).good(); )
+        for (std::string name, str; std::getline(std::getline(fin, name), str); )
         {
             name_cumlen.emplace_back(name, str.size());
             for (size_t i=0; i<str.size(); ++i)

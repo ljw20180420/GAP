@@ -91,7 +91,7 @@ struct Align : Graph
 
     const static int ww = 3;
 
-    std::string O;
+    std::vector<int8_t> O;
     std::string Oname;
     std::ofstream fout;
     int64_t max_id = 0;
@@ -293,7 +293,7 @@ struct Align : Graph
                 if (s == 0 || w == 0)
                     source_max(&Gvals[s][w], {&Fvals[s][w], &Evals[s][w], &Avals[w]}, {Fvals[s][w], Evals[s][w], Avals[w] + edge->gfpT[s]});
                 else
-                    source_max(&Gvals[s][w], {&Fvals[s][w], &Evals[s][w], &Gvals[s - 1][w - 1], &Avals[w]}, {Fvals[s][w], Evals[s][w], Gvals[s - 1][w - 1] + edge->gamma[BroWheel::base2int[edge->pnameseq->seq[s - 1]]][BroWheel::base2int[O[w - 1]]], Avals[w] + edge->gfpT[s]});
+                    source_max(&Gvals[s][w], {&Fvals[s][w], &Evals[s][w], &Gvals[s - 1][w - 1], &Avals[w]}, {Fvals[s][w], Evals[s][w], Gvals[s - 1][w - 1] + edge->gamma[edge->pnameseq->seq[s - 1]][O[w - 1]], Avals[w] + edge->gfpT[s]});
                 edge->head->updateA0(w, Gvals[s][w], &Gvals[s][w]);
             }
     }
@@ -368,7 +368,7 @@ struct Align : Graph
                     E[e].E = -inf;
 
                 double F_val = idx < simnodes.back().shiftFG && FG[idx].w == w ? std::max(FG[idx].F + edge->uf, FG[idx].G + edge->vf) : -inf;
-                double G_val = idx > simnodes[simnodes.size() - 2].shiftFG && FG[idx - 1].w == w - 1 ? FG[idx - 1].G + edge->gamma[simnodes.back().c][BroWheel::base2int[O[w - 1]]] : -inf;
+                double G_val = idx > simnodes[simnodes.size() - 2].shiftFG && FG[idx - 1].w == w - 1 ? FG[idx - 1].G + edge->gamma[simnodes.back().c][O[w - 1]] : -inf;
                 G_val = std::max({G_val, E[e].E, F_val});
                 if (G_val >= FG[w].G)
                 {
@@ -413,101 +413,12 @@ struct Align : Graph
             else
                 source_max(&F0vals[s][w], {&F0vals[s - 1][w], &G0vals[s - 1][w]}, {F0vals[s - 1][w] + edge->uf, G0vals[s - 1][w] + edge->vf});
             if (s > 0 && w > 0)
-                source_max(&G0vals[s][w], {&Evals[s][w], &F0vals[s][w], &Gvals[s - 1][w - 1]}, {Evals[s][w], F0vals[s][w], Gvals[s - 1][w - 1] + edge->gamma[BroWheel::base2int[edge->pnameseq->seq[s - 1]]][BroWheel::base2int[O[w - 1]]]});
+                source_max(&G0vals[s][w], {&Evals[s][w], &F0vals[s][w], &Gvals[s - 1][w - 1]}, {Evals[s][w], F0vals[s][w], Gvals[s - 1][w - 1] + edge->gamma[edge->pnameseq->seq[s - 1]][O[w - 1]]});
             else
                 source_max(&G0vals[s][w], {&Evals[s][w], &F0vals[s][w]}, {Evals[s][w], F0vals[s][w]});
             edge->head->updateA0(w, G0vals[s][w], &G0vals[s][w]);
         }
     }
-
-    // void CircuitIterationGlobal(int64_t w, EdgeGlobalCircuit *edge)
-    // {
-    //     if (w == 0)
-    //         return;
-
-    //     double *Avals = edge->tail->Avals[edge->tail->scc_sz - 1], *Bvals = edge->tail->Bvals;
-    //     std::deque<SNC> &sncs = edge->sncs;
-
-    //     if (w == 1)
-    //     {
-    //         sncs.emplace_back(-inf, -inf, -inf, -inf, -1, 5, 0, 0, edge->pbrowheel->sequence.size() - 1, 1, (SNC *)NULL, (SNC *)NULL);
-    //         for (int c = 2; c <= 6; ++c)
-    //         {
-    //             int64_t sr1 = sncs.front().sr1;
-    //             int64_t sr2 = sncs.front().sr2;
-    //             edge->pbrowheel->PreRange(sr1, sr2, c);
-    //             if (sr1 <= sr2)
-    //             {
-    //                 sncs.emplace_back(-inf, -inf, -inf, -inf, c, 0, 1, sr1, sr2, 0, &sncs.front(), sncs.front().jump);
-    //                 sncs.front().jump = &sncs.back();
-    //             }
-    //         }
-    //     }
-    //     else
-    //     {
-    //         for (auto prejump = &sncs.front(), jump = prejump->jump; jump; jump = prejump->jump)
-    //         {
-    //             jump->hatG = jump->G0;
-    //             if (jump->itp != &sncs.front() && jump->itp->hatG == -inf && jump->hatG == -inf && jump->E == -inf)
-    //                 prejump->jump = jump->jump;
-    //             else
-    //                 prejump = jump;
-    //         }
-    //     }
-
-    //     sncs.front().hatG = std::max(sncs.front().G0, Avals[w - 1] + edge->T);
-    //     sncs.front().E = std::max(sncs.front().hatG + edge->ve, sncs.front().E + edge->ue);
-    //     double tgw = (O.size() > w ? (O.size() - w - 1) * edge->tail->ue + edge->tail->ve : 0);
-    //     if (sncs.front().E + edge->ue < std::max(sncs.front().E, Bvals[w] + edge->T) + edge->tail->ve && sncs.front().E + (O.size() - w) * edge->ue < std::max(sncs.front().E, Bvals[w] + edge->T) + tgw)
-    //         sncs.front().E = -inf;
-    //     double Gthres = std::max(sncs.front().E, Bvals[w] + edge->T);
-    //     double Ethres = std::max(sncs.front().E, Gthres + std::min(0.0, std::min(edge->tail->ve - edge->ue, tgw - (O.size() - w) * edge->ue)));
-    //     sncs.front().F0 = -inf;
-    //     sncs.front().G0 = sncs.front().E;
-    //     edge->head->updateA0(w, sncs.front().G0, edge, sncs.front().sr1, sncs.front().lambda);
-
-    //     for (auto jump = sncs.front().jump; jump; jump = jump->jump)
-    //     {
-    //         jump->E = std::max(jump->hatG + edge->ve, jump->E + edge->ue);
-    //         if (jump->E < Ethres)
-    //             jump->E = -inf;
-    //         jump->F0 = std::max(jump->itp->G0 + edge->vf, jump->itp->F0 + edge->uf);
-    //         jump->G0 = std::max(std::max(jump->E, jump->F0), jump->itp->hatG + edge->gamma[jump->c][BroWheel::base2int(O[w - 1])]);
-    //         if (jump->G0 < Gthres)
-    //         {
-    //             jump->F0 = -inf;
-    //             jump->G0 = -inf;
-    //         }
-    //         else
-    //             edge->head->updateA0(w, jump->G0, edge, jump->sr1, jump->lambda);
-    //         if (jump->G0 != -inf && jump->hatG == -inf)
-    //         {
-    //             if (jump->cid == 0)
-    //             {
-    //                 jump->cid = sncs.size();
-    //                 for (int c = 2; c <= 6; ++c)
-    //                 {
-    //                     int64_t sr1 = jump->sr1;
-    //                     int64_t sr2 = jump->sr2;
-    //                     edge->pbrowheel->PreRange(sr1, sr2, c);
-    //                     if (sr1 <= sr2)
-    //                     {
-    //                         sncs.emplace_back(-inf, -inf, -inf, -inf, c, 0, jump->lambda + 1, sr1, sr2, 0, jump, (SNC *)NULL);
-    //                         ++jump->idl;
-    //                     }
-    //                 }
-    //             }
-    //             for (int idi = 0; idi < jump->idl; ++idi)
-    //                 if (sncs[jump->cid + idi].E == -inf && sncs[jump->cid + idi].G0 == -inf)
-    //                 {
-    //                     sncs[jump->cid + idi].jump = jump->jump;
-    //                     jump->jump = &sncs[jump->cid + idi];
-    //                 }
-    //         }
-    //     }
-    //     if (w == O.size())
-    //         sncs.clear();
-    // }
 
     void CircuitIterationGlobal(int64_t w, SCC &scc)
     {
@@ -569,7 +480,7 @@ struct Align : Graph
                     if (jumps[i]->E < Ethres)
                         jumps[i]->E = -inf;
                     jumps[i]->F0 = std::max(jumps[i]->itp->G0 + edges[i]->vf, jumps[i]->itp->F0 + edges[i]->uf);
-                    jumps[i]->G0 = std::max(std::max(jumps[i]->E, jumps[i]->F0), jumps[i]->itp->hatG + edges[i]->gamma[jumps[i]->c][BroWheel::base2int[O[w - 1]]]);
+                    jumps[i]->G0 = std::max(std::max(jumps[i]->E, jumps[i]->F0), jumps[i]->itp->hatG + edges[i]->gamma[jumps[i]->c][O[w - 1]]);
                     if (jumps[i]->G0 < Gthres)
                     {
                         jumps[i]->F0 = -inf;
@@ -776,7 +687,7 @@ struct Align : Graph
                         if (w == 0)
                             source_max(dots[tracktree.shiftG + w], {&dots[tracktree.shiftE + w], &dots[tracktree.shiftF + w]}, {dots[tracktree.shiftE + w].val, dots[tracktree.shiftF + w].val});
                         else
-                            source_max(dots[tracktree.shiftG + w], {&dots[tracktree.shiftE + w], &dots[tracktree.shiftF + w], &dots[tracktree.shiftPG + w - 1]}, {dots[tracktree.shiftE + w].val, dots[tracktree.shiftF + w].val, dots[tracktree.shiftPG + w - 1].val + edge->gamma[c][BroWheel::base2int[O[w - 1]]]});
+                            source_max(dots[tracktree.shiftG + w], {&dots[tracktree.shiftE + w], &dots[tracktree.shiftF + w], &dots[tracktree.shiftPG + w - 1]}, {dots[tracktree.shiftE + w].val, dots[tracktree.shiftF + w].val, dots[tracktree.shiftPG + w - 1].val + edge->gamma[c][O[w - 1]]});
                     }
                     tracknodes[tracktree.idx].tau = std::max(tracknodes[tracktree.idx].tau, swn.w + 1);
                 }
@@ -816,7 +727,7 @@ struct Align : Graph
                         if (w == 0)
                             source_max(dots[tracktree.shiftG + w], {&dots[tracktree.shiftE + w], &dots[tracktree.shiftF + w]}, {dots[tracktree.shiftE + w].val, dots[tracktree.shiftF + w].val});
                         else
-                            source_max(dots[tracktree.shiftG + w], {&dots[tracktree.shiftE + w], &dots[tracktree.shiftF + w], &dots[tracktree.shiftPG + w - 1]}, {dots[tracktree.shiftE + w].val, dots[tracktree.shiftF + w].val, dots[tracktree.shiftPG + w - 1].val + edge->gamma[c][BroWheel::base2int[O[w - 1]]]});
+                            source_max(dots[tracktree.shiftG + w], {&dots[tracktree.shiftE + w], &dots[tracktree.shiftF + w], &dots[tracktree.shiftPG + w - 1]}, {dots[tracktree.shiftE + w].val, dots[tracktree.shiftF + w].val, dots[tracktree.shiftPG + w - 1].val + edge->gamma[c][O[w - 1]]});
                     }
                     tracknodes[tracktree.idx].tau = std::max(tracknodes[tracktree.idx].tau, swn.w + 1);
                 }

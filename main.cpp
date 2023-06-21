@@ -22,7 +22,6 @@ struct Parallel_Align
     Graph graph;
 
     std::string input;
-    std::deque<std::pair<std::string, std::string>> reads_total;
     int threads_sz, max_extract, diff_thres, max_range, min_seg_num, max_seg_num, block_size;
     int64_t max_mega;
     int Omax;
@@ -58,16 +57,17 @@ struct Parallel_Align
             pair.second.loadBroWheel(pair.first);
     }
 
-    std::queue<std::pair<std::string, std::string>> fill_block(std::ifstream &fin)
+    std::queue<std::pair<std::string, std::vector<int8_t>>> fill_block(std::ifstream &fin)
     {
-        std::queue<std::pair<std::string, std::string>> reads;
+        std::queue<std::pair<std::string, std::vector<int8_t>>> reads;
         while (reads.size() < block_size)
         {
             std::string name, read;
             if (std::getline(std::getline(fin, name), read))
             {
-                reads.emplace(name, read);
-                reads_total.emplace_back(name, read);
+                reads.emplace(name, std::vector<int8_t>());
+                for (int i = 0; i < read.size(); ++i)
+                    reads.back().second.push_back(BroWheel::base2int[read[i]]);
             }
             else
                 break;
@@ -75,7 +75,7 @@ struct Parallel_Align
         return reads;
     }
 
-    void process_and_write_single(std::queue<std::pair<std::string, std::string>> &&reads, Align &align)
+    void process_and_write_single(std::queue<std::pair<std::string, std::vector<int8_t>>> &&reads, Align &align)
     {
         while (!reads.empty())
         {
@@ -92,7 +92,7 @@ struct Parallel_Align
         Align align(argc, argv, file2seq, file2browheel, "mg", Omax);
 
         std::ifstream fin(input);
-        for (std::queue<std::pair<std::string, std::string>> reads=fill_block(fin); !reads.empty(); reads=fill_block(fin))
+        for (std::queue<std::pair<std::string, std::vector<int8_t>>> reads=fill_block(fin); !reads.empty(); reads=fill_block(fin))
             process_and_write_single(std::move(reads), align);
         fin.close();
 
@@ -116,7 +116,7 @@ struct Parallel_Align
         block_num.store(0);
         std::deque<std::future<void>> futures;
         std::ifstream fin(input);
-        for (std::queue<std::pair<std::string, std::string>> reads=fill_block(fin); !reads.empty(); reads=fill_block(fin))
+        for (std::queue<std::pair<std::string, std::vector<int8_t>>> reads=fill_block(fin); !reads.empty(); reads=fill_block(fin))
         {
             while (block_num.load() >= max_block)
                 ;
@@ -137,7 +137,7 @@ struct Parallel_Align
         }
     }
 
-    void process_and_write(std::queue<std::pair<std::string, std::string>> reads, std::map<std::thread::id, Align> &aligns)
+    void process_and_write(std::queue<std::pair<std::string, std::vector<int8_t>>> reads, std::map<std::thread::id, Align> &aligns)
     {
         process_and_write_single(std::move(reads), aligns.at(std::this_thread::get_id()));
         --block_num;
@@ -146,7 +146,7 @@ struct Parallel_Align
     void track()
     {
         Track track(argc, argv, file2seq, file2browheel, max_extract, max_mega, diff_thres, max_range, min_seg_num, max_seg_num);
-        track.ReadTrack(mg_files, reads_total);
+        track.ReadTrack(mg_files, input);
     }
 };
 

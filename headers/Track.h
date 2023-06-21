@@ -34,7 +34,7 @@ struct Track : Graph
     {
     }
 
-    void ReadTrack(std::deque<std::string> mg_files, std::deque<std::pair<std::string, std::string>> &reads_total)
+    void ReadTrack(std::deque<std::string> mg_files, std::string input)
     {
         std::vector<std::ifstream> fins;
         for (auto &file : mg_files)
@@ -61,12 +61,13 @@ struct Track : Graph
         }
         dots.resize(max_id + 1);
         int64_t seq_num = 0;
-        for (std::pair<std::string, std::string> &pair : reads_total)
+        std::ifstream finput(input);
+        for (std::string name, read; std::getline(std::getline(finput, name), read); )
         {
             ++seq_num;
             for (int64_t f = 0; f < fins.size(); ++f)
             {
-                if (Onames[f] == pair.first)
+                if (Onames[f] == name)
                 {
                     int64_t id = -1;
                     int64_t uid = 0;
@@ -89,7 +90,7 @@ struct Track : Graph
                         }
                     } while (id < uid);
 
-                    BackTrack(&dots[0], pair.first, pair.second);
+                    BackTrack(&dots[0], name, read);
 
                     sources.clear();
                     if (fzs[f] - fins[f].tellg() > sizeof(int64_t))
@@ -385,7 +386,8 @@ struct Track : Graph
                 {
                     align_query.append(path[0]->s, '-');
                     align_mid.append(path[0]->s, ' ');
-                    align_ref.append(local->pnameseq->seq, 0, path[0]->s);
+                    for (int i=0; i<path[0]->s; ++i)
+                        align_ref.push_back(BroWheel::int2base[local->pnameseq->seq[i]]);
                 }
 
                 for (int i = 1; i < path.size(); ++i)
@@ -401,9 +403,9 @@ struct Track : Graph
                         align_query.push_back('-');
                     
                     if (localF)
-                        align_ref.push_back(static_cast<EdgeLocal *>(edges[path[i]->n])->pnameseq->seq[path[i]->s - 1]);
+                        align_ref.push_back(BroWheel::int2base[static_cast<EdgeLocal *>(edges[path[i]->n])->pnameseq->seq[path[i]->s - 1]]);
                     else if (globalF)
-                        align_ref.push_back(global->pbrowheel->sequence[global->pbrowheel->sequence.size() - 1 - path[i]->s]);
+                        align_ref.push_back(BroWheel::int2base[global->pbrowheel->sequence[global->pbrowheel->sequence.size() - 1 - path[i]->s]]);
                     else
                         align_ref.push_back('-');
 
@@ -418,7 +420,8 @@ struct Track : Graph
                     int sz = local->pnameseq->seq.size() - path.back()->s;
                     align_query.append(sz, '-');
                     align_mid.append(sz, ' ');
-                    align_ref.append(local->pnameseq->seq, path.back()->s, sz);
+                    for (int i=path.back()->s; i<path.back()->s+sz; ++i)
+                        align_ref.push_back(BroWheel::int2base[local->pnameseq->seq[i]]);
                 }
             }
 
