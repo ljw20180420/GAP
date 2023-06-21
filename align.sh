@@ -1,6 +1,6 @@
 #!/bin/bash
 excu="/home/ljw/new_fold/old_desktop/shoujia/Graph_Projects/GAP/build/GAP"
-genome="/home/ljw/hg19_with_bowtie2_index/hg19.with.revcomp.fa"
+genome="/home/ljw/hg19_with_bowtie2_index/hg19.for.rev.fa"
 msn=1
 bs=5
 tz=24

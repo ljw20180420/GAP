@@ -468,7 +468,7 @@ struct Track : Graph
         BroWheel *pbrowheel = static_cast<EdgeGlobal *>(edges[pdot->n])->pbrowheel;
         int64_t sr1 = 0, sr2 = pbrowheel->sequence.size() - 1;
         for (int64_t s = pbrowheel->sequence.size() - pdot->s + pdot->lambda - 2; s >= pbrowheel->sequence.size() - 1 - pdot->s; --s)
-            pbrowheel->PreRange(sr1, sr2, BroWheel::base2int(pbrowheel->sequence[s]));
+            pbrowheel->PreRange(sr1, sr2, pbrowheel->sequence[s]);
         for (int64_t sx = sr1; sx <= sr2 && sx - sr1 < max_range; ++sx)
         {
             int64_t s = pbrowheel->SimSuffix(sx);

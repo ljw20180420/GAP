@@ -1,18 +1,18 @@
-import Bio.Seq, bioframe, ctypes, struct
+import Bio.Seq, bioframe, numpy, sys
 
-# fasta_file = "/home/ljw/hg19_with_bowtie2_index/hg19.fa"
-# genome = bioframe.load_fasta(fasta_file)
-# batch = 50
-# with open("/home/ljw/hg19_with_bowtie2_index/hg19.with.revcomp.fa", "w") as fw:
-#     for chr, value in genome.items():
-#         fw.write(f">{chr}\n")
-#         seq = value.ff.fetch(chr)
-#         seq = "\n".join([seq[i:min(i+50,len(seq))] for i in range(0,len(seq),batch)])
-#         fw.write(f"{seq}\n")
-#         fw.write(f">{chr}_RC\n")
-#         seq = Bio.Seq.Seq(value.ff.fetch(chr)).reverse_complement().__str__()
-#         seq = "\n".join([seq[i:min(i+batch,len(seq))] for i in range(0,len(seq),batch)])
-#         fw.write(f"{seq}\n")
+fasta_file = "/home/ljw/hg19_with_bowtie2_index/hg19.fa"
+genome = bioframe.load_fasta(fasta_file)
+batch = sys.maxsize
+with open("/home/ljw/hg19_with_bowtie2_index/hg19.for.rev.fa", "w") as fw:
+    for chr, value in genome.items():
+        fw.write(f">{chr}\n")
+        seq = value.ff.fetch(chr)
+        seq = "\n".join([seq[i:min(i+batch,len(seq))] for i in range(0,len(seq),batch)])
+        fw.write(f"{seq}\n")
+        fw.write(f">{chr}_RC\n")
+        seq = Bio.Seq.Seq(value.ff.fetch(chr)).reverse_complement().__str__()
+        seq = "\n".join([seq[i:min(i+batch,len(seq))] for i in range(0,len(seq),batch)])
+        fw.write(f"{seq}\n")
 
 
 

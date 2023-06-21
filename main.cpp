@@ -200,15 +200,6 @@ int main(int argc, char **argv)
     parallel_align.parallel_align();
     parallel_align.track();
 
-    // int64_t h = 6191354650;
-    // int64_t t = 6191354749;
-    // BroWheel browheel;
-    // browheel.readin("hg19.with.revcomp.fa", true);
-    // int64_t ll = 50;
-    // int64_t* SA=new int64_t[2*ll-1];
-    // int64_t* SAI=new int64_t[2*ll];
-    // browheel.GetSA(h, t, SA, SAI);
-
     // BroWheel browheel;
     // browheel.loadBroWheel("test.fa");
     // std::cerr << browheel.bwt.size() << '\n';
@@ -217,7 +208,6 @@ int main(int argc, char **argv)
     //     fout << BroWheel::int2base[browheel.bwt[i]];
     // fout << '\n';
     // fout.close();
-    // std::cout << browheel.sequence << '\n';
 
     return EXIT_SUCCESS;
 }

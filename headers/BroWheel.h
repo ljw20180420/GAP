@@ -13,17 +13,43 @@
 #include <algorithm>
 #include <filesystem>
 #include "Threadpool.h"
-#include "gsufsort/external/gsacak.h"
+// #include "../gsufsort/external/gsacak.h"
 
-void gsufsortSA(std::string &sequence)
+// void gsufsortGSABWT(std::vector<int8_t> &sequence)
+// {
+//     int64_t *SA = (int64_t *) malloc(sequence*sizeof(int64_t));
+//     // gsacak(sequence.data(), SA, NULL, NULL, sequence.size())
+//     sacak(sequence.data(), SA, sequence.size());
+    
+// }
+
+void SA2GSA(std::string SAfile, std::string DAfile, std::string GAfile, int batch, std::vector<std::pair<std::string, int64_t>> &name_cumlen)
 {
-    gsacak(unsigned char *s, uint_t *SA, NULL, NULL, sequence.size())
-    gSACA_K(uint_t *s, uint_t *SA,
-  uint_t n, unsigned int K,
-  int cs, uint_t separator, int level)
-    sacak(sequence.data, uint_t *SA, uint_t n)
+    std::ifstream fin(SAfile);
+    std::ofstream fDA(DAfile), fGA(GAfile);
+    int64_t *SA = (int64_t *) malloc(batch*sizeof(int64_t));
+    int8_t *DA = (int8_t *) malloc(batch*sizeof(int8_t));
+    int32_t *GA = (int32_t *) malloc(batch*sizeof(int32_t));
+    
+    while (true)
+    {
+        fin.read((char *)SA, batch*sizeof(int64_t));
+        int gc = fin.good() ? batch : fin.gcount();
+        for (int i=0; i<gc; ++i)
+        {
+            int j = 1;
+            for (; j<name_cumlen.size(); ++j)
+                if (name_cumlen[j].second>SA[i])
+                    break;
+            DA[i] = --j;
+            GA[i] = SA[i] - name_cumlen[j].second;
+        }
+        fDA.write((char *)DA, gc*sizeof(int8_t));
+        fGA.write((char *)GA, gc*sizeof(int32_t));
+        if (!fin.good())
+            break;
+    }
 }
-
 
 struct RankVec
 {
@@ -138,9 +164,10 @@ struct BroWheel
 {
     const static int sigma=6;
     const static std::string int2base;
+    static std::map<char, int8_t> base2int;
     std::string file;
     bool reverse;
-    std::string sequence;
+    std::vector<int8_t> sequence;
     std::vector<int8_t> bwt;
     RankVec bwtRank = RankVec(sigma);
     std::array<int64_t,sigma> C;
@@ -149,6 +176,7 @@ struct BroWheel
     RankVec sraRank = RankVec(1);
     int64_t* ssa=NULL;
     std::vector<std::pair<std::string, int64_t>> name_cumlen;
+
 
     ~BroWheel()
     {
@@ -163,38 +191,69 @@ struct BroWheel
         readin();
     }
 
+    // void readin()
+    // {
+    //     sequence.clear();
+    //     name_cumlen.clear();
+    //     sequence.reserve(std::filesystem::file_size(file));
+    //     std::ifstream fin(file);
+    //     size_t seqlen = 0;
+    //     for (std::string str; std::getline(fin, str); )
+    //     {
+    //         if (str[0]=='>')
+    //         {
+    //             if (!name_cumlen.empty())
+    //             {
+    //                 name_cumlen.back().second = seqlen;
+    //                 sequence.push_back('L');
+    //             }
+    //             seqlen = 0;
+    //             name_cumlen.emplace_back(str, 0);
+    //         }
+    //         else
+    //         {
+    //             seqlen += str.size();
+    //             sequence.append(std::move(str));
+    //         }
+            
+    //     }
+    //     name_cumlen.back().second = seqlen;
+    //     sequence.push_back('K');
+
+    //     if(reverse)
+    //     {
+    //         std::reverse(sequence.begin(), sequence.end()-1);
+    //         for(int64_t i=0, j=name_cumlen.size()-1; i<j; ++i, --j)
+    //             std::swap(name_cumlen[i], name_cumlen[j]);
+    //     }
+
+    //     int64_t tmp=name_cumlen[0].second;
+    //     name_cumlen[0].second=0;
+    //     for (int64_t i=1; i<name_cumlen.size(); ++i)
+    //     {
+    //         std::swap(tmp, name_cumlen[i].second);
+    //         name_cumlen[i].second+=name_cumlen[i-1].second+1;
+    //     }
+    // }
+
     void readin()
     {
         sequence.clear();
         name_cumlen.clear();
         sequence.reserve(std::filesystem::file_size(file));
         std::ifstream fin(file);
-        size_t seqlen = 0;
-        for (std::string str; std::getline(fin, str); )
+        for (std::string name, str; std::getline(std::getline(fin, name), str).good(); )
         {
-            if (str[0]=='>')
-            {
-                if (!name_cumlen.empty())
-                {
-                    name_cumlen.back().second = seqlen;
-                    sequence.push_back('L');
-                }
-                seqlen = 0;
-                name_cumlen.emplace_back(str, 0);
-            }
-            else
-            {
-                seqlen += str.size();
-                sequence.append(std::move(str));
-            }
-            
+            name_cumlen.emplace_back(name, str.size());
+            for (size_t i=0; i<str.size(); ++i)
+                sequence.push_back(base2int[str[i]]);
+            sequence.push_back(1);            
         }
-        name_cumlen.back().second = seqlen;
-        sequence.push_back('K');
+        sequence.push_back(0);
 
         if(reverse)
         {
-            std::reverse(sequence.begin(), sequence.end()-1);
+            std::reverse(sequence.begin(), sequence.end()-2);
             for(int64_t i=0, j=name_cumlen.size()-1; i<j; ++i, --j)
                 std::swap(name_cumlen[i], name_cumlen[j]);
         }
@@ -216,7 +275,7 @@ struct BroWheel
         while(i>h)
         {
             --i;
-            SAI[i-h]=(SAI[i-h+1]>>3)+(int64_t(base2int(sequence[i]))<<bsf);
+            SAI[i-h]=(SAI[i-h+1]>>3)+(int64_t(sequence[i])<<bsf);
         }
     }
 
@@ -246,7 +305,7 @@ struct BroWheel
         bwt[SAI[0]] = 0;
         int64_t cutoff_size=sequence.size()-st;
         for(int64_t i=1; i<cutoff_size; ++i)
-            bwt[SAI[i]] = base2int(sequence[st+i-1]);
+            bwt[SAI[i]] = sequence[st+i-1];
         int64_t R1_tail=bwtRank.count(cutoff_size, bwt);
         C[0]=0;
         for(int c=1; c<sigma; ++c)
@@ -262,7 +321,7 @@ struct BroWheel
             for(int64_t i=0; i<pn; i+=2)
                 SortSplit(SAn, SAIn[i], SAIn[i+1], NULL, SAI);
             future2.wait();
-            bwt[SAI[0]] = base2int(sequence[(n+1)*ll-1]);
+            bwt[SAI[0]] = sequence[(n+1)*ll-1];
             for(int64_t i=0; i<ll; ++i)
                 SAI[SAn[i]]=SAIn[SAn[i]+ll]+i+1;
             cutoff_size+=ll;
@@ -273,7 +332,7 @@ struct BroWheel
                 else
                 {
                     if(SAn[k]>0)
-                        bwtt[i] = base2int(sequence[n*ll+SAn[k]-1]);
+                        bwtt[i] = sequence[n*ll+SAn[k]-1];
                     else
                         bwtt[i] = 0;
                     ++k;
@@ -320,7 +379,7 @@ struct BroWheel
     {
         for(int64_t i=0, j=cutoff_size-2; j>=0; --j)
         {
-            if (bwt[i]!=base2int(sequence[j]))
+            if (bwt[i]!=sequence[j])
                 return false;
             int c=bwt[i];
             i=C[c-1]+this->bwtRank.rank(c,i,bwt);
@@ -334,7 +393,7 @@ struct BroWheel
         fout.write((char*)&reverse,sizeof(reverse));
         int64_t tmp=sequence.size();
         fout.write((char*)&tmp,sizeof(tmp));
-        fout.write(sequence.data(),sequence.size());
+        fout.write((char *)sequence.data(),sequence.size());
 
         int64_t name_cumlen_sz = name_cumlen.size();
         fout.write((char*)&name_cumlen_sz,sizeof(name_cumlen_sz));
@@ -378,7 +437,7 @@ struct BroWheel
         int64_t tmp;
         fin.read((char*)&tmp,sizeof(tmp));
         sequence.resize(tmp);
-        fin.read(sequence.data(),tmp);
+        fin.read((char *)sequence.data(),tmp);
         sequence.shrink_to_fit();
 
         int64_t name_cumlen_sz;
@@ -415,11 +474,11 @@ struct BroWheel
     
     void RelativeOrder(int64_t* SAI, int64_t* SAIn, int64_t n, int64_t ll)
     {
-        int c=base2int(sequence[(n+1)*ll-1]);
+        int c=sequence[(n+1)*ll-1];
         SAIn[2*ll-1]=C[c-1]+bwtRank.rank(c, SAI[0], bwt);
         for(int64_t i=ll-2; i>=0; --i)
         {
-            c=base2int(sequence[n*ll+i]);
+            c=sequence[n*ll+i];
             SAIn[i+ll]=C[c-1]+bwtRank.rank(c, SAIn[i+ll+1], bwt);
         }
     }
@@ -645,11 +704,6 @@ struct BroWheel
         return sequence.size()-1-start-len;
     }
 
-    static int base2int(char c)
-    {
-        return (c + 6) >> 1 & 7;
-    }
-
     // std::tuple<std::string, int64_t> get_axis(int64_t s)
     // {
     //     s=sequence.size()-1-s;
@@ -671,6 +725,7 @@ struct BroWheel
     // }
 };
 
-const std::string BroWheel::int2base="KLNACTG";
+const std::string BroWheel::int2base="#$NACGT";
+std::map<char, int8_t> BroWheel::base2int={{'N',2}, {'A',3}, {'C',4}, {'G',5}, {'T',6}, {'n',2}, {'a',3}, {'c',4}, {'g',5}, {'t',6}};
 
 #endif
