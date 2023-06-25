@@ -1,70 +1,20 @@
-import Bio.Seq, bioframe, numpy, sys
+import Bio.Seq, bioframe, numpy, scipy
 
-fasta_file = "/home/ljw/hg19_with_bowtie2_index/hg19.fa"
+poly = scipy.interpolate.lagrange(numpy.array([78,65,67,71,84]), numpy.arange(2,7))
+numpy.round(poly(numpy.array([78,65,67,71,84]))).astype(numpy.uint8)
+# fasta_file = "/home/ljw/hg19_with_bowtie2_index/hg19.fa"
+fasta_file = "/home/ljw/hg19_with_bowtie2_index/test.fa"
 genome = bioframe.load_fasta(fasta_file)
-batch = sys.maxsize
-with open("/home/ljw/hg19_with_bowtie2_index/hg19.for.rev.fa", "w") as fw:
-    for chr, value in genome.items():
-        fw.write(f">{chr}\n")
-        seq = value.ff.fetch(chr)
-        seq = "\n".join([seq[i:min(i+batch,len(seq))] for i in range(0,len(seq),batch)])
-        fw.write(f"{seq}\n")
-        fw.write(f">{chr}_RC\n")
-        seq = Bio.Seq.Seq(value.ff.fetch(chr)).reverse_complement().__str__()
-        seq = "\n".join([seq[i:min(i+batch,len(seq))] for i in range(0,len(seq),batch)])
-        fw.write(f"{seq}\n")
-
-
-
-
-# with open("/home/ljw/hg19_with_bowtie2_index/hg19.fa.8.8.gsa", "rb") as f:
-#     for _ in range(20):
-#         struct.unpack('Q', f.read(8))
-
-# with open("/home/ljw/hg19_with_bowtie2_index/test.fa", "r") as fr, open("/home/ljw/hg19_with_bowtie2_index/test.rev.fa", "w") as fw:
-#     lines = fr.readlines()
-#     lines.reverse()
-#     for i in range(0,len(lines), 2):
-#         seq = lines[i].rstrip('\n')
-#         name = lines[i+1].rstrip('\n')
-#         fw.write(f'{name}_R\n{seq[::-1]}\n')
-
-# def ca2gsu(seq):
-#     mydict = {"K" : "#", "L" : "$", "N" : "%", "A" : "A", "C" : "B", "T" : "C", "G" : "D"}
-#     nseq = ""
-#     for ca in seq:
-#         nseq += mydict[ca]
-#     return nseq
-
-# with open("/home/ljw/hg19_with_bowtie2_index/test.rev.fa", "r") as fr:
-#     lines = fr.readlines()
-# catline = ""
-# for i in range(1,len(lines),2):
-#     catline += lines[i].rstrip('\n')
-#     catline += 'L'
-# catline = catline + 'K'
-# catline = ca2gsu(catline)
-
-# suffices = []
-# for i in range(len(catline)):
-#     suffices.append(catline[i:] + catline[:i])
-# suffices.sort()
-
-# bwt = ""
-# for suffix in suffices:
-#     bwt += suffix[-1]
-
-# with open("/home/ljw/hg19_with_bowtie2_index/test.fa.my.bwt", "r") as fr:
-#     mybwt = fr.readline().rstrip('\n')
-# mybwt = ca2gsu(mybwt)
-
-# with open("/home/ljw/hg19_with_bowtie2_index/test.rev.fa", "r") as fr, open("/home/ljw/hg19_with_bowtie2_index/test.rev.gsu.fa", "w") as fw:
-#     lines = fr.readlines()
-#     for i in range(0,len(lines),2):
-#         fw.write(f"{lines[i]}{ca2gsu(lines[i+1][:-1])}\n")
-
-
-# with open("/home/ljw/hg19_with_bowtie2_index/test.fa", "r") as fr, open("/home/ljw/hg19_with_bowtie2_index/test.low.fa", "w") as fw:
-#     lines = fr.readlines()
-#     for i in range(0,len(lines),2):
-#         fw.write(f"{lines[i]}{lines[i+1][:-1].lower()}\n")
+cumlen = 0
+with open(f"{fasta_file}.for.rev.inv.concat", "wb") as fw, open(f"{fasta_file}.cumlen", "w") as fw2:
+    for chr, value in list(genome.items())[::-1]:
+        fw2.write(f">{chr}_RC\t{cumlen}\n")
+        seq = value.ff.fetch(chr)[::-1].upper()
+        cumlen += len(seq) + 1
+        fw2.write(f">{chr}\t{cumlen}\n")
+        cumlen += len(seq) + 1
+        fw.write(numpy.round(poly(numpy.frombuffer(Bio.Seq.Seq(seq).reverse_complement().__str__().encode(), dtype=numpy.uint8))).astype(numpy.uint8).tobytes())
+        fw.write(numpy.uint8(1).tobytes())
+        fw.write(numpy.round(poly(numpy.frombuffer(seq.encode(), dtype=numpy.uint8))).astype(numpy.uint8).tobytes())
+        fw.write(numpy.uint8(1).tobytes())
+    fw.write(numpy.uint8(0).tobytes())

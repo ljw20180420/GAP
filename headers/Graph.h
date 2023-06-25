@@ -66,7 +66,7 @@ struct NameSeq
         std::ifstream fin(file);
         std::getline(std::getline(fin, name), str);
         for (int i=0; i<str.size(); ++i)
-            seq.push_back(BroWheel::base2int[str[i]]);
+            seq.push_back(base2int[str[i]]);
     }
 };
 

@@ -387,7 +387,7 @@ struct Track : Graph
                     align_query.append(path[0]->s, '-');
                     align_mid.append(path[0]->s, ' ');
                     for (int i=0; i<path[0]->s; ++i)
-                        align_ref.push_back(BroWheel::int2base[local->pnameseq->seq[i]]);
+                        align_ref.push_back(int2base[local->pnameseq->seq[i]]);
                 }
 
                 for (int i = 1; i < path.size(); ++i)
@@ -403,9 +403,9 @@ struct Track : Graph
                         align_query.push_back('-');
                     
                     if (localF)
-                        align_ref.push_back(BroWheel::int2base[static_cast<EdgeLocal *>(edges[path[i]->n])->pnameseq->seq[path[i]->s - 1]]);
+                        align_ref.push_back(int2base[static_cast<EdgeLocal *>(edges[path[i]->n])->pnameseq->seq[path[i]->s - 1]]);
                     else if (globalF)
-                        align_ref.push_back(BroWheel::int2base[global->pbrowheel->sequence[global->pbrowheel->sequence.size() - 1 - path[i]->s]]);
+                        align_ref.push_back(int2base[global->pbrowheel->sequence[global->pbrowheel->sequence.size() - 1 - path[i]->s]]);
                     else
                         align_ref.push_back('-');
 
@@ -421,7 +421,7 @@ struct Track : Graph
                     align_query.append(sz, '-');
                     align_mid.append(sz, ' ');
                     for (int i=path.back()->s; i<path.back()->s+sz; ++i)
-                        align_ref.push_back(BroWheel::int2base[local->pnameseq->seq[i]]);
+                        align_ref.push_back(int2base[local->pnameseq->seq[i]]);
                 }
             }
 
