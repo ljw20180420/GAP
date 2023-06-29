@@ -9,7 +9,6 @@
 #include <exception>
 #include <unistd.h>
 #include <ctime>
-#include "headers/Help.h"
 
 
 int64_t set_Omax(std::string input)
@@ -145,7 +144,7 @@ int main(int argc, char **argv)
         ("nodes", boost::program_options::value<std::vector<std::string>>()->multitoken()->
         zero_tokens()->composing(), "graph nodes: name,is_root,is_target,v,u")
         ("shorts", boost::program_options::value<std::vector<std::string>>()->multitoken()->
-        zero_tokens()->composing(), "graph short edges: name,tail,head,match,mismatch,v,u,vb,ub,T,min_score")
+        zero_tokens()->composing(), "graph short edges: name,tail,head,match,mismatch,v,u,T,min_score,vb,ub")
         ("longs", boost::program_options::value<std::vector<std::string>>()->multitoken()->
         zero_tokens()->composing(), "graph long edges: name,tail,head,match,mismatch,v,u,T,min_score");
 
@@ -212,11 +211,11 @@ int main(int argc, char **argv)
             file = file.substr(0, file.find(','));
             if (file2rankvec.count(file))
                 continue;
-            file2rankvec[file].loadRankVec(file+".for.rev.inv.concat.bwt", file+".for.rev.inv.concat.rnk");
+            file2rankvec[file].loadRankVec(file+".bwt", file+".rnk");
 
-            file2long[file].second = std::filesystem::file_size(file+".for.rev.inv.concat");
+            file2long[file].second = std::filesystem::file_size(file);
             file2long[file].first.reset((uint8_t *) malloc(file2long[file].second));
-            std::ifstream fin(file+".for.rev.inv.concat");
+            std::ifstream fin(file);
             fin.read((char *)file2long[file].first.get(), file2long[file].second);
         }
 
@@ -230,6 +229,10 @@ int main(int argc, char **argv)
     Parallel_Align parallel_align(vm, file2short, file2rankvec, file2long);
     std::deque<std::string> mg_files = parallel_align.parallel_align(Omax);
     // std::deque<std::string> mg_files = parallel_align.single_align(Omax);
+
+    // std::deque<std::string> mg_files; // debug
+    // for (uint64_t i = 0; i < vm["threads_sz"].as<uint64_t>(); ++i) // debug
+    //     mg_files.emplace_back("mg" + std::to_string(i)); // debug
 
     Track track(vm, file2short, file2rankvec, file2long); 
     track.ReadTrack(mg_files);

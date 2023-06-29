@@ -5,15 +5,6 @@
 
 struct Track : Graph
 {
-    struct Peak
-    {
-        int n;
-        std::string seqname;
-        std::deque<std::pair<int64_t, int64_t>> sranges;
-        std::pair<int64_t, int64_t> wrange;
-        std::pair<double, double> valrange;
-    };
-
     struct MegaRange
     {
         int fs;
@@ -393,16 +384,18 @@ struct Track : Graph
 
                 EdgeLocal *local = static_cast<EdgeLocal *>(edges[path[0]->n]);
                 EdgeGlobal *global = static_cast<EdgeGlobal *>(edges[path[0]->n]);
-                std::pair<std::unique_ptr<uint8_t[]>, uint64_t> *longref;
+                std::pair<std::unique_ptr<uint8_t[]>, uint64_t> *shortref, *longref;
                 if (file2long.count(global->name))
                     longref = &file2long[global->name];
+                else if(file2short.count(local->name))
+                    shortref = &file2short[local->name];
 
                 if (!edges[path[0]->n]->global)
                 {
                     align_query.append(path[0]->s, '-');
                     align_mid.append(path[0]->s, ' ');
                     for (int i=0; i<path[0]->s; ++i)
-                        align_ref.push_back(int2base[local->ref[i]]);
+                        align_ref.push_back(int2base[shortref->first[i]]);
                 }
 
                 for (int i = 1; i < path.size(); ++i)
@@ -418,7 +411,7 @@ struct Track : Graph
                         align_query.push_back('-');
                     
                     if (localF)
-                        align_ref.push_back(int2base[static_cast<EdgeLocal *>(edges[path[i]->n])->ref[path[i]->s - 1]]);
+                        align_ref.push_back(int2base[shortref->first[path[i]->s - 1]]);
                     else if (globalF)
                         align_ref.push_back(int2base[longref->first[longref->second - 1 - path[i]->s]]);
                     else
@@ -432,11 +425,11 @@ struct Track : Graph
 
                 if (!edges[path[0]->n]->global)
                 {
-                    int sz = local->ref_sz - path.back()->s;
+                    int sz = shortref->second - path.back()->s;
                     align_query.append(sz, '-');
                     align_mid.append(sz, ' ');
                     for (int i=path.back()->s; i<path.back()->s+sz; ++i)
-                        align_ref.push_back(int2base[local->ref[i]]);
+                        align_ref.push_back(int2base[shortref->first[i]]);
                 }
             }
 
@@ -488,7 +481,7 @@ struct Track : Graph
         std::vector<std::pair<std::string, uint64_t>> &cumlen = file2cumlen[global->name];
         RankVec *prankvec = global->prankvec;
         int64_t sr1 = 0, sr2 = prankvec->bwt_sz - 1;
-        for (int64_t s = prankvec->bwt_sz - pdot->s + pdot->lambda - 2; s >= prankvec->bwt_sz - 1 - pdot->s; --s)
+        for (int64_t s = prankvec->bwt_sz - pdot->s + pdot->lambda - 2; s >= int64_t(prankvec->bwt_sz) - 1 - pdot->s; --s)
             prankvec->PreRange(sr1, sr2, longref[s]);
         
         std::ifstream &SAfin = file2SA[global->name];

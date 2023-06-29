@@ -1,6 +1,6 @@
 #!/bin/bash
 excu="/home/ljw/new_fold/old_desktop/shoujia/Graph_Projects/GAP/build/GAP"
-genome="/home/ljw/hg19_with_bowtie2_index/hg19.fa"
+genome="/home/ljw/hg19_with_bowtie2_index/hg19.fa.True.True.True.True.concat"
 msn=1
 bs=5
 tz=24

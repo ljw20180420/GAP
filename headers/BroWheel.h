@@ -31,39 +31,6 @@ void gsufsortSA(std::string SAfile, uint8_t *revref, uint64_t revref_sz)
     delete[] SA;
 }
 
-// void SA2GSA(std::string SAfile, std::string DAfile, std::string GAfile, uint64_t batch, std::vector<std::pair<std::string, uint64_t>> &name_cumlen)
-// {
-//     std::ifstream fin(SAfile);
-//     std::ofstream fDA(DAfile), fGA(GAfile);
-//     uint64_t *SA = (uint64_t *) malloc(batch*sizeof(uint64_t));
-//     uint8_t *DA = (uint8_t *) malloc(batch*sizeof(uint8_t));
-//     uint32_t *GA = (uint32_t *) malloc(batch*sizeof(uint32_t));
-    
-//     while (true)
-//     {
-//         fin.read((char *)SA, batch*sizeof(uint64_t));
-//         uint64_t gc = fin.gcount()/sizeof(uint64_t);
-//         if (gc==0)
-//             break;
-//         for (uint64_t i=0; i<gc; ++i)
-//         {
-//             uint64_t l=0, r=name_cumlen.size();
-//             while (r-l>1)
-//             {
-//                 uint64_t m=(l+r)/2;
-//                 if (name_cumlen[m].second>SA[i])
-//                     r=m;
-//                 else
-//                     l=m;
-//             }
-//             DA[i] = l;
-//             GA[i] = SA[i] - name_cumlen[l].second;
-//         }
-//         fDA.write((char *)DA, gc*sizeof(uint8_t));
-//         fGA.write((char *)GA, gc*sizeof(uint32_t));
-//     }
-// }
-
 uint8_t* SA2bwt(std::string SAfile, uint64_t batch, uint8_t *revseq)
 {
     uint64_t revseq_sz = std::filesystem::file_size(SAfile)/sizeof(uint64_t);

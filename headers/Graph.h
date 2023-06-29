@@ -53,9 +53,6 @@ struct Edge
 
 struct EdgeLocal : Edge
 {
-    std::string name;
-    uint8_t *ref;
-    uint64_t ref_sz;
     double vfp;
     double ufp;
     double vfm;
@@ -329,31 +326,31 @@ struct EdgeLocalCross : EdgeLocal
     {
     }
 
-    int get_trn()
+    int get_trn(uint64_t ref_sz)
     {
         return 3 * (ref_sz + 1);
     }
 
-    int64_t get_tnn(int Omax)
+    int64_t get_tnn(int Omax, uint64_t ref_sz)
     {
-        return int64_t(Omax + 1) * get_trn();
+        return int64_t(Omax + 1) * get_trn(ref_sz);
     }
 
-    int64_t get_tsn(int Omax)
+    int64_t get_tsn(int Omax, uint64_t ref_sz)
     {
         return int64_t(Omax + 1) * 8 * (ref_sz + 1);
     }
 
-    int *get_Ss()
+    int *get_Ss(uint64_t ref_sz)
     {
         int S = ref_sz;
         return new int[3]{S, S, S};
     }
 
-    int64_t *get_SE(int Omax)
+    int64_t *get_SE(int Omax, uint64_t ref_sz)
     {
         int64_t mid = int64_t(Omax + 1) * 2 * (ref_sz + 1);
-        return new int64_t[3]{0, mid, get_tnn(Omax)};
+        return new int64_t[3]{0, mid, get_tnn(Omax, ref_sz)};
     }
 
     int *get_steps()
@@ -361,15 +358,15 @@ struct EdgeLocalCross : EdgeLocal
         return new int[2]{2, 4};
     }
 
-    void apply_memory(int Omax, bool *&fpvisit, double *&fpval, double **&fpsource, double ***&fpsources, int *&fps_sz, int64_t *&fpid, int *&fps, int *&fpn)
+    void apply_memory(int Omax, bool *&fpvisit, double *&fpval, double **&fpsource, double ***&fpsources, int *&fps_sz, int64_t *&fpid, int *&fps, int *&fpn, uint64_t ref_sz)
     {
-        std::unique_ptr<int[]> Ss(get_Ss());
+        std::unique_ptr<int[]> Ss(get_Ss(ref_sz));
         extend_ss_ns(3, Ss.get(), n, fps, fpn);
         type_initial(fpvisit, {}, {&Evisits, &Fvisits, &Gvisits}, Ss.get(), Omax);
         type_initial(fpval, {}, {&Evals, &Fvals, &Gvals}, Ss.get(), Omax);
         double ***fpsources_old = fpsources;
         type_initial(fpsources, {}, {&Esourcess, &Fsourcess, &Gsourcess}, Ss.get(), Omax);
-        std::unique_ptr<int64_t[]> SE(get_SE(Omax));
+        std::unique_ptr<int64_t[]> SE(get_SE(Omax, ref_sz));
         std::unique_ptr<int[]> steps(get_steps());
         for (int i = 0; i < 2; ++i)
             for (int64_t j = SE[i]; j < SE[i + 1]; ++j, fpsource += steps[i])
@@ -397,29 +394,29 @@ struct EdgeLocalCircuit : EdgeLocal
     {
     }
 
-    int get_trn()
+    int get_trn(uint64_t ref_sz)
     {
         return 1 + 4 * (ref_sz + 1) + 2 * (tail->scc_sz - 1);
     }
 
-    int64_t get_tnn(int Omax)
+    int64_t get_tnn(int Omax, uint64_t ref_sz)
     {
-        return int64_t(Omax + 1) * get_trn();
+        return int64_t(Omax + 1) * get_trn(ref_sz);
     }
 
-    int64_t get_tsn(int Omax)
+    int64_t get_tsn(int Omax, uint64_t ref_sz)
     {
         return int64_t(Omax + 1) * (1 + 10 * (ref_sz + 1) + 3 * (tail->scc_sz - 1));
     }
 
-    int *get_Ss()
+    int *get_Ss(uint64_t ref_sz)
     {
         int S = ref_sz;
         int scc_sz = tail->scc_sz;
         return new int[6]{S, S, S, S, scc_sz - 2, scc_sz - 2};
     }
 
-    int64_t *get_SE(int Omax)
+    int64_t *get_SE(int Omax, uint64_t ref_sz)
     {
         int S = ref_sz;
         int scc_sz = tail->scc_sz;
@@ -431,16 +428,16 @@ struct EdgeLocalCircuit : EdgeLocal
         return new int[5]{1, 2, 3, 1, 2};
     }
 
-    void apply_memory(int Omax, bool *&fpvisit, double *&fpval, double **&fpsource, double ***&fpsources, int *&fps_sz, int64_t *&fpid, int *&fps, int *&fpn)
+    void apply_memory(int Omax, bool *&fpvisit, double *&fpval, double **&fpsource, double ***&fpsources, int *&fps_sz, int64_t *&fpid, int *&fps, int *&fpn, uint64_t ref_sz)
     {
-        std::unique_ptr<int[]> Ss(get_Ss());
+        std::unique_ptr<int[]> Ss(get_Ss(ref_sz));
         extend_ss_ns(1, n, fps, fpn);
         extend_ss_ns(6, Ss.get(), n, fps, fpn);
         type_initial(fpvisit, {&Dvisits}, {&Evisits, &F0visits, &G0visits, &Gvisits, &D0visits, &DXvisits}, Ss.get(), Omax);
         type_initial(fpval, {&Dvals}, {&Evals, &F0vals, &G0vals, &Gvals, &D0vals, &DXvals}, Ss.get(), Omax);
         double ***fpsources_old = fpsources;
         type_initial(fpsources, {&Dsourcess}, {&Esourcess, &F0sourcess, &G0sourcess, &Gsourcess, &D0sourcess, &DXsourcess}, Ss.get(), Omax);
-        std::unique_ptr<int64_t[]> SE(get_SE(Omax));
+        std::unique_ptr<int64_t[]> SE(get_SE(Omax, ref_sz));
         std::unique_ptr<int[]> steps(get_steps());
         for (int i = 0; i < 5; ++i)
             for (int64_t j = SE[i]; j < SE[i + 1]; ++j, fpsource += steps[i])
@@ -616,7 +613,7 @@ struct Graph
             file = file.substr(0, file.find(','));
             if (file2SA.count(file))
                 continue;
-            file2SA[file].open(file+".for.rev.inv.concat.sa");
+            file2SA[file].open(file+".sa");
         }
 
         for (std::string nodeinfo : vm["nodes"].as<std::vector<std::string>>())
@@ -641,12 +638,12 @@ struct Graph
         }
 
         std::list<EdgeLocal> locals;
-        if (vm.count("short"))
+        if (vm.count("shorts"))
             for (std::string shortinfo : vm["shorts"].as<std::vector<std::string>>())
             {
                 std::stringstream ss(shortinfo);
                 std::string name, tail, head, match, mismatch, v, u, vb, ub, T, min_score;
-                std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(ss, name, ','), tail, ','), head, ','), match, ','), mismatch, ','), v, ','), u, ','), vb, ','), ub, ','), T, ','), min_score, ',');
+                std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(ss, name, ','), tail, ','), head, ','), match, ','), mismatch, ','), v, ','), u, ','), T, ','), min_score, ','), vb, ','), ub, ',');
 
                 EdgeLocal local;
                 local.n = locals.size();
@@ -669,17 +666,16 @@ struct Graph
                 local.vf = local.ve;
                 try{local.ue = std::stod(u);}catch(...){local.ue = -2.0;}
                 local.uf = local.ue;
+                try{local.T = std::stod(T);}catch(...){local.T = -10.0;}
+                try{local.min_score = std::stod(min_score);}catch(...){local.min_score = 20.0;}
                 try{local.vfp = std::stod(vb);}catch(...){local.vfp = 0.0;}
                 local.vfm = local.vfp;
                 try{local.ufp = std::stod(ub);}catch(...){local.ufp = 0.0;}
                 local.ufm = local.ufp;
-                try{local.T = std::stod(T);}catch(...){local.T = -10.0;}
-                try{local.min_score = std::stod(min_score);}catch(...){local.min_score = 20.0;}
-                local.ref = file2short[local.name].first.get();
-                local.ref_sz = file2short[local.name].second;
-                get_affine(local.gf, local.ref_sz, 0, local.uf, local.vf);
-                local.gfm = local.vfm + (local.ref_sz - 1) * local.ufm;
-                get_affine(local.gfpT, local.ref_sz, local.T, local.ufp, local.vfp);
+                uint64_t ref_sz = file2short[local.name].second;
+                get_affine(local.gf, ref_sz, 0, local.uf, local.vf);
+                local.gfm = local.vfm + (ref_sz - 1) * local.ufm;
+                get_affine(local.gfpT, ref_sz, local.T, local.ufp, local.vfp);
                 locals.push_back(local);
             }
 

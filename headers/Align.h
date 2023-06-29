@@ -114,15 +114,17 @@ struct Align : Graph
         }
         for (auto &edge : local_crosses)
         {
-            trn += edge.get_trn();
-            tnn += edge.get_tnn(Omax);
-            tsn += edge.get_tsn(Omax);
+            uint64_t ref_sz = file2short[edge.name].second;
+            trn += edge.get_trn(ref_sz);
+            tnn += edge.get_tnn(Omax, ref_sz);
+            tsn += edge.get_tsn(Omax, ref_sz);
         }
         for (auto &edge : local_circuits)
         {
-            trn += edge.get_trn();
-            tnn += edge.get_tnn(Omax);
-            tsn += edge.get_tsn(Omax);
+            uint64_t ref_sz = file2short[edge.name].second;
+            trn += edge.get_trn(ref_sz);
+            tnn += edge.get_tnn(Omax, ref_sz);
+            tsn += edge.get_tsn(Omax, ref_sz);
         }
         for (auto &edge : global_circuits)
         {
@@ -159,9 +161,9 @@ struct Align : Graph
         for (auto &node : nodes)
             node.apply_memory(Omax, fpvisit, fpval, fpsource, fpsources, fps_sz, fpid, fps, fpn, rpvisit, rpval, rpsources, rps_sz, rpid);
         for (auto &edge : local_crosses)
-            edge.apply_memory(Omax, fpvisit, fpval, fpsource, fpsources, fps_sz, fpid, fps, fpn);
+            edge.apply_memory(Omax, fpvisit, fpval, fpsource, fpsources, fps_sz, fpid, fps, fpn, file2short[edge.name].second);
         for (auto &edge : local_circuits)
-            edge.apply_memory(Omax, fpvisit, fpval, fpsource, fpsources, fps_sz, fpid, fps, fpn);
+            edge.apply_memory(Omax, fpvisit, fpval, fpsource, fpsources, fps_sz, fpid, fps, fpn, file2short[edge.name].second);
         for (auto &edge : global_circuits)
             edge.apply_memory(Omax, fpvisit, fpval, fpsource, fpsources, fps_sz, fpid, fps, fpn);
     }
@@ -234,8 +236,9 @@ struct Align : Graph
                         source_max(&edge->D0vals[l - 1][w], {&edge->tail->Avals[l - 1][w]}, {edge->tail->Avals[l - 1][w] + edge->T});
                     for (auto edge : scc.local_circuits)
                     {
+                        uint64_t ref_sz = file2short[edge->name].second;
                         source_max(&edge->D0vals[l - 1][w], {&edge->tail->Avals[l - 1][w]}, {edge->tail->Avals[l - 1][w] + edge->T});
-                        source_max(&edge->DXvals[l - 1][w], {&edge->tail->Avals[l - 1][w], &edge->D0vals[l - 1][w]}, {edge->tail->Avals[l - 1][w] + edge->gfpT[edge->ref_sz], edge->D0vals[l - 1][w] + edge->gf[edge->ref_sz]});
+                        source_max(&edge->DXvals[l - 1][w], {&edge->tail->Avals[l - 1][w], &edge->D0vals[l - 1][w]}, {edge->tail->Avals[l - 1][w] + edge->gfpT[ref_sz], edge->D0vals[l - 1][w] + edge->gf[ref_sz]});
                     }
                     for (auto node : scc.nodes)
                     {
@@ -277,9 +280,11 @@ struct Align : Graph
 
     void CrossIteration(EdgeLocalCross *edge)
     {
+        uint8_t *ref = file2short[edge->name].first.get();
+        uint64_t ref_sz = file2short[edge->name].second;
         double *Avals = edge->tail->Avals[edge->tail->scc_sz - 1];
         double **Evals = edge->Evals.get(), **Fvals = edge->Fvals.get(), **Gvals = edge->Gvals.get();
-        for (uint64_t s = 0; s <= edge->ref_sz; ++s)
+        for (uint64_t s = 0; s <= ref_sz; ++s)
             for (uint64_t w = 0; w <= O.size(); ++w)
             {
                 if (w == 0)
@@ -293,7 +298,7 @@ struct Align : Graph
                 if (s == 0 || w == 0)
                     source_max(&Gvals[s][w], {&Fvals[s][w], &Evals[s][w], &Avals[w]}, {Fvals[s][w], Evals[s][w], Avals[w] + edge->gfpT[s]});
                 else
-                    source_max(&Gvals[s][w], {&Fvals[s][w], &Evals[s][w], &Gvals[s - 1][w - 1], &Avals[w]}, {Fvals[s][w], Evals[s][w], Gvals[s - 1][w - 1] + edge->gamma[edge->ref[s - 1]][O[w - 1]], Avals[w] + edge->gfpT[s]});
+                    source_max(&Gvals[s][w], {&Fvals[s][w], &Evals[s][w], &Gvals[s - 1][w - 1], &Avals[w]}, {Fvals[s][w], Evals[s][w], Gvals[s - 1][w - 1] + edge->gamma[ref[s - 1]][O[w - 1]], Avals[w] + edge->gfpT[s]});
                 edge->head->updateA0(w, Gvals[s][w], &Gvals[s][w]);
             }
     }
@@ -389,13 +394,15 @@ struct Align : Graph
 
     void CircuitIteration(int64_t w, EdgeLocalCircuit *edge)
     {
+        uint8_t *ref = file2short[edge->name].first.get();
+        uint64_t ref_sz = file2short[edge->name].second;
         double *Avals = edge->tail->Avals[edge->tail->scc_sz - 1];
         double *Dvals = edge->Dvals;
         double **Evals = edge->Evals.get(), **F0vals = edge->F0vals.get(), **G0vals = edge->G0vals.get(), **Gvals = edge->Gvals.get();
 
         if (w > 0)
             source_max(&Dvals[w - 1], {&Avals[w - 1]}, {Avals[w - 1] + edge->T});
-        for (uint64_t s = 0; s <= edge->ref_sz; ++s)
+        for (uint64_t s = 0; s <= ref_sz; ++s)
         {
             if (w > 0)
             {
@@ -413,7 +420,7 @@ struct Align : Graph
             else
                 source_max(&F0vals[s][w], {&F0vals[s - 1][w], &G0vals[s - 1][w]}, {F0vals[s - 1][w] + edge->uf, G0vals[s - 1][w] + edge->vf});
             if (s > 0 && w > 0)
-                source_max(&G0vals[s][w], {&Evals[s][w], &F0vals[s][w], &Gvals[s - 1][w - 1]}, {Evals[s][w], F0vals[s][w], Gvals[s - 1][w - 1] + edge->gamma[edge->ref[s - 1]][O[w - 1]]});
+                source_max(&G0vals[s][w], {&Evals[s][w], &F0vals[s][w], &Gvals[s - 1][w - 1]}, {Evals[s][w], F0vals[s][w], Gvals[s - 1][w - 1] + edge->gamma[ref[s - 1]][O[w - 1]]});
             else
                 source_max(&G0vals[s][w], {&Evals[s][w], &F0vals[s][w]}, {Evals[s][w], F0vals[s][w]});
             edge->head->updateA0(w, G0vals[s][w], &G0vals[s][w]);
