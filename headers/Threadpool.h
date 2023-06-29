@@ -143,7 +143,7 @@ public:
         return thread_ids;
     }
     
-    int size()
+    uint64_t size()
     {
         return threads.size();
     }

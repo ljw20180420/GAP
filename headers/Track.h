@@ -21,20 +21,30 @@ struct Track : Graph
     };
 
     std::ofstream fout_align, fout_extract, fout_fail, fout_death;
-    int max_extract, diff_thres, max_range, min_seg_num, max_seg_num;
-    int64_t max_mega;
     std::vector<Dot> dots;
     MonoDeque<Dot *> sources;
     std::map<Dot *, MegaRange> megadots_head;
     std::map<Dot *, MegaRange> megadots_tail;
     std::deque<std::pair<Dot *, std::deque<Dot *>>> megasources;
+    std::map<std::string, std::vector<std::pair<std::string, uint64_t>>> file2cumlen;
 
-    Track(int argc, char **argv, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel, int max_extract_, int64_t max_mega_, int diff_thres_, int max_range_, int min_seg_num_, int max_seg_num_)
-    : Graph(argc, argv, file2seq, file2browheel), fout_align("alg"), fout_extract("ext"), fout_fail("fail"), fout_death("death"), max_extract(max_extract_), max_mega(max_mega_), diff_thres(diff_thres_), max_range(max_range_), min_seg_num(min_seg_num_), max_seg_num(max_seg_num_)
+    Track(boost::program_options::variables_map &vm, std::map<std::string, std::pair<std::unique_ptr<uint8_t[]>, uint64_t>> &file2short, std::map<std::string, RankVec> &file2rankvec, std::map<std::string, std::pair<std::unique_ptr<uint8_t[]>, uint64_t>> &file2long)
+    : Graph(vm, file2short, file2rankvec, file2long), fout_align("alg"), fout_extract("ext"), fout_fail("fail"), fout_death("death")
     {
+        for (std::string file : vm["longs"].as<std::vector<std::string>>())
+        {
+            file = file.substr(0, file.find(','));
+            if (file2cumlen.count(file))
+                continue;
+
+            std::string refname;
+            uint64_t cumlen;
+            for (std::ifstream fin(file+".cumlen"); fin >> refname >> cumlen;)
+                file2cumlen[file].emplace_back(refname, cumlen);
+        }
     }
 
-    void ReadTrack(std::deque<std::string> mg_files, std::string input)
+    void ReadTrack(std::deque<std::string> mg_files)
     {
         std::vector<std::ifstream> fins;
         for (auto &file : mg_files)
@@ -61,7 +71,7 @@ struct Track : Graph
         }
         dots.resize(max_id + 1);
         int64_t seq_num = 0;
-        std::ifstream finput(input);
+        std::ifstream finput(vm["input"].as<std::string>());
         for (std::string name, read; std::getline(std::getline(finput, name), read); )
         {
             ++seq_num;
@@ -120,11 +130,11 @@ struct Track : Graph
         MegaRange *pmegarange;
         std::deque<std::deque<int64_t>> extracts;
 
-        for (int64_t i = Qrange.fs, next_mega = 0; i < Qrange.fs + Qrange.s_sz && extracts.size() < max_extract; ++i)
+        for (int64_t i = Qrange.fs, next_mega = 0; i < Qrange.fs + Qrange.s_sz && extracts.size() < vm["max_extract"].as<int>(); ++i)
         {
             std::deque<int64_t> extract;
             extract.push_front(i);
-            while (next_mega++ < max_mega && next_megadot(extract))
+            while (next_mega++ < vm["max_mega"].as<int64_t>() && next_megadot(extract))
             {
                 if (extract.size() % 2 == 0)
                     pmegarange = &megadots_tail[megasources[extract[0]].first];
@@ -133,12 +143,12 @@ struct Track : Graph
                 if (pmegarange->s_sz == 0)
                 {
                     bool addflag = true;
-                    if (min_seg_num > 0 && max_seg_num > 0 && (extract.size() < 2 * min_seg_num || extract.size() > 2 * max_seg_num))
+                    if (vm["min_seg_num"].as<int>() > 0 && vm["max_seg_num"].as<int>() > 0 && (extract.size() < 2 * vm["min_seg_num"].as<int>() || extract.size() > 2 * vm["max_seg_num"].as<int>()))
                         addflag = false;
                     else
                     {
                         for (auto &extract_pre : extracts)
-                            if (extract_dis(extract_pre, extract) < diff_thres)
+                            if (extract_dis(extract_pre, extract) < vm["diff_thres"].as<int>())
                             {
                                 addflag = false;
                                 break;
@@ -147,7 +157,7 @@ struct Track : Graph
                     if (addflag)
                     {
                         extracts.push_back(extract);
-                        if (extracts.size() == max_extract)
+                        if (extracts.size() == vm["max_extract"].as<int>())
                             break;
                     }
                 }
@@ -380,19 +390,24 @@ struct Track : Graph
                     align_mid.push_back(' ');
                     align_ref.push_back(' ');
                 }
+
                 EdgeLocal *local = static_cast<EdgeLocal *>(edges[path[0]->n]);
                 EdgeGlobal *global = static_cast<EdgeGlobal *>(edges[path[0]->n]);
+                std::pair<std::unique_ptr<uint8_t[]>, uint64_t> *longref;
+                if (file2long.count(global->name))
+                    longref = &file2long[global->name];
+
                 if (!edges[path[0]->n]->global)
                 {
                     align_query.append(path[0]->s, '-');
                     align_mid.append(path[0]->s, ' ');
                     for (int i=0; i<path[0]->s; ++i)
-                        align_ref.push_back(int2base[local->pnameseq->seq[i]]);
+                        align_ref.push_back(int2base[local->ref[i]]);
                 }
 
                 for (int i = 1; i < path.size(); ++i)
                 {
-                    bool E = path[i]->w > path[i - 1]->w, localF = path[i]->s > path[i - 1]->s && !edges[path[0]->n]->global, globalF = edges[path[i]->n]->global && path[i]->lambda > path[i - 1]->lambda;
+                    bool E = path[i]->w > path[i - 1]->w, localF = !edges[path[0]->n]->global && path[i]->s > path[i - 1]->s, globalF = edges[path[i]->n]->global && path[i]->lambda > path[i - 1]->lambda;
 
                     if(!E && !localF && !globalF)
                         continue;
@@ -403,9 +418,9 @@ struct Track : Graph
                         align_query.push_back('-');
                     
                     if (localF)
-                        align_ref.push_back(int2base[static_cast<EdgeLocal *>(edges[path[i]->n])->pnameseq->seq[path[i]->s - 1]]);
+                        align_ref.push_back(int2base[static_cast<EdgeLocal *>(edges[path[i]->n])->ref[path[i]->s - 1]]);
                     else if (globalF)
-                        align_ref.push_back(int2base[global->pbrowheel->sequence[global->pbrowheel->sequence.size() - 1 - path[i]->s]]);
+                        align_ref.push_back(int2base[longref->first[longref->second - 1 - path[i]->s]]);
                     else
                         align_ref.push_back('-');
 
@@ -417,11 +432,11 @@ struct Track : Graph
 
                 if (!edges[path[0]->n]->global)
                 {
-                    int sz = local->pnameseq->seq.size() - path.back()->s;
+                    int sz = local->ref_sz - path.back()->s;
                     align_query.append(sz, '-');
                     align_mid.append(sz, ' ');
                     for (int i=path.back()->s; i<path.back()->s+sz; ++i)
-                        align_ref.push_back(int2base[local->pnameseq->seq[i]]);
+                        align_ref.push_back(int2base[local->ref[i]]);
                 }
             }
 
@@ -468,27 +483,34 @@ struct Track : Graph
     std::map<std::string, std::deque<std::pair<int64_t, int64_t>>> get_seqranges(Dot *pdot)
     {
         std::map<std::string, std::deque<std::pair<int64_t, int64_t>>> seqranges;
-        BroWheel *pbrowheel = static_cast<EdgeGlobal *>(edges[pdot->n])->pbrowheel;
-        int64_t sr1 = 0, sr2 = pbrowheel->sequence.size() - 1;
-        for (int64_t s = pbrowheel->sequence.size() - pdot->s + pdot->lambda - 2; s >= pbrowheel->sequence.size() - 1 - pdot->s; --s)
-            pbrowheel->PreRange(sr1, sr2, pbrowheel->sequence[s]);
-        for (int64_t sx = sr1; sx <= sr2 && sx - sr1 < max_range; ++sx)
+        EdgeGlobal *global = static_cast<EdgeGlobal *>(edges[pdot->n]);
+        uint8_t *longref = file2long[global->name].first.get();
+        std::vector<std::pair<std::string, uint64_t>> &cumlen = file2cumlen[global->name];
+        RankVec *prankvec = global->prankvec;
+        int64_t sr1 = 0, sr2 = prankvec->bwt_sz - 1;
+        for (int64_t s = prankvec->bwt_sz - pdot->s + pdot->lambda - 2; s >= prankvec->bwt_sz - 1 - pdot->s; --s)
+            prankvec->PreRange(sr1, sr2, longref[s]);
+        
+        std::ifstream &SAfin = file2SA[global->name];
+        for (int64_t sx = sr1; sx <= sr2 && sx - sr1 < vm["max_range"].as<int>(); ++sx)
         {
-            int64_t s = pbrowheel->SimSuffix(sx);
-            int64_t l = 0, r = pbrowheel->name_cumlen.size();
+            uint64_t s;
+            SAfin.seekg(sx * sizeof(uint64_t));
+            SAfin.read((char*)&s, sizeof(uint64_t));
+            uint64_t l = 0, r = cumlen.size();
             while (r - l > 1)
             {
-                int64_t m = (l + r) / 2;
-                if (pbrowheel->name_cumlen[m].second > s)
+                uint64_t m = (l + r) / 2;
+                if (cumlen[m].second > s)
                     r = m;
                 else
                     l = m;
             }
-            if (r < pbrowheel->name_cumlen.size())
-                s = pbrowheel->name_cumlen[r].second - 1 - s;
+            if (r < cumlen.size())
+                s = cumlen[r].second - 1 - s;
             else
-                s = pbrowheel->sequence.size() - 1 - s;
-            seqranges[pbrowheel->name_cumlen[l].first].emplace_back(s - pdot->lambda, s);
+                s = prankvec->bwt_sz - 1 - s;
+            seqranges[cumlen[l].first].emplace_back(s - pdot->lambda, s);
         }
         return seqranges;
     }

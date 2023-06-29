@@ -14,7 +14,7 @@ template <typename T>
 struct MonoDeque
 {
     std::deque<T> data;
-    int64_t offset = 0;
+    uint64_t offset = 0;
 
     void emplace_back(T t)
     {
@@ -57,9 +57,9 @@ struct Align : Graph
         {
             int c;
             int64_t sr1, sr2;
-            int shiftFG;
+            uint64_t shiftFG;
 
-            SimNode(int c_, int64_t sr1_, int64_t sr2_, int shiftFG_)
+            SimNode(int c_, int64_t sr1_, int64_t sr2_, uint64_t shiftFG_)
                 : c(c_), sr1(sr1_), sr2(sr2_), shiftFG(shiftFG_)
             {
             }
@@ -91,7 +91,7 @@ struct Align : Graph
 
     const static int ww = 3;
 
-    std::vector<int8_t> O;
+    std::vector<uint8_t> O;
     std::string Oname;
     std::ofstream fout;
     int64_t max_id = 0;
@@ -195,8 +195,8 @@ struct Align : Graph
         return swn;
     }
 
-    Align(int argc, char **argv, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel, std::string mgfile, int Omax_)
-        : Graph(argc, argv, file2seq, file2browheel), fout(mgfile, std::ifstream::binary), Omax(Omax_)
+    Align(boost::program_options::variables_map &vm, std::map<std::string, std::pair<std::unique_ptr<uint8_t[]>, uint64_t>> &file2short, std::map<std::string, RankVec> &file2rankvec, std::map<std::string, std::pair<std::unique_ptr<uint8_t[]>, uint64_t>> &file2long, std::string mgfile, int Omax_)
+        : Graph(vm, file2short, file2rankvec, file2long), fout(mgfile, std::ifstream::binary), Omax(Omax_)
     {
         apply_memory();
 
@@ -207,12 +207,12 @@ struct Align : Graph
 
     void Mix()
     {
-        for (int i = 0; i < nodes.size(); ++i)
-            for (int w = 0; w <= O.size(); ++w)
+        for (uint64_t i = 0; i < nodes.size(); ++i)
+            for (uint64_t w = 0; w <= O.size(); ++w)
                 nodes[i].Avals[0][w] = -inf;
         for (auto &scc : sccs)
         {
-            for (int64_t w = 0; w <= O.size(); ++w)
+            for (uint64_t w = 0; w <= O.size(); ++w)
             {
                 for (auto node : scc.nodes)
                 {
@@ -228,14 +228,14 @@ struct Align : Graph
                 for (auto edge : scc.local_circuits)
                     CircuitIteration(w, edge);
                 CircuitIterationGlobal(w, scc);
-                for (int64_t l = 1; l < scc.nodes.size(); ++l)
+                for (uint64_t l = 1; l < scc.nodes.size(); ++l)
                 {
                     for (auto edge : scc.global_circuits)
                         source_max(&edge->D0vals[l - 1][w], {&edge->tail->Avals[l - 1][w]}, {edge->tail->Avals[l - 1][w] + edge->T});
                     for (auto edge : scc.local_circuits)
                     {
                         source_max(&edge->D0vals[l - 1][w], {&edge->tail->Avals[l - 1][w]}, {edge->tail->Avals[l - 1][w] + edge->T});
-                        source_max(&edge->DXvals[l - 1][w], {&edge->tail->Avals[l - 1][w], &edge->D0vals[l - 1][w]}, {edge->tail->Avals[l - 1][w] + edge->gfpT[edge->pnameseq->seq.size()], edge->D0vals[l - 1][w] + edge->gf[edge->pnameseq->seq.size()]});
+                        source_max(&edge->DXvals[l - 1][w], {&edge->tail->Avals[l - 1][w], &edge->D0vals[l - 1][w]}, {edge->tail->Avals[l - 1][w] + edge->gfpT[edge->ref_sz], edge->D0vals[l - 1][w] + edge->gf[edge->ref_sz]});
                     }
                     for (auto node : scc.nodes)
                     {
@@ -279,8 +279,8 @@ struct Align : Graph
     {
         double *Avals = edge->tail->Avals[edge->tail->scc_sz - 1];
         double **Evals = edge->Evals.get(), **Fvals = edge->Fvals.get(), **Gvals = edge->Gvals.get();
-        for (int s = 0; s <= edge->pnameseq->seq.size(); ++s)
-            for (int w = 0; w <= O.size(); ++w)
+        for (uint64_t s = 0; s <= edge->ref_sz; ++s)
+            for (uint64_t w = 0; w <= O.size(); ++w)
             {
                 if (w == 0)
                     source_max(&Evals[s][w], {}, {});
@@ -293,7 +293,7 @@ struct Align : Graph
                 if (s == 0 || w == 0)
                     source_max(&Gvals[s][w], {&Fvals[s][w], &Evals[s][w], &Avals[w]}, {Fvals[s][w], Evals[s][w], Avals[w] + edge->gfpT[s]});
                 else
-                    source_max(&Gvals[s][w], {&Fvals[s][w], &Evals[s][w], &Gvals[s - 1][w - 1], &Avals[w]}, {Fvals[s][w], Evals[s][w], Gvals[s - 1][w - 1] + edge->gamma[edge->pnameseq->seq[s - 1]][O[w - 1]], Avals[w] + edge->gfpT[s]});
+                    source_max(&Gvals[s][w], {&Fvals[s][w], &Evals[s][w], &Gvals[s - 1][w - 1], &Avals[w]}, {Fvals[s][w], Evals[s][w], Gvals[s - 1][w - 1] + edge->gamma[edge->ref[s - 1]][O[w - 1]], Avals[w] + edge->gfpT[s]});
                 edge->head->updateA0(w, Gvals[s][w], &Gvals[s][w]);
             }
     }
@@ -307,9 +307,9 @@ struct Align : Graph
         std::deque<CrossGlobalData::Doo> &FG = crossglobaldata.FG;
 
         int c = -1;
-        int64_t sr1 = 0, sr2 = edge->pbrowheel->sequence.size() - 1;
+        int64_t sr1 = 0, sr2 = edge->prankvec->bwt_sz - 1;
         crossglobaldata.emplace_back(c, sr1, sr2);
-        for (int64_t w = 0; w <= O.size(); ++w)
+        for (uint64_t w = 0; w <= O.size(); ++w)
         {
             double tgw = (O.size() > w ? (O.size() - w - 1) * edge->tail->ue + edge->tail->ve : 0);
             E0[w].w = w;
@@ -346,7 +346,7 @@ struct Align : Graph
                     ++c;
                     sr1 = simnodes.back().sr1;
                     sr2 = simnodes.back().sr2;
-                    edge->pbrowheel->PreRange(sr1, sr2, c);
+                    edge->prankvec->PreRange(sr1, sr2, c);
                 } while (sr1 > sr2 && c < 6);
                 if (sr1 <= sr2)
                 {
@@ -359,8 +359,8 @@ struct Align : Graph
             if (simnodes.empty())
                 break;
 
-            int64_t idx = simnodes[simnodes.size() - 2].shiftFG;
-            for (int e = 0, w = FG[idx].w;; ++e)
+            uint64_t idx = simnodes[simnodes.size() - 2].shiftFG;
+            for (uint64_t e = 0, w = FG[idx].w;; ++e)
             {
                 E[e].w = w;
                 E[e].E = std::max((e > 0 && E[e - 1].w == w - 1) ? E[e - 1].E + edge->ue : -inf, (simnodes.back().shiftFG < FG.size() && FG.back().w == w - 1) ? FG.back().G + edge->ve : -inf);
@@ -395,7 +395,7 @@ struct Align : Graph
 
         if (w > 0)
             source_max(&Dvals[w - 1], {&Avals[w - 1]}, {Avals[w - 1] + edge->T});
-        for (int64_t s = 0; s <= edge->pnameseq->seq.size(); ++s)
+        for (uint64_t s = 0; s <= edge->ref_sz; ++s)
         {
             if (w > 0)
             {
@@ -413,7 +413,7 @@ struct Align : Graph
             else
                 source_max(&F0vals[s][w], {&F0vals[s - 1][w], &G0vals[s - 1][w]}, {F0vals[s - 1][w] + edge->uf, G0vals[s - 1][w] + edge->vf});
             if (s > 0 && w > 0)
-                source_max(&G0vals[s][w], {&Evals[s][w], &F0vals[s][w], &Gvals[s - 1][w - 1]}, {Evals[s][w], F0vals[s][w], Gvals[s - 1][w - 1] + edge->gamma[edge->pnameseq->seq[s - 1]][O[w - 1]]});
+                source_max(&G0vals[s][w], {&Evals[s][w], &F0vals[s][w], &Gvals[s - 1][w - 1]}, {Evals[s][w], F0vals[s][w], Gvals[s - 1][w - 1] + edge->gamma[edge->ref[s - 1]][O[w - 1]]});
             else
                 source_max(&G0vals[s][w], {&Evals[s][w], &F0vals[s][w]}, {Evals[s][w], F0vals[s][w]});
             edge->head->updateA0(w, G0vals[s][w], &G0vals[s][w]);
@@ -433,12 +433,12 @@ struct Align : Graph
         {
             if (w == 1)
             {
-                edges[i]->sncs.emplace_back(-inf, -inf, -inf, -inf, -1, 5, 0, 0, edges[i]->pbrowheel->sequence.size() - 1, 1, (SNC *)NULL, (SNC *)NULL);
+                edges[i]->sncs.emplace_back(-inf, -inf, -inf, -inf, -1, 5, 0, 0, edges[i]->prankvec->bwt_sz - 1, 1, (SNC *)NULL, (SNC *)NULL);
                 for (int c = 2; c <= 6; ++c)
                 {
                     int64_t sr1 = edges[i]->sncs.front().sr1;
                     int64_t sr2 = edges[i]->sncs.front().sr2;
-                    edges[i]->pbrowheel->PreRange(sr1, sr2, c);
+                    edges[i]->prankvec->PreRange(sr1, sr2, c);
                     if (sr1 <= sr2)
                     {
                         edges[i]->sncs.emplace_back(-inf, -inf, -inf, -inf, c, 0, 1, sr1, sr2, 0, &(edges[i]->sncs.front()), edges[i]->sncs.front().jump);
@@ -497,7 +497,7 @@ struct Align : Graph
                             {
                                 int64_t sr1 = jumps[i]->sr1;
                                 int64_t sr2 = jumps[i]->sr2;
-                                edges[i]->pbrowheel->PreRange(sr1, sr2, c);
+                                edges[i]->prankvec->PreRange(sr1, sr2, c);
                                 if (sr1 <= sr2)
                                 {
                                     edges[i]->sncs.emplace_back(-inf, -inf, -inf, -inf, c, 0, jumps[i]->lambda + 1, sr1, sr2, 0, jumps[i], (SNC *)NULL);
@@ -534,7 +534,7 @@ struct Align : Graph
         fout.write((char *)&swn.w, sizeof(Dot::w));
         fout.write((char *)&vals[M], sizeof(Dot::val));
         fout.write((char *)&s_szs[M], sizeof(Dot::s_sz));
-        fout.write((char *)&s_szs[M], sizeof(Dot::lambda));
+        fout.write((char *)&s_szs[M], sizeof(Dot::lambda)); // strange
     }
 
     void outputdot(Dot *M)
@@ -649,11 +649,15 @@ struct Align : Graph
             TrackTree &tracktree = edge->tracktree;
             std::deque<TrackTree::TrackNode> &tracknodes = tracktree.tracknodes;
             std::deque<Dot> &dots = tracktree.dots;
-            int64_t start = edge->pbrowheel->SimSuffix(globalsuffix.start);
+            uint8_t *longref = file2long[edge->name].first.get();
+            std::ifstream &SAfin = file2SA[edge->name];
+            int64_t start;
+            SAfin.seekg(globalsuffix.start * sizeof(uint64_t));
+            SAfin.read((char*)&start, sizeof(uint64_t));
             if (tracktree.tracknodes.empty())
             {
                 tracktree.W = O.size();
-                tracktree.emplace_back(-1, edge->n, edge->pbrowheel->sequence.size() - 1 - start - globalsuffix.lambda, 0);
+                tracktree.emplace_back(-1, edge->n, edge->prankvec->bwt_sz - 1 - start - globalsuffix.lambda, 0);
             }
             tracktree.setidx(0);
             if (edge->head->scc_id != edge->tail->scc_id)
@@ -670,10 +674,10 @@ struct Align : Graph
                 tracknodes[tracktree.idx].tau = std::max(tracknodes[tracktree.idx].tau, swn.w + 1);
                 for (int i = globalsuffix.lambda - 1; i >= 0; --i)
                 {
-                    int c = edge->pbrowheel->sequence[start + i];
+                    uint8_t c = longref[start + i];
                     if (tracknodes[tracktree.idx].cidxs[c - 2] < 0)
                     {
-                        tracktree.emplace_back(-1, edge->n, edge->pbrowheel->sequence.size() - 1 - start - i, dots[tracktree.shiftE].lambda + 1);
+                        tracktree.emplace_back(-1, edge->n, edge->prankvec->bwt_sz - 1 - start - i, dots[tracktree.shiftE].lambda + 1);
                         tracknodes[tracktree.idx].cidxs[c - 2] = tracknodes.size() - 1;
                     }
                     tracktree.setidx(tracknodes[tracktree.idx].cidxs[c - 2]);
@@ -707,10 +711,10 @@ struct Align : Graph
                 tracknodes[tracktree.idx].tau = std::max(tracknodes[tracktree.idx].tau, swn.w + 1);
                 for (int i = globalsuffix.lambda - 1; i >= 0; --i)
                 {
-                    int c = edge->pbrowheel->sequence[start + i];
+                    uint8_t c = longref[start + i];
                     if (tracknodes[tracktree.idx].cidxs[c - 2] < 0)
                     {
-                        tracktree.emplace_back(-1, edge->n, edge->pbrowheel->sequence.size() - 1 - start - i, dots[tracktree.shiftE].lambda + 1);
+                        tracktree.emplace_back(-1, edge->n, edge->prankvec->bwt_sz - 1 - start - i, dots[tracktree.shiftE].lambda + 1);
                         tracknodes[tracktree.idx].cidxs[c - 2] = tracknodes.size() - 1;
                     }
                     tracktree.setidx(tracknodes[tracktree.idx].cidxs[c - 2]);

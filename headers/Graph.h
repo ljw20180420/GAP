@@ -5,6 +5,7 @@
 #include <cfloat>
 #include <list>
 #include "BroWheel.h"
+#include <boost/program_options.hpp>
 
 constexpr static const double inf = std::numeric_limits<double>::infinity();
 
@@ -50,29 +51,11 @@ struct Edge
     Node *head;
 };
 
-struct NameSeq
-{
-    std::string name;
-    std::vector<int8_t> seq;
-
-    void readin(std::string file)
-    {
-        std::string str;
-        if (!std::filesystem::exists(file))
-        {
-            std::cerr << "reference file " << file << " does not exist\n";
-            exit (EXIT_FAILURE);
-        }
-        std::ifstream fin(file);
-        std::getline(std::getline(fin, name), str);
-        for (int i=0; i<str.size(); ++i)
-            seq.push_back(base2int[str[i]]);
-    }
-};
-
 struct EdgeLocal : Edge
 {
-    NameSeq *pnameseq;
+    std::string name;
+    uint8_t *ref;
+    uint64_t ref_sz;
     double vfp;
     double ufp;
     double vfm;
@@ -149,7 +132,7 @@ struct TrackTree
 
 struct EdgeGlobal : Edge
 {
-    BroWheel *pbrowheel;
+    RankVec *prankvec;
     TrackTree tracktree;
 };
 
@@ -231,11 +214,6 @@ struct Node
     };
 
     std::unique_ptr<std::deque<GlobalSuffix>[]> AdeltaGlobal;
-
-    Node(std::string name_, double ve_, double ue_, int n_)
-        : name(name_), ve(ve_), ue(ue_), n(n_), is_root(false), is_target(false)
-    {
-    }
 
     int get_trn()
     {
@@ -353,7 +331,7 @@ struct EdgeLocalCross : EdgeLocal
 
     int get_trn()
     {
-        return 3 * (pnameseq->seq.size() + 1);
+        return 3 * (ref_sz + 1);
     }
 
     int64_t get_tnn(int Omax)
@@ -363,18 +341,18 @@ struct EdgeLocalCross : EdgeLocal
 
     int64_t get_tsn(int Omax)
     {
-        return int64_t(Omax + 1) * 8 * (pnameseq->seq.size() + 1);
+        return int64_t(Omax + 1) * 8 * (ref_sz + 1);
     }
 
     int *get_Ss()
     {
-        int S = pnameseq->seq.size();
+        int S = ref_sz;
         return new int[3]{S, S, S};
     }
 
     int64_t *get_SE(int Omax)
     {
-        int64_t mid = int64_t(Omax + 1) * 2 * (pnameseq->seq.size() + 1);
+        int64_t mid = int64_t(Omax + 1) * 2 * (ref_sz + 1);
         return new int64_t[3]{0, mid, get_tnn(Omax)};
     }
 
@@ -421,7 +399,7 @@ struct EdgeLocalCircuit : EdgeLocal
 
     int get_trn()
     {
-        return 1 + 4 * (pnameseq->seq.size() + 1) + 2 * (tail->scc_sz - 1);
+        return 1 + 4 * (ref_sz + 1) + 2 * (tail->scc_sz - 1);
     }
 
     int64_t get_tnn(int Omax)
@@ -431,19 +409,19 @@ struct EdgeLocalCircuit : EdgeLocal
 
     int64_t get_tsn(int Omax)
     {
-        return int64_t(Omax + 1) * (1 + 10 * (pnameseq->seq.size() + 1) + 3 * (tail->scc_sz - 1));
+        return int64_t(Omax + 1) * (1 + 10 * (ref_sz + 1) + 3 * (tail->scc_sz - 1));
     }
 
     int *get_Ss()
     {
-        int S = pnameseq->seq.size();
+        int S = ref_sz;
         int scc_sz = tail->scc_sz;
         return new int[6]{S, S, S, S, scc_sz - 2, scc_sz - 2};
     }
 
     int64_t *get_SE(int Omax)
     {
-        int S = pnameseq->seq.size();
+        int S = ref_sz;
         int scc_sz = tail->scc_sz;
         return new int64_t[6]{0, Omax + 1, int64_t(Omax + 1) * (1 + 2 * (S + 1)), int64_t(Omax + 1) * (1 + 4 * (S + 1)), int64_t(Omax + 1) * (1 + 4 * (S + 1) + (scc_sz - 1)), int64_t(Omax + 1) * (1 + 4 * (S + 1) + 2 * (scc_sz - 1))};
     }
@@ -614,6 +592,12 @@ struct Graph
     int *pQs_sz;
     int64_t *pQid;
 
+    boost::program_options::variables_map &vm;
+    std::map<std::string, std::pair<std::unique_ptr<uint8_t[]>, uint64_t>> &file2short;
+    std::map<std::string, RankVec> &file2rankvec;
+    std::map<std::string, std::pair<std::unique_ptr<uint8_t[]>, uint64_t>> &file2long;
+    std::map<std::string, std::ifstream> file2SA;
+
     void get_affine(std::vector<double> &g, int seqlen, double initial, double u, double v)
     {
         g.resize(seqlen + 1);
@@ -625,279 +609,122 @@ struct Graph
                 g[s + 1] = g[s] + u;
     }
 
-    Graph(int argc, char **argv, std::map<std::string, NameSeq> &file2seq, std::map<std::string, BroWheel> &file2browheel)
+    Graph(boost::program_options::variables_map &vm_, std::map<std::string, std::pair<std::unique_ptr<uint8_t[]>, uint64_t>> &file2short_, std::map<std::string, RankVec> &file2rankvec_, std::map<std::string, std::pair<std::unique_ptr<uint8_t[]>, uint64_t>> &file2long_) : vm(vm_), file2short(file2short_), file2rankvec(file2rankvec_), file2long(file2long_)
     {
-        for (int i = 1; i < argc; ++i)
+        for (std::string file : vm["longs"].as<std::vector<std::string>>())
         {
-            if (!strcmp(argv[i], "---nodes"))
-            {
-                std::deque<std::string> names;
-                std::deque<double> ves;
-                std::deque<double> ues;
-                for (int j = i + 1; j < argc && strncmp(argv[j], "---", 3); ++j)
-                {
-                    if (!strcmp(argv[j], "--names"))
-                        for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
-                            names.emplace_back(argv[k]);
-                    if (!strcmp(argv[j], "--ves"))
-                        for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
-                            ves.push_back(str2double(argv[k]));
-                    if (!strcmp(argv[j], "--ues"))
-                        for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
-                            ues.push_back(str2double(argv[k]));
-                }
-                for (int j = 0; j < names.size(); ++j)
-                    nodes.emplace_back(names[j], beyond_access(ves, j, 0.0), beyond_access(ues, j, 0.0), j);
-            }
+            file = file.substr(0, file.find(','));
+            if (file2SA.count(file))
+                continue;
+            file2SA[file].open(file+".for.rev.inv.concat.sa");
+        }
+
+        for (std::string nodeinfo : vm["nodes"].as<std::vector<std::string>>())
+        {
+            std::stringstream ss(nodeinfo);
+            std::string name, is_root, is_target, v, u;
+            std::getline(std::getline(std::getline(std::getline(std::getline(ss, name, ','), is_root, ','), is_target, ','), v, ','), u, ',');
+            
+            Node node;
+            node.n = nodes.size();
+            node.name = name;
+            node.is_root = std::stoi(is_root);
+            node.is_target = std::stoi(is_target);
+            try{node.ve = std::stod(v);}catch(...){node.ve = 0.0;}
+            try{node.ue = std::stod(u);}catch(...){node.ue = 0.0;}
+            nodes.push_back(std::move(node));
+
+            if (node.is_root)
+                roots.push_back(&nodes.back());
+            if (node.is_target)
+                targets.push_back(&nodes.back());
         }
 
         std::list<EdgeLocal> locals;
+        if (vm.count("short"))
+            for (std::string shortinfo : vm["shorts"].as<std::vector<std::string>>())
+            {
+                std::stringstream ss(shortinfo);
+                std::string name, tail, head, match, mismatch, v, u, vb, ub, T, min_score;
+                std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(ss, name, ','), tail, ','), head, ','), match, ','), mismatch, ','), v, ','), u, ','), vb, ','), ub, ','), T, ','), min_score, ',');
+
+                EdgeLocal local;
+                local.n = locals.size();
+                local.global = false;
+                for (int a = 2; a < 7; ++a)
+                    for (int b = 2; b < 7; ++b)
+                        if (a==b && a>2)
+                            try{local.gamma[a][b]=std::stod(match);}catch(...){local.gamma[a][b]=1.0;}
+                        else
+                            try{local.gamma[a][b]=std::stod(mismatch);}catch(...){local.gamma[a][b]=-3.0;}
+                local.name = name;
+                for (Node &node : nodes)
+                {
+                    if (node.name == head)
+                        local.head = &node;
+                    if (node.name == tail)
+                        local.tail = &node;
+                }
+                try{local.ve = std::stod(v);}catch(...){local.ve = -5.0;}
+                local.vf = local.ve;
+                try{local.ue = std::stod(u);}catch(...){local.ue = -2.0;}
+                local.uf = local.ue;
+                try{local.vfp = std::stod(vb);}catch(...){local.vfp = 0.0;}
+                local.vfm = local.vfp;
+                try{local.ufp = std::stod(ub);}catch(...){local.ufp = 0.0;}
+                local.ufm = local.ufp;
+                try{local.T = std::stod(T);}catch(...){local.T = -10.0;}
+                try{local.min_score = std::stod(min_score);}catch(...){local.min_score = 20.0;}
+                local.ref = file2short[local.name].first.get();
+                local.ref_sz = file2short[local.name].second;
+                get_affine(local.gf, local.ref_sz, 0, local.uf, local.vf);
+                local.gfm = local.vfm + (local.ref_sz - 1) * local.ufm;
+                get_affine(local.gfpT, local.ref_sz, local.T, local.ufp, local.vfp);
+                locals.push_back(local);
+            }
+
+
         std::list<EdgeGlobal> globals;
-        for (int i = 1; i < argc; ++i)
-        {
-            if (!strcmp(argv[i], "---roots"))
-                for (int j = i + 1; j < argc && strncmp(argv[j], "---", 3); ++j)
-                    for (Node &node : nodes)
-                        if (node.name == argv[j])
-                        {
-                            roots.push_back(&node);
-                            node.is_root = true;
-                            break;
-                        }
-
-            if (!strcmp(argv[i], "---targets"))
-                for (int j = i + 1; j < argc && strncmp(argv[j], "---", 3); ++j)
-                    for (Node &node : nodes)
-                        if (node.name == argv[j])
-                        {
-                            targets.push_back(&node);
-                            node.is_target = true;
-                            break;
-                        }
-
-            if (!strcmp(argv[i], "---locals"))
+        if (vm.count("longs"))
+            for (std::string longinfo : vm["longs"].as<std::vector<std::string>>())
             {
-                std::deque<std::array<double, 49>> gammas;
-                std::deque<std::string> names, tails, heads;
-                std::deque<double> ves, ues, vfs, ufs, Ts, min_scores, vfps, ufps, vfms, ufms;
-                for (int j = i + 1; j < argc && strncmp(argv[j], "---", 3); ++j)
+                std::stringstream ss(longinfo);
+                std::string name, tail, head, match, mismatch, v, u, vb, ub, T, min_score;
+                std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(ss, name, ','), tail, ','), head, ','), match, ','), mismatch, ','), v, ','), u, ','), T, ','), min_score, ',');
+
+                EdgeGlobal global;
+                global.n = locals.size() + globals.size();
+                global.global = true;
+                for (int a = 2; a < 7; ++a)
+                    for (int b = 2; b < 7; ++b)
+                        if (a==b && a>2)
+                            try{global.gamma[a][b]=std::stod(match);}catch(...){global.gamma[a][b]=1.0;}
+                        else
+                            try{global.gamma[a][b]=std::stod(mismatch);}catch(...){global.gamma[a][b]=-3.0;}
+                global.name = name;
+                for (Node &node : nodes)
                 {
-                    if (!strcmp(argv[j], "--gammas"))
-                        for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
-                        {
-                            gammas.emplace_back();
-                            std::stringstream sstr(argv[k]);
-                            for (int p = 0; p < 49; ++p)
-                            {
-                                std::string pair_score;
-                                getline(sstr, pair_score, ',');
-                                gammas.back()[p] = str2double(pair_score);
-                            }
-                        }
-
-                    if (!strcmp(argv[j], "--names"))
-                        for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
-                            names.emplace_back(argv[k]);
-
-                    if (!strcmp(argv[j], "--tails"))
-                        for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
-                            tails.emplace_back(argv[k]);
-
-                    if (!strcmp(argv[j], "--heads"))
-                        for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
-                            heads.emplace_back(argv[k]);
-
-                    if (!strcmp(argv[j], "--ves"))
-                        for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
-                            ves.emplace_back(str2double(argv[k]));
-
-                    if (!strcmp(argv[j], "--ues"))
-                        for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
-                            ues.emplace_back(str2double(argv[k]));
-
-                    if (!strcmp(argv[j], "--vfs"))
-                        for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
-                            vfs.emplace_back(str2double(argv[k]));
-
-                    if (!strcmp(argv[j], "--ufs"))
-                        for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
-                            ufs.emplace_back(str2double(argv[k]));
-
-                    if (!strcmp(argv[j], "--Ts"))
-                        for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
-                            Ts.emplace_back(str2double(argv[k]));
-
-                    if (!strcmp(argv[j], "--min_scores"))
-                        for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
-                            min_scores.emplace_back(str2double(argv[k]));
-
-                    if (!strcmp(argv[j], "--vfps"))
-                        for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
-                            vfps.emplace_back(str2double(argv[k]));
-
-                    if (!strcmp(argv[j], "--ufps"))
-                        for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
-                            ufps.emplace_back(str2double(argv[k]));
-
-                    if (!strcmp(argv[j], "--vfms"))
-                        for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
-                            vfms.emplace_back(str2double(argv[k]));
-
-                    if (!strcmp(argv[j], "--ufms"))
-                        for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
-                            ufms.emplace_back(str2double(argv[k]));
+                    if (node.name == head)
+                        global.head = &node;
+                    if (node.name == tail)
+                        global.tail = &node;
                 }
+                try{global.ve = std::stod(v);}catch(...){global.ve = -5.0;}
+                global.vf = global.ve;
+                try{global.ue = std::stod(u);}catch(...){global.ue = -2.0;}
+                global.uf = global.ue;
+                try{global.T = std::stod(T);}catch(...){global.T = -10.0;}
+                try{global.min_score = std::stod(min_score);}catch(...){global.min_score = 20.0;}
+                global.prankvec = &file2rankvec[global.name];
 
-                if (names.size() > heads.size() || names.size() > tails.size())
-                {
-                    std::cerr << "head or tail number is not enough for short references\n";
-                    exit(EXIT_FAILURE);
-                }
-                for (int j = 0; j < names.size(); ++j)
-                {
-                    EdgeLocal local;
-                    local.n = j;
-                    local.global = false;
-                    if (!gammas.empty())
-                        for (int a = 0; a < 7; ++a)
-                            for (int b = 0; b < 7; ++b)
-                                if (j < gammas.size())
-                                    local.gamma[a][b] = gammas[j][7 * a + b];
-                                else
-                                    local.gamma[a][b] = gammas.back()[7 * a + b];
-                    local.name = names[j];
-                    for (Node &node : nodes)
-                    {
-                        if (node.name == heads[j])
-                            local.head = &node;
-                        if (node.name == tails[j])
-                            local.tail = &node;
-                    }
-                    local.ve = beyond_access(ves, j, -5.0);
-                    local.ue = beyond_access(ues, j, -2.0);
-                    local.vf = beyond_access(vfs, j, -5.0);
-                    local.uf = beyond_access(ufs, j, -2.0);
-                    local.T = beyond_access(Ts, j, -10.0);
-                    local.min_score = beyond_access(min_scores, j, 20.0);
-                    local.vfp = beyond_access(vfps, j, 0.0);
-                    local.ufp = beyond_access(ufps, j, 0.0);
-                    local.vfm = beyond_access(vfms, j, 0.0);
-                    local.ufm = beyond_access(ufms, j, 0.0);
-
-                    file2seq[local.name].readin(local.name);
-                    local.pnameseq = &file2seq[local.name];
-                    get_affine(local.gf, file2seq[local.name].seq.size(), 0, local.uf, local.vf);
-                    local.gfm = local.vfm + (local.pnameseq->seq.size() - 1) * local.ufm;
-                    get_affine(local.gfpT, local.pnameseq->seq.size(), local.T, local.ufp, local.vfp);
-
-                    locals.push_back(local);
-                }
+                globals.push_back(global);
             }
-        }
-
-        for (int i = 1; i < argc; ++i)
-        {
-            if (!strcmp(argv[i], "---globals"))
-            {
-                std::deque<std::array<double, 49>> gammas;
-                std::deque<std::string> names, tails, heads;
-                std::deque<double> ves, ues, vfs, ufs, Ts, min_scores;
-                for (int j = i + 1; j < argc && strncmp(argv[j], "---", 3); ++j)
-                {
-                    if (!strcmp(argv[j], "--gammas"))
-                        for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
-                        {
-                            gammas.emplace_back();
-                            std::stringstream sstr(argv[k]);
-                            for (int p = 0; p < 49; ++p)
-                            {
-                                std::string pair_score;
-                                getline(sstr, pair_score, ',');
-                                gammas.back()[p] = str2double(pair_score);
-                            }
-                        }
-
-                    if (!strcmp(argv[j], "--names"))
-                        for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
-                            names.emplace_back(argv[k]);
-
-                    if (!strcmp(argv[j], "--tails"))
-                        for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
-                            tails.emplace_back(argv[k]);
-
-                    if (!strcmp(argv[j], "--heads"))
-                        for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
-                            heads.emplace_back(argv[k]);
-
-                    if (!strcmp(argv[j], "--ves"))
-                        for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
-                            ves.emplace_back(str2double(argv[k]));
-
-                    if (!strcmp(argv[j], "--ues"))
-                        for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
-                            ues.emplace_back(str2double(argv[k]));
-
-                    if (!strcmp(argv[j], "--vfs"))
-                        for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
-                            vfs.emplace_back(str2double(argv[k]));
-
-                    if (!strcmp(argv[j], "--ufs"))
-                        for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
-                            ufs.emplace_back(str2double(argv[k]));
-
-                    if (!strcmp(argv[j], "--Ts"))
-                        for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
-                            Ts.emplace_back(str2double(argv[k]));
-
-                    if (!strcmp(argv[j], "--min_scores"))
-                        for (int k = j + 1; k < argc && strncmp(argv[k], "--", 2); ++k)
-                            min_scores.emplace_back(str2double(argv[k]));
-                }
-
-                if (names.size() > heads.size() || names.size() > tails.size())
-                {
-                    std::cerr << "head or tail number is not enough for long references\n";
-                    exit(EXIT_FAILURE);
-                }
-                for (int j = 0; j < names.size(); ++j)
-                {
-                    EdgeGlobal global;
-                    global.n = locals.size() + j;
-                    global.global = true;
-                    if (!gammas.empty())
-                        for (int a = 0; a < 7; ++a)
-                            for (int b = 0; b < 7; ++b)
-                                if (j < gammas.size())
-                                    global.gamma[a][b] = gammas[j][7 * a + b];
-                                else
-                                    global.gamma[a][b] = gammas.back()[7 * a + b];
-                    global.name = names[j];
-                    for (Node &node : nodes)
-                    {
-                        if (node.name == heads[j])
-                            global.head = &node;
-                        if (node.name == tails[j])
-                            global.tail = &node;
-                    }
-                    global.ve = beyond_access(ves, j, -5.0);
-                    global.ue = beyond_access(ues, j, -2.0);
-                    global.vf = beyond_access(vfs, j, -5.0);
-                    global.uf = beyond_access(ufs, j, -2.0);
-                    global.T = beyond_access(Ts, j, -10.0);
-                    global.min_score = beyond_access(min_scores, j, 20.0);
-
-                    global.pbrowheel = &file2browheel[global.name];
-
-                    globals.push_back(global);
-                }
-            }
-        }
 
         std::vector<bool> visit(locals.size() + globals.size());
         RemoveEdge(roots, false, visit, locals, globals);
         RemoveEdge(targets, true, visit, locals, globals);
         SCCTS(locals, globals);
-        for (int i = 0; i < sccs.size(); ++i)
+        for (uint64_t i = 0; i < sccs.size(); ++i)
             for (auto node : sccs[i].nodes)
             {
                 node->scc_id = i;
@@ -1042,14 +869,14 @@ struct Graph
     {
         std::vector<bool> visit(nodes.size()), in_stack(nodes.size());
         std::vector<int> disc(nodes.size()), low(nodes.size());
-        for (int64_t n = 0; n < nodes.size(); ++n)
+        for (uint64_t n = 0; n < nodes.size(); ++n)
         {
             visit[n] = false;
             in_stack[n] = false;
         }
         std::stack<Node *> stack;
         int id = 0;
-        for (int64_t n = 0; n < nodes.size(); ++n)
+        for (uint64_t n = 0; n < nodes.size(); ++n)
             if (!visit[n])
                 DeepFirst(&nodes[n], stack, id, visit, in_stack, disc, low, locals, globals);
     }

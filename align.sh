@@ -1,6 +1,6 @@
 #!/bin/bash
 excu="/home/ljw/new_fold/old_desktop/shoujia/Graph_Projects/GAP/build/GAP"
-genome="/home/ljw/hg19_with_bowtie2_index/hg19.for.rev.fa"
+genome="/home/ljw/hg19_with_bowtie2_index/hg19.fa"
 msn=1
 bs=5
 tz=24
@@ -28,13 +28,36 @@ for round in $(seq 0 $mr); do
 		break
 	fi
 	T=$(($Ti + $dT * $round))
-	$excu --threads_sz $tz --input $read_file --min_seg_num 1 --max_seg_num $msn --block_size $bs ---nodes --names node0 ---roots node0 ---targets node0 ---globals --names $genome --tails node0 --heads node0 --Ts $T
+	$excu --threads_sz $tz --input $read_file --min_seg_num 1 --max_seg_num $msn --block_size $bs --nodes node0,1,1 --longs $genome,node0,node0,,,,,$T
 	cd ..
 done
 mkdir tmplast
 cd tmplast
 read_file="../tmp$mr/fail"
 echo $read_file
+
+nodes=""
+for i in $(seq 0 $msn); do
+	if [ $i == 0 ]; then
+		is_root=1
+	else
+		is_root=0
+	fi
+	if [ $i == $msn ]; then
+		is_target=1
+	else
+		is_target=0
+	fi
+	nodes=$nodes" node"$i","$is_root","$is_target
+done
+echo $nodes
+
+longs=""
+for i in $(seq 0 $(($msn-1))); do
+	longs=$longs" "$genome",node"$i",node"$(($i+1))",,,,,0.0"
+done
+echo $longs
+
 if [ -s $read_file ]; then
-	$excu --threads_sz $tz --input $read_file --block_size $bs ---nodes --names $(seq -f 'node%.f' -s ' ' 0 $msn) ---roots node0 ---targets node$msn ---globals --names $(yes $genome | head -n $msn | tr "\n" " ") --tails $(seq -f 'node%.f' -s ' ' 0 $(($msn - 1))) --heads $(seq -f 'node%.f' -s ' ' 1 $msn) --Ts 0
+	$excu --threads_sz $tz --input $read_file --block_size $bs --nodes $nodes --longs $longs
 fi
