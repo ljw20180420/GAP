@@ -61,76 +61,6 @@ struct EdgeLocal : Edge
     std::vector<double> gfpT;
 };
 
-struct TrackTree
-{
-    enum enumEFG
-    {
-        enumE,
-        enumF,
-        enumG
-    };
-
-    int W;
-    std::deque<Dot> dots;
-    int64_t idx, pidx;
-    int shiftE, shiftF, shiftG, shiftPE, shiftPF, shiftPG;
-
-    void setidx(int64_t idx_)
-    {
-        if (idx_ == 0)
-            pidx = -1;
-        else
-        {
-            pidx = idx;
-            shiftPE = shiftE;
-            shiftPF = shiftF;
-            shiftPG = shiftG;
-        }
-        idx = idx_;
-        shiftE = 3 * idx * (W + 1);
-        shiftF = shiftE + (W + 1);
-        shiftG = shiftF + (W + 1);
-    }
-    struct TrackNode
-    {
-        int64_t cidxs[5];
-        int tau = 0;
-
-        TrackNode(int64_t cidx_)
-        {
-            for (int i = 0; i < 5; ++i)
-                cidxs[i] = cidx_;
-        }
-    };
-
-    std::deque<TrackNode> tracknodes;
-
-    void emplace_back(int64_t cidx_, int n_, int64_t s_, int lambda_)
-    {
-        tracknodes.emplace_back(cidx_);
-        dots.resize(tracknodes.size() * (enumG + 1) * (W + 1));
-        for (int k = (tracknodes.size() - 1) * (enumG + 1) * (W + 1), t = enumE; t <= enumG; ++t)
-            for (int w = 0; w <= W; ++w, ++k)
-            {
-                dots[k].n = n_;
-                dots[k].s = s_;
-                dots[k].w = w;
-                dots[k].lambda = lambda_;
-            }
-    }
-
-    void clear()
-    {
-        dots.clear();
-        tracknodes.clear();
-    }
-};
-
-struct EdgeGlobal : Edge
-{
-    TrackTree tracktree;
-};
-
 template <typename T>
 void type_initial(T *&Ts, std::initializer_list<T **> pTss, std::initializer_list<std::unique_ptr<T *[]> *> pTsss, int *Ss, int Omax)
 {
@@ -198,11 +128,11 @@ struct Node
 
     struct GlobalSuffix
     {
-        EdgeGlobal *edge;
+        Edge *edge;
         int64_t start;
         int lambda;
 
-        GlobalSuffix(EdgeGlobal *edge_, int64_t start_, int lambda_)
+        GlobalSuffix(Edge *edge_, int64_t start_, int lambda_)
             : edge(edge_), start(start_), lambda(lambda_)
         {
         }
@@ -287,7 +217,7 @@ struct Node
         }
     }
 
-    void updateA0(int w, double source_val, EdgeGlobal *edge_, int64_t start_, int lambda_)
+    void updateA0(int w, double source_val, Edge *edge_, int64_t start_, int lambda_)
     {
         if (source_val >= Avals[0][w])
         {
@@ -445,10 +375,10 @@ struct EdgeLocalCircuit : EdgeLocal
     }
 };
 
-struct EdgeGlobalCross : EdgeGlobal
+struct EdgeGlobalCross : Edge
 {
-    EdgeGlobalCross(EdgeGlobal &edge)
-        : EdgeGlobal(edge)
+    EdgeGlobalCross(Edge &edge)
+        : Edge(edge)
     {
     }
 };
@@ -474,7 +404,7 @@ struct SNC
     }
 };
 
-struct EdgeGlobalCircuit : EdgeGlobal
+struct EdgeGlobalCircuit : Edge
 {
     std::deque<SNC> sncs;
     std::unique_ptr<bool *[]> D0visits;
@@ -483,8 +413,8 @@ struct EdgeGlobalCircuit : EdgeGlobal
     std::unique_ptr<int *[]> D0s_szs;
     std::unique_ptr<int64_t *[]> D0ids;
 
-    EdgeGlobalCircuit(EdgeGlobal &edge)
-        : EdgeGlobal(edge)
+    EdgeGlobalCircuit(Edge &edge)
+        : Edge(edge)
     {
     }
 
@@ -677,7 +607,7 @@ struct Graph
             }
 
 
-        std::list<EdgeGlobal> globals;
+        std::list<Edge> globals;
         if (vm.count("longs"))
             for (std::string longinfo : vm["longs"].as<std::vector<std::string>>())
             {
@@ -685,7 +615,7 @@ struct Graph
                 std::string name, tail, head, match, mismatch, v, u, vb, ub, T, min_score;
                 std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(ss, name, ','), tail, ','), head, ','), match, ','), mismatch, ','), v, ','), u, ','), T, ','), min_score, ',');
 
-                EdgeGlobal global;
+                Edge global;
                 global.n = locals.size() + globals.size();
                 for (int a = 2; a < 7; ++a)
                     for (int b = 2; b < 7; ++b)
@@ -773,7 +703,7 @@ struct Graph
             return std::stod(str);
     }
 
-    void DeepFirstLine(Node *node, bool reverse, std::vector<bool> &visit, std::list<EdgeLocal> &locals, std::list<EdgeGlobal> &globals)
+    void DeepFirstLine(Node *node, bool reverse, std::vector<bool> &visit, std::list<EdgeLocal> &locals, std::list<Edge> &globals)
     {
         for (auto &edge : locals)
             if (reverse ? edge.head == node : edge.tail == node)
@@ -791,7 +721,7 @@ struct Graph
                 }
     }
 
-    void RemoveEdge(std::vector<Node *> &nodes, bool reverse, std::vector<bool> &visit, std::list<EdgeLocal> &locals, std::list<EdgeGlobal> &globals)
+    void RemoveEdge(std::vector<Node *> &nodes, bool reverse, std::vector<bool> &visit, std::list<EdgeLocal> &locals, std::list<Edge> &globals)
     {
         for (auto &edge : locals)
             visit[edge.n] = false;
@@ -811,7 +741,7 @@ struct Graph
                 ++iter;
     }
 
-    void DeepFirst(Node *node, std::stack<Node *> &stack, int &id, std::vector<bool> &visit, std::vector<bool> &in_stack, std::vector<int> &disc, std::vector<int> &low, std::list<EdgeLocal> &locals, std::list<EdgeGlobal> &globals)
+    void DeepFirst(Node *node, std::stack<Node *> &stack, int &id, std::vector<bool> &visit, std::vector<bool> &in_stack, std::vector<int> &disc, std::vector<int> &low, std::list<EdgeLocal> &locals, std::list<Edge> &globals)
     {
         int n = node->n;
         visit[n] = true;
@@ -856,7 +786,7 @@ struct Graph
         }
     }
 
-    void SCCTS(std::list<EdgeLocal> &locals, std::list<EdgeGlobal> &globals)
+    void SCCTS(std::list<EdgeLocal> &locals, std::list<Edge> &globals)
     {
         std::vector<bool> visit(nodes.size()), in_stack(nodes.size());
         std::vector<int> disc(nodes.size()), low(nodes.size());

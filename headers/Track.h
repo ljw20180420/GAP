@@ -383,20 +383,14 @@ struct Track : Graph
                 }
 
                 bool islocal = file2short.count(edges[path[0]->n]->name);
-                EdgeLocal *local = static_cast<EdgeLocal *>(edges[path[0]->n]);
-                EdgeGlobal *global = static_cast<EdgeGlobal *>(edges[path[0]->n]);
-                std::pair<std::unique_ptr<uint8_t[]>, uint64_t> *shortref, *longref;
-                if (islocal)
-                    shortref = &file2short[local->name];
-                else
-                    longref = &file2long[global->name];
+                std::pair<std::unique_ptr<uint8_t[]>, uint64_t> *ref = islocal ? (&file2short[edges[path[0]->n]->name]) : (&file2long[edges[path[0]->n]->name]);
 
                 if (islocal)
                 {
                     align_query.append(path[0]->s, '-');
                     align_mid.append(path[0]->s, ' ');
                     for (int i=0; i<path[0]->s; ++i)
-                        align_ref.push_back(int2base[shortref->first[i]]);
+                        align_ref.push_back(int2base[ref->first[i]]);
                 }
 
                 for (int i = 1; i < path.size(); ++i)
@@ -412,9 +406,9 @@ struct Track : Graph
                         align_query.push_back('-');
                     
                     if (localF)
-                        align_ref.push_back(int2base[shortref->first[path[i]->s - 1]]);
+                        align_ref.push_back(int2base[ref->first[path[i]->s - 1]]);
                     else if (globalF)
-                        align_ref.push_back(int2base[longref->first[longref->second - 1 - path[i]->s]]);
+                        align_ref.push_back(int2base[ref->first[ref->second - 1 - path[i]->s]]);
                     else
                         align_ref.push_back('-');
 
@@ -426,11 +420,11 @@ struct Track : Graph
 
                 if (islocal)
                 {
-                    int sz = shortref->second - path.back()->s;
+                    int sz = ref->second - path.back()->s;
                     align_query.append(sz, '-');
                     align_mid.append(sz, ' ');
                     for (int i=path.back()->s; i<path.back()->s+sz; ++i)
-                        align_ref.push_back(int2base[shortref->first[i]]);
+                        align_ref.push_back(int2base[ref->first[i]]);
                 }
             }
 
@@ -477,16 +471,15 @@ struct Track : Graph
     std::map<std::string, std::deque<std::pair<int64_t, int64_t>>> get_seqranges(Dot *pdot)
     {
         std::map<std::string, std::deque<std::pair<int64_t, int64_t>>> seqranges;
-        EdgeGlobal *global = static_cast<EdgeGlobal *>(edges[pdot->n]);
-        uint8_t *longref = file2long[global->name].first.get();
-        std::vector<std::pair<std::string, uint64_t>> &cumlen = file2cumlen[global->name];
-        RankVec &rankvec = file2rankvec[global->name];
+        uint8_t *longref = file2long[edges[pdot->n]->name].first.get();
+        std::vector<std::pair<std::string, uint64_t>> &cumlen = file2cumlen[edges[pdot->n]->name];
+        RankVec &rankvec = file2rankvec[edges[pdot->n]->name];
         int64_t sr1 = 0, sr2 = rankvec.bwt_sz - 1;
  
         for (uint64_t s = 0, tmp = rankvec.bwt_sz - pdot->s + pdot->lambda - 2; s < pdot->lambda; ++s)
             rankvec.PreRange(sr1, sr2, longref[tmp - s]);
         
-        std::ifstream &SAfin = file2SA[global->name];
+        std::ifstream &SAfin = file2SA[edges[pdot->n]->name];
         for (int64_t sx = sr1; sx <= sr2 && sx - sr1 < vm["max_range"].as<int>(); ++sx)
         {
             uint64_t s;

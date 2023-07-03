@@ -10,6 +10,71 @@
 #include <typeinfo>
 #include "Graph.h"
 
+struct TrackTree
+{
+    enum enumEFG
+    {
+        enumE,
+        enumF,
+        enumG
+    };
+
+    int W;
+    std::deque<Dot> dots;
+    int64_t idx, pidx;
+    int shiftE, shiftF, shiftG, shiftPE, shiftPF, shiftPG;
+
+    void setidx(int64_t idx_)
+    {
+        if (idx_ == 0)
+            pidx = -1;
+        else
+        {
+            pidx = idx;
+            shiftPE = shiftE;
+            shiftPF = shiftF;
+            shiftPG = shiftG;
+        }
+        idx = idx_;
+        shiftE = 3 * idx * (W + 1);
+        shiftF = shiftE + (W + 1);
+        shiftG = shiftF + (W + 1);
+    }
+    struct TrackNode
+    {
+        int64_t cidxs[5];
+        int tau = 0;
+
+        TrackNode(int64_t cidx_)
+        {
+            for (int i = 0; i < 5; ++i)
+                cidxs[i] = cidx_;
+        }
+    };
+
+    std::deque<TrackNode> tracknodes;
+
+    void emplace_back(int64_t cidx_, int n_, int64_t s_, int lambda_)
+    {
+        tracknodes.emplace_back(cidx_);
+        dots.resize(tracknodes.size() * (enumG + 1) * (W + 1));
+        for (int k = (tracknodes.size() - 1) * (enumG + 1) * (W + 1), t = enumE; t <= enumG; ++t)
+            for (int w = 0; w <= W; ++w, ++k)
+            {
+                dots[k].n = n_;
+                dots[k].s = s_;
+                dots[k].w = w;
+                dots[k].lambda = lambda_;
+            }
+    }
+
+    void clear()
+    {
+        dots.clear();
+        tracknodes.clear();
+    }
+};
+
 template <typename T>
 struct MonoDeque
 {
@@ -38,6 +103,8 @@ struct MonoDeque
 
 struct Align : Graph
 {
+    std::map<std::string, TrackTree> long2tracktree;
+
     struct CrossGlobalData
     {
         struct Doo
@@ -636,10 +703,9 @@ struct Align : Graph
             *(visitqueue.front()) = false;
             visitqueue.pop();
         }
-        for (auto &edge : global_crosses)
-            edge.tracktree.clear();
-        for (auto &edge : global_circuits)
-            edge.tracktree.clear();
+
+        for (std::map<std::string, TrackTree>::iterator it = long2tracktree.begin(); it != long2tracktree.end(); ++it)
+            it->second.clear();
         for (auto &node : nodes)
             node.clearAdelta(O.size());
         dot_sources.clear();
@@ -655,9 +721,9 @@ struct Align : Graph
 
         for (auto &globalsuffix : node.AdeltaGlobal[swn.w])
         {
-            EdgeGlobal *edge = globalsuffix.edge;
+            Edge *edge = globalsuffix.edge;
             double *Avals = edge->tail->Avals[edge->tail->scc_sz - 1];
-            TrackTree &tracktree = edge->tracktree;
+            TrackTree &tracktree = long2tracktree[edge->name];
             std::deque<TrackTree::TrackNode> &tracknodes = tracktree.tracknodes;
             std::deque<Dot> &dots = tracktree.dots;
             uint8_t *longref = file2long[edge->name].first.get();
