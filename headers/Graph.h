@@ -136,16 +136,6 @@ struct Node
 
     std::unique_ptr<std::deque<GlobalSuffix>[]> AdeltaGlobal;
 
-    int get_trn()
-    {
-        return 1 + scc_sz;
-    }
-
-    int64_t get_tnn(int Omax)
-    {
-        return int64_t(Omax + 1) * get_trn();
-    }
-
     int64_t get_tsn(uint64_t Aso, int Omax)
     {
         return int64_t(Omax + 1) * (2 + Aso * (scc_sz - 1));
@@ -158,7 +148,7 @@ struct Node
 
     int64_t *get_SE(int Omax)
     {
-        return new int64_t[4]{0, Omax + 1, 2 * (Omax + 1), get_tnn(Omax)};
+        return new int64_t[4]{0, Omax + 1, 2 * (Omax + 1), int64_t(Omax + 1) * (1 + scc_sz)};
     }
 
     int *get_steps(uint64_t Aso)
@@ -485,8 +475,8 @@ struct Graph
     const static int sigma = 6;
 
     std::deque<Node> nodes;
-    std::vector<Node *> roots;
-    std::vector<Node *> targets;
+    // std::vector<Node *> roots;
+    // std::vector<Node *> targets;
     std::deque<EdgeLocalCross> local_crosses; // cannot be changed to vector, because emplace_back of vector may change the addresses of elements
     std::deque<EdgeLocalCircuit> local_circuits;
     std::deque<EdgeGlobalCross> global_crosses;
@@ -552,11 +542,6 @@ struct Graph
             try{node.ve = std::stod(v);}catch(...){node.ve = 0.0;}
             try{node.ue = std::stod(u);}catch(...){node.ue = 0.0;}
             nodes.push_back(std::move(node));
-
-            if (node.is_root)
-                roots.push_back(&nodes.back());
-            if (node.is_target)
-                targets.push_back(&nodes.back());
         }
 
         std::list<EdgeLocal> locals;
@@ -636,8 +621,8 @@ struct Graph
             }
 
         std::vector<bool> visit(locals.size() + globals.size());
-        RemoveEdge(roots, false, visit, locals, globals);
-        RemoveEdge(targets, true, visit, locals, globals);
+        RemoveEdge(nodes, false, visit, locals, globals);
+        RemoveEdge(nodes, true, visit, locals, globals);
         SCCTS(locals, globals);
         for (uint64_t i = 0; i < sccs.size(); ++i)
             for (auto node : sccs[i].nodes)
@@ -707,14 +692,15 @@ struct Graph
                 }
     }
 
-    void RemoveEdge(std::vector<Node *> &nodes, bool reverse, std::vector<bool> &visit, std::list<EdgeLocal> &locals, std::list<Edge> &globals)
+    void RemoveEdge(std::deque<Node> &nodes, bool reverse, std::vector<bool> &visit, std::list<EdgeLocal> &locals, std::list<Edge> &globals)
     {
         for (auto &edge : locals)
             visit[edge.n] = false;
         for (auto &edge : globals)
             visit[edge.n] = false;
         for (auto &node : nodes)
-            DeepFirstLine(node, reverse, visit, locals, globals);
+            if ((!reverse && node.is_root) || (reverse && node.is_target))
+                DeepFirstLine(&node, reverse, visit, locals, globals);
         for (auto iter = locals.begin(); iter != locals.end();)
             if (!visit[iter->n])
                 iter = locals.erase(iter);
@@ -793,10 +779,11 @@ struct Graph
         std::ofstream fout(file);
         fout << "digraph align_graph\n{\n";
         fout << "\tnode[shape=circle]\n";
-        for (auto root : roots)
-            fout << '\t' << root->name << "[shape=square]\n";
-        for (auto target : targets)
-            fout << '\t' << target->name << "[shape=diamond]\n";
+        for (Node &node : nodes)
+            if (node.is_root)
+                fout << '\t' << node.name << "[shape=square]\n";
+            else if (node.is_target)
+                fout << '\t' << node.name << "[shape=diamond]\n";            
         for (auto &edge : local_crosses)
             fout << '\t' << edge.tail->name << "->" << edge.head->name << "[color=black,label=\"" << edge.name << "\"]\n";
         for (auto &edge : local_circuits)

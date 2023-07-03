@@ -172,13 +172,17 @@ struct Align : Graph
     {
         trn = 0;
         tnn = 1 + nodes.size();
-        tsn = targets.size();
+        uint64_t targets_sz = 0;
+        for (Node &node : nodes)
+            if (node.is_target)
+                ++targets_sz;
+        tsn = targets_sz;
 
         std::vector<uint64_t> Asos;
         for (auto &node : nodes)
         {
-            trn += node.get_trn();
-            tnn += node.get_tnn(Omax);
+            trn += node.scc_sz + 1;
+            tnn += int64_t(Omax + 1) * (node.scc_sz + 1);
             Asos.push_back(1);
             for (EdgeLocalCircuit &local_circuit : local_circuits)
                 if (local_circuit.head==&node)
@@ -227,7 +231,7 @@ struct Align : Graph
         double ***fpsources = sourcess.get(), ***rpsources = fpsources + tnn;
         pQsources = --rpsources;
         *pQsources = fpsource;
-        fpsource += targets.size();
+        fpsource += targets_sz;
         int *fps_sz = s_szs.get(), *rps_sz = fps_sz + tnn;
         pQs_sz = --rps_sz;
         int64_t *fpid = ids.get(), *rpid = fpid + tnn;
@@ -350,12 +354,13 @@ struct Align : Graph
                 CrossIterationGlobal(edge);
         }
         *pQval = -inf;
-        for (auto target : targets)
-            *pQval = std::max(*pQval, target->Avals[target->scc_sz - 1][O.size()]);
+        for (Node &node : nodes)
+            if (node.is_target)
+                *pQval = std::max(*pQval, node.Avals[node.scc_sz - 1][O.size()]);
         s_szs[tnn - 1] = 0;
-        for (auto target : targets)
-            if (target->Avals[target->scc_sz - 1][O.size()] == *pQval)
-                sourcess[tnn - 1][s_szs[tnn - 1]++] = &target->Avals[target->scc_sz - 1][O.size()];
+        for (Node &node : nodes)
+            if (node.is_target && node.Avals[node.scc_sz - 1][O.size()] == *pQval)
+                sourcess[tnn - 1][s_szs[tnn - 1]++] = &node.Avals[node.scc_sz - 1][O.size()];
     }
 
     void CrossIteration(EdgeLocalCross *edge)
