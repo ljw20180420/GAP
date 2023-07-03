@@ -173,11 +173,20 @@ struct Align : Graph
         trn = 0;
         tnn = 1 + nodes.size();
         tsn = targets.size();
+
+        std::vector<uint64_t> Asos;
         for (auto &node : nodes)
         {
             trn += node.get_trn();
             tnn += node.get_tnn(Omax);
-            tsn += node.get_tsn(Omax);
+            Asos.push_back(1);
+            for (EdgeLocalCircuit &local_circuit : local_circuits)
+                if (local_circuit.head==&node)
+                    Asos.back() += 2;
+            for (EdgeGlobalCircuit &global_circuit : global_circuits)
+                if (global_circuit.head==&node)
+                    Asos.back() += 1;   
+            tsn += node.get_tsn(Asos.back(), Omax);
         }
         for (auto &edge : local_crosses)
         {
@@ -225,8 +234,8 @@ struct Align : Graph
         pQid = --rpid;
         int *fps = ss.get();
         int *fpn = ns.get();
-        for (auto &node : nodes)
-            node.apply_memory(Omax, fpvisit, fpval, fpsource, fpsources, fps_sz, fpid, fps, fpn, rpvisit, rpval, rpsources, rps_sz, rpid);
+        for (uint64_t i=0; i<nodes.size(); ++i)
+            nodes[i].apply_memory(Asos[i], Omax, fpvisit, fpval, fpsource, fpsources, fps_sz, fpid, fps, fpn, rpvisit, rpval, rpsources, rps_sz, rpid);
         for (auto &edge : local_crosses)
             edge.apply_memory(Omax, fpvisit, fpval, fpsource, fpsources, fps_sz, fpid, fps, fpn, file2short[edge.name].second);
         for (auto &edge : local_circuits)
@@ -310,24 +319,28 @@ struct Align : Graph
                     for (auto node : scc.nodes)
                     {
                         node->Avals[l][w] = node->Avals[0][w];
-                        for (auto edge : node->in_local_circuits)
-                            node->Avals[l][w] = std::max({node->Avals[l][w], edge->D0vals[l - 1][w] + edge->gfm, edge->DXvals[l - 1][w]});
-                        for (auto edge : node->in_global_circuits)
-                            node->Avals[l][w] = std::max(node->Avals[l][w], edge->D0vals[l - 1][w]);
+                        for (EdgeLocalCircuit &edge : local_circuits)
+                            if (edge.head==node)
+                                node->Avals[l][w] = std::max({node->Avals[l][w], edge.D0vals[l - 1][w] + edge.gfm, edge.DXvals[l - 1][w]});
+                        for (EdgeGlobalCircuit &edge : global_circuits)
+                            if (edge.head==node)
+                                node->Avals[l][w] = std::max(node->Avals[l][w], edge.D0vals[l - 1][w]);
                         int64_t idx = &node->Avals[l][w] - vals.get();
                         s_szs[idx] = 0;
                         if (node->Avals[0][w] == node->Avals[l][w])
                             sourcess[idx][s_szs[idx]++] = &node->Avals[0][w];
-                        for (auto edge : node->in_local_circuits)
+                        for (EdgeLocalCircuit &edge : local_circuits)
                         {
-                            if (edge->D0vals[l - 1][w] + edge->gfm == node->Avals[l][w])
-                                sourcess[idx][s_szs[idx]++] = &edge->D0vals[l - 1][w];
-                            if (edge->DXvals[l - 1][w] == node->Avals[l][w])
-                                sourcess[idx][s_szs[idx]++] = &edge->DXvals[l - 1][w];
+                            if (edge.head!=node)
+                                continue;
+                            if (edge.D0vals[l - 1][w] + edge.gfm == node->Avals[l][w])
+                                sourcess[idx][s_szs[idx]++] = &edge.D0vals[l - 1][w];
+                            if (edge.DXvals[l - 1][w] == node->Avals[l][w])
+                                sourcess[idx][s_szs[idx]++] = &edge.DXvals[l - 1][w];
                         }
-                        for (auto edge : node->in_global_circuits)
-                            if (edge->D0vals[l - 1][w] == node->Avals[l][w])
-                                sourcess[idx][s_szs[idx]++] = &edge->D0vals[l - 1][w];
+                        for (EdgeGlobalCircuit &edge : global_circuits)
+                            if (edge.head==node && edge.D0vals[l - 1][w] == node->Avals[l][w])
+                                sourcess[idx][s_szs[idx]++] = &edge.D0vals[l - 1][w];
                     }
                 }
             }

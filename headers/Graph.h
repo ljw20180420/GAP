@@ -108,10 +108,6 @@ struct Node
     int n, scc_id, scc_sz;
     std::string name;
     double ve, ue;
-    std::vector<EdgeLocalCross *> out_local_crosses, in_local_crosses;
-    std::vector<EdgeLocalCircuit *> out_local_circuits, in_local_circuits;
-    std::vector<EdgeGlobalCross *> out_global_crosses, in_global_crosses;
-    std::vector<EdgeGlobalCircuit *> out_global_circuits, in_global_circuits;
 
     std::unique_ptr<bool *[]> Avisits;
     bool *Bvisits, *pAbarvisit;
@@ -150,9 +146,8 @@ struct Node
         return int64_t(Omax + 1) * get_trn();
     }
 
-    int64_t get_tsn(int Omax)
+    int64_t get_tsn(uint64_t Aso, int Omax)
     {
-        int Aso = 1 + 2 * in_local_circuits.size() + in_global_circuits.size();
         return int64_t(Omax + 1) * (2 + Aso * (scc_sz - 1));
     }
 
@@ -166,13 +161,12 @@ struct Node
         return new int64_t[4]{0, Omax + 1, 2 * (Omax + 1), get_tnn(Omax)};
     }
 
-    int *get_steps()
+    int *get_steps(uint64_t Aso)
     {
-        int Aso = 1 + 2 * in_local_circuits.size() + in_global_circuits.size();
         return new int[3]{2, 0, Aso};
     }
 
-    void apply_memory(int Omax, bool *&fpvisit, double *&fpval, double **&fpsource, double ***&fpsources, int *&fps_sz, int64_t *&fpid, int *&fps, int *&fpn, bool *&rpvisit, double *&rpval, double ***&rpsources, int *&rps_sz, int64_t *&rpid)
+    void apply_memory(uint64_t Aso, int Omax, bool *&fpvisit, double *&fpval, double **&fpsource, double ***&fpsources, int *&fps_sz, int64_t *&fpid, int *&fps, int *&fpn, bool *&rpvisit, double *&rpval, double ***&rpsources, int *&rps_sz, int64_t *&rpid)
     {
         std::unique_ptr<int[]> Ss(new int[1]{scc_sz - 1});
         extend_ss_ns(1, -1, fps, fpn);
@@ -189,7 +183,7 @@ struct Node
         type_initial(fpsources, {&Bsourcess}, {&Asourcess}, Ss.get(), Omax);
         pAbarsources = --rpsources;
         std::unique_ptr<int64_t[]> SE(get_SE(Omax));
-        std::unique_ptr<int[]> steps(get_steps());
+        std::unique_ptr<int[]> steps(get_steps(Aso));
         for (int i = 0; i < 3; ++i)
             for (int64_t j = SE[i]; j < SE[i + 1]; ++j, fpsource += steps[i])
                 fpsources_old[j] = fpsource;
@@ -657,16 +651,12 @@ struct Graph
             {
                 local_crosses.emplace_back(edge);
                 sccs[edge.tail->scc_id].local_crosses.emplace_back(&local_crosses.back());
-                edge.tail->out_local_crosses.emplace_back(&local_crosses.back());
-                edge.head->in_local_crosses.emplace_back(&local_crosses.back());
                 edges[edge.n] = &local_crosses.back();
             }
             else
             {
                 local_circuits.emplace_back(edge);
                 sccs[edge.tail->scc_id].local_circuits.emplace_back(&local_circuits.back());
-                edge.tail->out_local_circuits.emplace_back(&local_circuits.back());
-                edge.head->in_local_circuits.emplace_back(&local_circuits.back());
                 edges[edge.n] = &local_circuits.back();
             }
         for (auto &edge : globals)
@@ -674,16 +664,12 @@ struct Graph
             {
                 global_crosses.emplace_back(edge);
                 sccs[edge.tail->scc_id].global_crosses.emplace_back(&global_crosses.back());
-                edge.tail->out_global_crosses.emplace_back(&global_crosses.back());
-                edge.head->in_global_crosses.emplace_back(&global_crosses.back());
                 edges[edge.n] = &global_crosses.back();
             }
             else
             {
                 global_circuits.emplace_back(edge);
                 sccs[edge.tail->scc_id].global_circuits.emplace_back(&global_circuits.back());
-                edge.tail->out_global_circuits.emplace_back(&global_circuits.back());
-                edge.head->in_global_circuits.emplace_back(&global_circuits.back());
                 edges[edge.n] = &global_circuits.back();
             }
     }
