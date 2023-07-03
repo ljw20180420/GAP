@@ -479,10 +479,11 @@ struct Track : Graph
         EdgeGlobal *global = static_cast<EdgeGlobal *>(edges[pdot->n]);
         uint8_t *longref = file2long[global->name].first.get();
         std::vector<std::pair<std::string, uint64_t>> &cumlen = file2cumlen[global->name];
-        RankVec *prankvec = global->prankvec;
-        int64_t sr1 = 0, sr2 = prankvec->bwt_sz - 1;
-        for (int64_t s = prankvec->bwt_sz - pdot->s + pdot->lambda - 2; s >= int64_t(prankvec->bwt_sz) - 1 - pdot->s; --s)
-            prankvec->PreRange(sr1, sr2, longref[s]);
+        RankVec &rankvec = file2rankvec[global->name];
+        int64_t sr1 = 0, sr2 = rankvec.bwt_sz - 1;
+ 
+        for (uint64_t s = 0, tmp = rankvec.bwt_sz - pdot->s + pdot->lambda - 2; s < pdot->lambda; ++s)
+            rankvec.PreRange(sr1, sr2, longref[tmp - s]);
         
         std::ifstream &SAfin = file2SA[global->name];
         for (int64_t sx = sr1; sx <= sr2 && sx - sr1 < vm["max_range"].as<int>(); ++sx)
@@ -502,7 +503,7 @@ struct Track : Graph
             if (r < cumlen.size())
                 s = cumlen[r].second - 1 - s;
             else
-                s = prankvec->bwt_sz - 1 - s;
+                s = rankvec.bwt_sz - 1 - s;
             seqranges[cumlen[l].first].emplace_back(s - pdot->lambda, s);
         }
         return seqranges;

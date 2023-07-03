@@ -129,7 +129,6 @@ struct TrackTree
 
 struct EdgeGlobal : Edge
 {
-    RankVec *prankvec;
     TrackTree tracktree;
 };
 
@@ -711,7 +710,6 @@ struct Graph
                 global.uf = global.ue;
                 try{global.T = std::stod(T);}catch(...){global.T = -10.0;}
                 try{global.min_score = std::stod(min_score);}catch(...){global.min_score = 20.0;}
-                global.prankvec = &file2rankvec[global.name];
 
                 globals.push_back(global);
             }

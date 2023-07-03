@@ -310,9 +310,10 @@ struct Align : Graph
         std::unique_ptr<CrossGlobalData::Do[]> &E0 = crossglobaldata.E0, &E = crossglobaldata.E;
         std::unique_ptr<double[]> &Ethres = crossglobaldata.Ethres;
         std::deque<CrossGlobalData::Doo> &FG = crossglobaldata.FG;
+        RankVec &rankvec = file2rankvec[edge->name]; 
 
         int c = -1;
-        int64_t sr1 = 0, sr2 = edge->prankvec->bwt_sz - 1;
+        int64_t sr1 = 0, sr2 = rankvec.bwt_sz - 1;
         crossglobaldata.emplace_back(c, sr1, sr2);
         for (uint64_t w = 0; w <= O.size(); ++w)
         {
@@ -351,7 +352,7 @@ struct Align : Graph
                     ++c;
                     sr1 = simnodes.back().sr1;
                     sr2 = simnodes.back().sr2;
-                    edge->prankvec->PreRange(sr1, sr2, c);
+                    rankvec.PreRange(sr1, sr2, c);
                 } while (sr1 > sr2 && c < 6);
                 if (sr1 <= sr2)
                 {
@@ -435,17 +436,20 @@ struct Align : Graph
         std::vector<EdgeGlobalCircuit *> edges = scc.global_circuits;
         std::vector<double> tgws(edges.size());
         std::vector<SNC *> jumps(edges.size());
+        std::vector<RankVec *> prankvecs;
+        for (int i = 0; i < edges.size(); ++i)
+            prankvecs.push_back(&file2rankvec[edges[i]->name]);
 
         for (int i = 0; i < edges.size(); ++i)
         {
             if (w == 1)
             {
-                edges[i]->sncs.emplace_back(-inf, -inf, -inf, -inf, -1, 5, 0, 0, edges[i]->prankvec->bwt_sz - 1, 1, (SNC *)NULL, (SNC *)NULL);
+                edges[i]->sncs.emplace_back(-inf, -inf, -inf, -inf, -1, 5, 0, 0, prankvecs[i]->bwt_sz - 1, 1, (SNC *)NULL, (SNC *)NULL);
                 for (int c = 2; c <= 6; ++c)
                 {
                     int64_t sr1 = edges[i]->sncs.front().sr1;
                     int64_t sr2 = edges[i]->sncs.front().sr2;
-                    edges[i]->prankvec->PreRange(sr1, sr2, c);
+                    prankvecs[i]->PreRange(sr1, sr2, c);
                     if (sr1 <= sr2)
                     {
                         edges[i]->sncs.emplace_back(-inf, -inf, -inf, -inf, c, 0, 1, sr1, sr2, 0, &(edges[i]->sncs.front()), edges[i]->sncs.front().jump);
@@ -504,7 +508,7 @@ struct Align : Graph
                             {
                                 int64_t sr1 = jumps[i]->sr1;
                                 int64_t sr2 = jumps[i]->sr2;
-                                edges[i]->prankvec->PreRange(sr1, sr2, c);
+                                prankvecs[i]->PreRange(sr1, sr2, c);
                                 if (sr1 <= sr2)
                                 {
                                     edges[i]->sncs.emplace_back(-inf, -inf, -inf, -inf, c, 0, jumps[i]->lambda + 1, sr1, sr2, 0, jumps[i], (SNC *)NULL);
@@ -657,6 +661,7 @@ struct Align : Graph
             std::deque<TrackTree::TrackNode> &tracknodes = tracktree.tracknodes;
             std::deque<Dot> &dots = tracktree.dots;
             uint8_t *longref = file2long[edge->name].first.get();
+            RankVec &rankvec = file2rankvec[edge->name];
             std::ifstream &SAfin = file2SA[edge->name];
             int64_t start;
             SAfin.seekg(globalsuffix.start * sizeof(uint64_t));
@@ -664,7 +669,7 @@ struct Align : Graph
             if (tracktree.tracknodes.empty())
             {
                 tracktree.W = O.size();
-                tracktree.emplace_back(-1, edge->n, edge->prankvec->bwt_sz - 1 - start - globalsuffix.lambda, 0);
+                tracktree.emplace_back(-1, edge->n, rankvec.bwt_sz - 1 - start - globalsuffix.lambda, 0);
             }
             tracktree.setidx(0);
             if (edge->head->scc_id != edge->tail->scc_id)
@@ -684,7 +689,7 @@ struct Align : Graph
                     uint8_t c = longref[start + i];
                     if (tracknodes[tracktree.idx].cidxs[c - 2] < 0)
                     {
-                        tracktree.emplace_back(-1, edge->n, edge->prankvec->bwt_sz - 1 - start - i, dots[tracktree.shiftE].lambda + 1);
+                        tracktree.emplace_back(-1, edge->n, rankvec.bwt_sz - 1 - start - i, dots[tracktree.shiftE].lambda + 1);
                         tracknodes[tracktree.idx].cidxs[c - 2] = tracknodes.size() - 1;
                     }
                     tracktree.setidx(tracknodes[tracktree.idx].cidxs[c - 2]);
@@ -721,7 +726,7 @@ struct Align : Graph
                     uint8_t c = longref[start + i];
                     if (tracknodes[tracktree.idx].cidxs[c - 2] < 0)
                     {
-                        tracktree.emplace_back(-1, edge->n, edge->prankvec->bwt_sz - 1 - start - i, dots[tracktree.shiftE].lambda + 1);
+                        tracktree.emplace_back(-1, edge->n, rankvec.bwt_sz - 1 - start - i, dots[tracktree.shiftE].lambda + 1);
                         tracknodes[tracktree.idx].cidxs[c - 2] = tracknodes.size() - 1;
                     }
                     tracktree.setidx(tracknodes[tracktree.idx].cidxs[c - 2]);
