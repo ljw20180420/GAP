@@ -36,7 +36,6 @@ struct Edge
     const static int sigma = 6;
 
     int n;
-    bool global;
     std::string name;
     double gamma[sigma + 1][sigma + 1] = {
         {-inf, -inf, -inf, -inf, -inf, -inf, -inf},
@@ -646,7 +645,6 @@ struct Graph
 
                 EdgeLocal local;
                 local.n = locals.size();
-                local.global = false;
                 for (int a = 2; a < 7; ++a)
                     for (int b = 2; b < 7; ++b)
                         if (a==b && a>2)
@@ -689,7 +687,6 @@ struct Graph
 
                 EdgeGlobal global;
                 global.n = locals.size() + globals.size();
-                global.global = true;
                 for (int a = 2; a < 7; ++a)
                     for (int b = 2; b < 7; ++b)
                         if (a==b && a>2)

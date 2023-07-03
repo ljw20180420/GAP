@@ -302,7 +302,7 @@ struct Track : Graph
         PD[0] = 0;
         for (int64_t i = 1; i < row; ++i)
         {
-            if (!edges[megasources[extract1[2 * i - 1]].first->n]->global)
+            if (file2short.count(edges[megasources[extract1[2 * i - 1]].first->n]->name))
                 Fd[i - 1] = megasources[extract1[2 * i - 1]].first->s - megasources[extract1[2 * i - 2]].first->s;
             else
                 Fd[i - 1] = megasources[extract1[2 * i - 1]].first->lambda;
@@ -310,7 +310,7 @@ struct Track : Graph
         }
         for (int64_t j = 1; j < col; ++j)
         {
-            if (!edges[megasources[extract2[2 * j - 1]].first->n]->global)
+            if (file2short.count(edges[megasources[extract2[2 * j - 1]].first->n]->name))
                 Ed[j - 1] = megasources[extract2[2 * j - 1]].first->s - megasources[extract2[2 * j - 2]].first->s;
             else
                 Ed[j - 1] = megasources[extract2[2 * j - 1]].first->lambda;
@@ -325,7 +325,7 @@ struct Track : Graph
                 if (megasources[extract1[2 * i - 1]].first->n == megasources[extract2[2 * j - 1]].first->n)
                 {
                     int64_t segdiff;
-                    if (!edges[megasources[extract1[2 * i - 1]].first->n]->global)
+                    if (file2short.count(edges[megasources[extract1[2 * i - 1]].first->n]->name))
                     {
                         int64_t inter = std::min(megasources[extract1[2 * i - 1]].first->s, megasources[extract2[2 * j - 1]].first->s) - std::max(megasources[extract1[2 * i - 2]].first->s, megasources[extract2[2 * j - 2]].first->s);
                         segdiff = Fd[i - 1] + Ed[j - 1] - 2 * (inter > 0 ? inter : 0);
@@ -382,15 +382,16 @@ struct Track : Graph
                     align_ref.push_back(' ');
                 }
 
+                bool islocal = file2short.count(edges[path[0]->n]->name);
                 EdgeLocal *local = static_cast<EdgeLocal *>(edges[path[0]->n]);
                 EdgeGlobal *global = static_cast<EdgeGlobal *>(edges[path[0]->n]);
                 std::pair<std::unique_ptr<uint8_t[]>, uint64_t> *shortref, *longref;
-                if (file2long.count(global->name))
-                    longref = &file2long[global->name];
-                else if(file2short.count(local->name))
+                if (islocal)
                     shortref = &file2short[local->name];
+                else
+                    longref = &file2long[global->name];
 
-                if (!edges[path[0]->n]->global)
+                if (islocal)
                 {
                     align_query.append(path[0]->s, '-');
                     align_mid.append(path[0]->s, ' ');
@@ -400,7 +401,7 @@ struct Track : Graph
 
                 for (int i = 1; i < path.size(); ++i)
                 {
-                    bool E = path[i]->w > path[i - 1]->w, localF = !edges[path[0]->n]->global && path[i]->s > path[i - 1]->s, globalF = edges[path[i]->n]->global && path[i]->lambda > path[i - 1]->lambda;
+                    bool E = path[i]->w > path[i - 1]->w, localF = islocal && path[i]->s > path[i - 1]->s, globalF = !islocal && path[i]->lambda > path[i - 1]->lambda;
 
                     if(!E && !localF && !globalF)
                         continue;
@@ -423,7 +424,7 @@ struct Track : Graph
                         align_mid.push_back(' ');
                 }
 
-                if (!edges[path[0]->n]->global)
+                if (islocal)
                 {
                     int sz = shortref->second - path.back()->s;
                     align_query.append(sz, '-');
@@ -450,7 +451,7 @@ struct Track : Graph
                 Dot *pdot1 = megasources[extracts[i][j]].first;
                 Dot *pdot2 = megasources[extracts[i][j + 1]].first;
                 Edge *edge = edges[pdot2->n];
-                if (edge->global)
+                if (file2rankvec.count(edge->name))
                 {
                     std::map<std::string, std::deque<std::pair<int64_t, int64_t>>> seqranges = get_seqranges(pdot2);
                     fout_extract << edge->name << ':';
