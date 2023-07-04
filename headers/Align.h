@@ -212,9 +212,6 @@ struct Align : Graph
             tnn += edge.get_tnn(Omax);
             tsn += edge.get_tsn(Omax);
         }
-        visits.reset(new bool[tnn]);
-        for (int i = 0; i < tnn; ++i)
-            visits[i] = false;
         vals.reset(new double[tnn]);
         sources.reset(new double *[tsn]);
         sourcess.reset(new double **[tnn]);
@@ -223,8 +220,6 @@ struct Align : Graph
         ss.reset(new int[trn]);
         ns.reset(new int[trn]);
 
-        bool *fpvisit = visits.get(), *rpvisit = fpvisit + tnn;
-        pQvisit = --rpvisit;
         double *fpval = vals.get(), *rpval = fpval + tnn;
         pQval = --rpval;
         double **fpsource = sources.get();
@@ -239,13 +234,13 @@ struct Align : Graph
         int *fps = ss.get();
         int *fpn = ns.get();
         for (uint64_t i=0; i<nodes.size(); ++i)
-            nodes[i].apply_memory(Asos[i], Omax, fpvisit, fpval, fpsource, fpsources, fps_sz, fpid, fps, fpn, rpvisit, rpval, rpsources, rps_sz, rpid);
+            nodes[i].apply_memory(Asos[i], Omax, fpval, fpsource, fpsources, fps_sz, fpid, fps, fpn, rpval, rpsources, rps_sz, rpid);
         for (auto &edge : local_crosses)
-            edge.apply_memory(Omax, fpvisit, fpval, fpsource, fpsources, fps_sz, fpid, fps, fpn, file2short[edge.name].second);
+            edge.apply_memory(Omax, fpval, fpsource, fpsources, fps_sz, fpid, fps, fpn, file2short[edge.name].second);
         for (auto &edge : local_circuits)
-            edge.apply_memory(Omax, fpvisit, fpval, fpsource, fpsources, fps_sz, fpid, fps, fpn, file2short[edge.name].second);
+            edge.apply_memory(Omax, fpval, fpsource, fpsources, fps_sz, fpid, fps, fpn, file2short[edge.name].second);
         for (auto &edge : global_circuits)
-            edge.apply_memory(Omax, fpvisit, fpval, fpsource, fpsources, fps_sz, fpid, fps, fpn);
+            edge.apply_memory(Omax, fpval, fpsource, fpsources, fps_sz, fpid, fps, fpn);
     }
 
     struct SWN
@@ -290,8 +285,14 @@ struct Align : Graph
     void Mix()
     {
         for (uint64_t i = 0; i < nodes.size(); ++i)
+        {
             for (uint64_t w = 0; w <= O.size(); ++w)
                 nodes[i].Avals[0][w] = -inf;
+            if (nodes[i].is_root)
+                *nodes[i].pAbarval = 0;
+            else
+                *nodes[i].pAbarval = -inf;
+        }
         for (auto &scc : sccs)
         {
             for (uint64_t w = 0; w <= O.size(); ++w)
@@ -623,12 +624,12 @@ struct Align : Graph
             }
     }
 
-    void outputdot(int64_t M, SWN &swn)
+    void outputdot(double Mval, int64_t M, SWN &swn)
     {
         fout.write((char *)&swn.n, sizeof(Dot::n));
         fout.write((char *)&swn.s, sizeof(Dot::s));
         fout.write((char *)&swn.w, sizeof(Dot::w));
-        fout.write((char *)&vals[M], sizeof(Dot::val));
+        fout.write((char *)&Mval, sizeof(Dot::val));
         fout.write((char *)&s_szs[M], sizeof(Dot::s_sz));
         fout.write((char *)&s_szs[M], sizeof(Dot::lambda)); // strange
     }
@@ -643,14 +644,15 @@ struct Align : Graph
         fout.write((char *)&M->lambda, sizeof(Dot::lambda));
     }
 
-    void arrangesource(double *source, std::queue<int64_t> &localqueue, int64_t &id)
+    void arrangesource(std::queue<double> &valuequeue, double *source, std::queue<int64_t> &localqueue, int64_t &id)
     {
         int64_t idx = source - vals.get();
-        if (!visits[idx])
+        if (*source != -inf)
         {
             ids[idx] = ++id;
-            visits[idx] = true;
             localqueue.push(idx);
+            valuequeue.push(*source);
+            *source = -inf;
         }
         fout.write((char *)&ids[idx], sizeof(Dot::id));
     }
@@ -668,38 +670,47 @@ struct Align : Graph
 
     void GetMinimalGraph()
     {
+        std::map<Edge *, std::unique_ptr<double[]>> edge2tailAvals;
+        for (Edge *edge : edges)
+        {
+            edge2tailAvals[edge].reset(new double[O.size()+1]);
+            for (uint64_t i=0; i<=O.size(); ++i)
+                edge2tailAvals[edge].get()[i] = edge->tail->Avals[edge->tail->scc_sz - 1][i];
+        }
+
         int Onsz = Oname.size();
         fout.write((char *)&Onsz, sizeof(Onsz));
         fout.write(Oname.data(), sizeof(char) * Onsz);
         std::queue<Dot *> globalqueue;
         std::queue<int64_t> localqueue;
-        std::queue<bool *> visitqueue;
+        std::queue<double> valuequeue;
         int64_t id = 0;
         *pQid = id;
-        *pQvisit = true;
         localqueue.push(pQval - vals.get());
+        valuequeue.push(*pQval);
+        *pQval = -inf;
         while (!globalqueue.empty() || !localqueue.empty())
         {
             if (globalqueue.empty() || !localqueue.empty() && ids[localqueue.front()] < globalqueue.front()->id)
             {
                 int64_t M = localqueue.front();
                 localqueue.pop();
-                visitqueue.push(&visits[M]);
+                double Mval = valuequeue.front();
+                valuequeue.pop();
                 SWN swn = get_swn(M);
                 if (swn.n < -3 && swn.s == 0)
-                    GlobalTrack(M, swn, globalqueue, localqueue, id);
+                    GlobalTrack(edge2tailAvals, Mval, M, swn, globalqueue, localqueue, valuequeue, id);
                 else
                 {
-                    outputdot(M, swn);
+                    outputdot(Mval, M, swn);
                     for (int i = 0; i < s_szs[M]; ++i)
-                        arrangesource(sourcess[M][i], localqueue, id);
+                        arrangesource(valuequeue, sourcess[M][i], localqueue, id);
                 }
             }
             else
             {
                 Dot *M = globalqueue.front();
                 globalqueue.pop();
-                visitqueue.push(&M->visit);
                 outputdot(M);
                 for (int i = 0; i < M->s_sz; ++i)
                 {
@@ -708,19 +719,13 @@ struct Align : Graph
                     else
                     {
                         Node *tail = edges[M->n]->tail;
-                        arrangesource(&tail->Avals[tail->scc_sz - 1][M->w], localqueue, id);
+                        arrangesource(valuequeue, &tail->Avals[tail->scc_sz - 1][M->w], localqueue, id);
                     }
                 }
             }
         }
         if (id > max_id)
             max_id = id;
-
-        while (!visitqueue.empty())
-        {
-            *(visitqueue.front()) = false;
-            visitqueue.pop();
-        }
 
         for (std::map<std::string, TrackTree>::iterator it = long2tracktree.begin(); it != long2tracktree.end(); ++it)
             it->second.clear();
@@ -729,18 +734,18 @@ struct Align : Graph
         dot_sources.clear();
     }
 
-    void GlobalTrack(int64_t M, SWN &swn, std::queue<Dot *> &globalqueue, std::queue<int64_t> &localqueue, int64_t &id)
+    void GlobalTrack(std::map<Edge *, std::unique_ptr<double []>> &edge2tailAvals, double Mval, int64_t M, SWN &swn, std::queue<Dot *> &globalqueue, std::queue<int64_t> &localqueue, std::queue<double> &valuequeue, int64_t &id)
     {
         auto &node = nodes[Dot::nidx_trans(swn.n)];
         s_szs[M] = node.AdeltaGlobal[swn.w].size() + node.AdeltaDot[swn.w].size();
-        outputdot(M, swn);
+        outputdot(Mval, M, swn);
         for (double *source : node.AdeltaDot[swn.w])
-            arrangesource(source, localqueue, id);
+            arrangesource(valuequeue, source, localqueue, id);
 
         for (auto &globalsuffix : node.AdeltaGlobal[swn.w])
         {
             Edge *edge = globalsuffix.edge;
-            double *Avals = edge->tail->Avals[edge->tail->scc_sz - 1];
+            double *Avals = edge2tailAvals[edge].get();
             TrackTree &tracktree = long2tracktree[edge->name];
             std::deque<TrackTree::TrackNode> &tracknodes = tracktree.tracknodes;
             std::deque<Dot> &dots = tracktree.dots;

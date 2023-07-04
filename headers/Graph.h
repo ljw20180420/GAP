@@ -109,8 +109,6 @@ struct Node
     std::string name;
     double ve, ue;
 
-    std::unique_ptr<bool *[]> Avisits;
-    bool *Bvisits, *pAbarvisit;
     std::unique_ptr<double *[]> Avals;
     double *Bvals, *pAbarval;
     std::unique_ptr<double ***[]> Asourcess;
@@ -156,19 +154,13 @@ struct Node
         return new int[3]{2, 0, Aso};
     }
 
-    void apply_memory(uint64_t Aso, int Omax, bool *&fpvisit, double *&fpval, double **&fpsource, double ***&fpsources, int *&fps_sz, int64_t *&fpid, int *&fps, int *&fpn, bool *&rpvisit, double *&rpval, double ***&rpsources, int *&rps_sz, int64_t *&rpid)
+    void apply_memory(uint64_t Aso, int Omax, double *&fpval, double **&fpsource, double ***&fpsources, int *&fps_sz, int64_t *&fpid, int *&fps, int *&fpn, double *&rpval, double ***&rpsources, int *&rps_sz, int64_t *&rpid)
     {
         std::unique_ptr<int[]> Ss(new int[1]{scc_sz - 1});
         extend_ss_ns(1, -1, fps, fpn);
         extend_ss_ns(1, Ss.get(), Dot::nidx_trans(n), fps, fpn);
-        type_initial(fpvisit, {&Bvisits}, {&Avisits}, Ss.get(), Omax);
-        pAbarvisit = --rpvisit;
         type_initial(fpval, {&Bvals}, {&Avals}, Ss.get(), Omax);
         pAbarval = --rpval;
-        if (is_root)
-            *pAbarval = 0;
-        else
-            *pAbarval = -inf;
         double ***fpsources_old = fpsources;
         type_initial(fpsources, {&Bsourcess}, {&Asourcess}, Ss.get(), Omax);
         pAbarsources = --rpsources;
@@ -227,7 +219,6 @@ struct Node
 
 struct EdgeLocalCross : EdgeLocal
 {
-    std::unique_ptr<bool *[]> Evisits, Fvisits, Gvisits;
     std::unique_ptr<double *[]> Evals, Fvals, Gvals;
     std::unique_ptr<double ***[]> Esourcess, Fsourcess, Gsourcess;
     std::unique_ptr<int *[]> Es_szs, Fs_szs, Gs_szs;
@@ -270,11 +261,10 @@ struct EdgeLocalCross : EdgeLocal
         return new int[2]{2, 4};
     }
 
-    void apply_memory(int Omax, bool *&fpvisit, double *&fpval, double **&fpsource, double ***&fpsources, int *&fps_sz, int64_t *&fpid, int *&fps, int *&fpn, uint64_t ref_sz)
+    void apply_memory(int Omax, double *&fpval, double **&fpsource, double ***&fpsources, int *&fps_sz, int64_t *&fpid, int *&fps, int *&fpn, uint64_t ref_sz)
     {
         std::unique_ptr<int[]> Ss(get_Ss(ref_sz));
         extend_ss_ns(3, Ss.get(), n, fps, fpn);
-        type_initial(fpvisit, {}, {&Evisits, &Fvisits, &Gvisits}, Ss.get(), Omax);
         type_initial(fpval, {}, {&Evals, &Fvals, &Gvals}, Ss.get(), Omax);
         double ***fpsources_old = fpsources;
         type_initial(fpsources, {}, {&Esourcess, &Fsourcess, &Gsourcess}, Ss.get(), Omax);
@@ -290,8 +280,6 @@ struct EdgeLocalCross : EdgeLocal
 
 struct EdgeLocalCircuit : EdgeLocal
 {
-    std::unique_ptr<bool *[]> Evisits, F0visits, G0visits, Gvisits, D0visits, DXvisits;
-    bool *Dvisits;
     std::unique_ptr<double *[]> Evals, F0vals, G0vals, Gvals, D0vals, DXvals;
     double *Dvals;
     std::unique_ptr<double ***[]> Esourcess, F0sourcess, G0sourcess, Gsourcess, D0sourcess, DXsourcess;
@@ -340,12 +328,11 @@ struct EdgeLocalCircuit : EdgeLocal
         return new int[5]{1, 2, 3, 1, 2};
     }
 
-    void apply_memory(int Omax, bool *&fpvisit, double *&fpval, double **&fpsource, double ***&fpsources, int *&fps_sz, int64_t *&fpid, int *&fps, int *&fpn, uint64_t ref_sz)
+    void apply_memory(int Omax, double *&fpval, double **&fpsource, double ***&fpsources, int *&fps_sz, int64_t *&fpid, int *&fps, int *&fpn, uint64_t ref_sz)
     {
         std::unique_ptr<int[]> Ss(get_Ss(ref_sz));
         extend_ss_ns(1, n, fps, fpn);
         extend_ss_ns(6, Ss.get(), n, fps, fpn);
-        type_initial(fpvisit, {&Dvisits}, {&Evisits, &F0visits, &G0visits, &Gvisits, &D0visits, &DXvisits}, Ss.get(), Omax);
         type_initial(fpval, {&Dvals}, {&Evals, &F0vals, &G0vals, &Gvals, &D0vals, &DXvals}, Ss.get(), Omax);
         double ***fpsources_old = fpsources;
         type_initial(fpsources, {&Dsourcess}, {&Esourcess, &F0sourcess, &G0sourcess, &Gsourcess, &D0sourcess, &DXsourcess}, Ss.get(), Omax);
@@ -391,7 +378,6 @@ struct SNC
 struct EdgeGlobalCircuit : Edge
 {
     std::deque<SNC> sncs;
-    std::unique_ptr<bool *[]> D0visits;
     std::unique_ptr<double *[]> D0vals;
     std::unique_ptr<double ***[]> D0sourcess;
     std::unique_ptr<int *[]> D0s_szs;
@@ -432,11 +418,10 @@ struct EdgeGlobalCircuit : Edge
         return new int[1]{1};
     }
 
-    void apply_memory(int Omax, bool *&fpvisit, double *&fpval, double **&fpsource, double ***&fpsources, int *&fps_sz, int64_t *&fpid, int *&fps, int *&fpn)
+    void apply_memory(int Omax, double *&fpval, double **&fpsource, double ***&fpsources, int *&fps_sz, int64_t *&fpid, int *&fps, int *&fpn)
     {
         std::unique_ptr<int[]> Ss(get_Ss());
         extend_ss_ns(1, Ss.get(), n, fps, fpn);
-        type_initial(fpvisit, {}, {&D0visits}, Ss.get(), Omax);
         type_initial(fpval, {}, {&D0vals}, Ss.get(), Omax);
         double ***fpsources_old = fpsources;
         type_initial(fpsources, {}, {&D0sourcess}, Ss.get(), Omax);
@@ -485,7 +470,6 @@ struct Graph
 
     std::deque<SCC> sccs;
 
-    std::unique_ptr<bool[]> visits;
     std::unique_ptr<double[]> vals;
     std::unique_ptr<double *[]> sources;
     std::unique_ptr<double **[]> sourcess;
@@ -495,7 +479,6 @@ struct Graph
     int trn;
     int64_t tnn, tsn;
 
-    bool *pQvisit;
     double *pQval;
     double ***pQsources;
     int *pQs_sz;
