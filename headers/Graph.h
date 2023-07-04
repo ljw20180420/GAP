@@ -13,7 +13,7 @@ struct Dot
 {
     static const int DotQ = -3, DotAbar = -2, DotB = -1;
 
-    bool visit;
+    bool visit = false;
     int n; // n determines the type of Dot
     int64_t s;
     int w;

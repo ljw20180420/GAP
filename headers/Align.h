@@ -634,12 +634,12 @@ struct Align : Graph
         fout.write((char *)&s_szs[M], sizeof(Dot::lambda)); // strange
     }
 
-    void outputdot(Dot *M)
+    void outputdot(double Mval, Dot *M)
     {
         fout.write((char *)&M->n, sizeof(Dot::n));
         fout.write((char *)&M->s, sizeof(Dot::s));
         fout.write((char *)&M->w, sizeof(Dot::w));
-        fout.write((char *)&M->val, sizeof(Dot::val));
+        fout.write((char *)&Mval, sizeof(Dot::val));
         fout.write((char *)&M->s_sz, sizeof(Dot::s_sz));
         fout.write((char *)&M->lambda, sizeof(Dot::lambda));
     }
@@ -657,13 +657,14 @@ struct Align : Graph
         fout.write((char *)&ids[idx], sizeof(Dot::id));
     }
 
-    void arrangesource(Dot *source, std::queue<Dot *> &globalqueue, int64_t &id)
+    void arrangesource(std::queue<double> &valuequeue, Dot *source, std::queue<Dot *> &globalqueue, int64_t &id)
     {
-        if (!source->visit)
+        if (source->val != -inf)
         {
             source->id = ++id;
-            source->visit = true;
             globalqueue.push(source);
+            valuequeue.push(source->val);
+            source->val = -inf;
         }
         fout.write((char *)&source->id, sizeof(Dot::id));
     }
@@ -711,11 +712,13 @@ struct Align : Graph
             {
                 Dot *M = globalqueue.front();
                 globalqueue.pop();
-                outputdot(M);
+                double Mval = valuequeue.front();
+                valuequeue.pop();
+                outputdot(Mval, M);
                 for (int i = 0; i < M->s_sz; ++i)
                 {
                     if (dot_sources[M->fs + i])
-                        arrangesource(dot_sources[M->fs + i], globalqueue, id);
+                        arrangesource(valuequeue, dot_sources[M->fs + i], globalqueue, id);
                     else
                     {
                         Node *tail = edges[M->n]->tail;
@@ -837,7 +840,7 @@ struct Align : Graph
                     tracknodes[tracktree.idx].tau = std::max(tracknodes[tracktree.idx].tau, swn.w + 1);
                 }
             }
-            arrangesource(&dots[tracktree.shiftG + swn.w], globalqueue, id);
+            arrangesource(valuequeue, &dots[tracktree.shiftG + swn.w], globalqueue, id);
         }
     }
 
