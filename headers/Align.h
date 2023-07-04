@@ -163,6 +163,8 @@ struct Align : Graph
     std::ofstream fout;
     int64_t max_id = 0;
     int Omax;
+    std::vector<bool> Qbools;
+    enum VALTYPE{Q, ABAR, LID0, SID0, SIDX, OTHERS};
 
     CrossGlobalData crossglobaldata;
 
@@ -172,11 +174,7 @@ struct Align : Graph
     {
         trn = 0;
         tnn = 1 + nodes.size();
-        uint64_t targets_sz = 0;
-        for (Node &node : nodes)
-            if (node.is_target)
-                ++targets_sz;
-        tsn = targets_sz;
+        tsn = 0;
 
         std::vector<uint64_t> Asos;
         for (auto &node : nodes)
@@ -207,13 +205,12 @@ struct Align : Graph
             tsn += edge.get_tsn(Omax, ref_sz);
         }
         sources.reset(new double *[tsn]);
-        sourcess.reset(new double **[tnn]);
-        s_szs.reset(new int[tnn]);
+        sourcess.reset(new double **[tnn-1-nodes.size()]);
+        s_szs.reset(new int[tnn-1-nodes.size()]);
         for (auto &edge : global_circuits)
         {
             trn += edge.get_trn();
             tnn += edge.get_tnn(Omax);
-            tsn += edge.get_tsn(Omax);
         }
         vals.reset(new double[tnn]);
         ids.reset(new int64_t[tnn]);
@@ -223,18 +220,14 @@ struct Align : Graph
         double *fpval = vals.get(), *rpval = fpval + tnn;
         pQval = --rpval;
         double **fpsource = sources.get();
-        double ***fpsources = sourcess.get(), ***rpsources = fpsources + tnn;
-        pQsources = --rpsources;
-        *pQsources = fpsource;
-        fpsource += targets_sz;
-        int *fps_sz = s_szs.get(), *rps_sz = fps_sz + tnn;
-        pQs_sz = --rps_sz;
+        double ***fpsources = sourcess.get();
+        int *fps_sz = s_szs.get();
         int64_t *fpid = ids.get(), *rpid = fpid + tnn;
         pQid = --rpid;
         int *fps = ss.get();
         int *fpn = ns.get();
         for (uint64_t i=0; i<nodes.size(); ++i)
-            nodes[i].apply_memory(Asos[i], Omax, fpval, fpsource, fpsources, fps_sz, fpid, fps, fpn, rpval, rpsources, rps_sz, rpid);
+            nodes[i].apply_memory(Asos[i], Omax, fpval, fpsource, fpsources, fps_sz, fpid, fps, fpn, rpval, rpid);
         for (auto &edge : local_crosses)
             edge.apply_memory(Omax, fpval, fpsource, fpsources, fps_sz, fpid, fps, fpn, file2short[edge.name].second);
         for (auto &edge : local_circuits)
@@ -275,6 +268,11 @@ struct Align : Graph
     Align(boost::program_options::variables_map &vm, std::map<std::string, std::pair<std::unique_ptr<uint8_t[]>, uint64_t>> &file2short, std::map<std::string, RankVec> &file2rankvec, std::map<std::string, std::pair<std::unique_ptr<uint8_t[]>, uint64_t>> &file2long, std::string mgfile, int Omax_)
         : Graph(vm, file2short, file2rankvec, file2long), fout(mgfile, std::ifstream::binary), Omax(Omax_)
     {
+        for (Node &node : nodes)
+            if (node.is_target)
+                Qbools.push_back(false);
+        
+
         apply_memory();
 
         crossglobaldata.E0.reset(new CrossGlobalData::Do[Omax + 1]);
@@ -318,8 +316,12 @@ struct Align : Graph
                     for (auto edge : scc.local_circuits)
                     {
                         uint64_t ref_sz = file2short[edge->name].second;
-                        source_max(&edge->D0vals[l - 1][w], {&edge->tail->Avals[l - 1][w]}, {edge->tail->Avals[l - 1][w] + edge->T});
-                        source_max(&edge->DXvals[l - 1][w], {&edge->tail->Avals[l - 1][w], &edge->D0vals[l - 1][w]}, {edge->tail->Avals[l - 1][w] + edge->gfpT[ref_sz], edge->D0vals[l - 1][w] + edge->gf[ref_sz]});
+                        edge->D0vals[l - 1][w] = edge->tail->Avals[l - 1][w] + edge->T;
+                        edge->DXvals[l - 1][w] = std::max(edge->tail->Avals[l - 1][w] + edge->gfpT[ref_sz], edge->D0vals[l - 1][w] + edge->gf[ref_sz]);
+                        if (edge->DXvals[l - 1][w] == edge->tail->Avals[l - 1][w] + edge->gfpT[ref_sz])
+                            edge->DXbits[(l-1)*(Omax+1)+w] |= uint8_t(1);
+                        if (edge->DXvals[l - 1][w] == edge->D0vals[l - 1][w] + edge->gf[ref_sz])
+                            edge->DXbits[(l-1)*(Omax+1)+w] |= uint8_t(2);
                     }
                     for (auto node : scc.nodes)
                     {
@@ -358,10 +360,9 @@ struct Align : Graph
         for (Node &node : nodes)
             if (node.is_target)
                 *pQval = std::max(*pQval, node.Avals[node.scc_sz - 1][O.size()]);
-        s_szs[tnn - 1] = 0;
-        for (Node &node : nodes)
-            if (node.is_target && node.Avals[node.scc_sz - 1][O.size()] == *pQval)
-                sourcess[tnn - 1][s_szs[tnn - 1]++] = &node.Avals[node.scc_sz - 1][O.size()];
+        for (uint64_t i = 0, j = 0; i < nodes.size(); ++i)
+            if (nodes[i].is_target && nodes[i].Avals[nodes[i].scc_sz - 1][O.size()] == *pQval)
+                Qbools[j++] = true;
     }
 
     void CrossIteration(EdgeLocalCross *edge)
@@ -389,7 +390,7 @@ struct Align : Graph
             }
     }
 
-    void CrossIterationGlobal(EdgeGlobalCross *edge)
+    void CrossIterationGlobal(Edge *edge)
     {
         double *Avals = edge->tail->Avals[edge->tail->scc_sz - 1];
         std::deque<CrossGlobalData::SimNode> &simnodes = crossglobaldata.simnodes;
@@ -624,13 +625,64 @@ struct Align : Graph
             }
     }
 
-    void outputdot(double Mval, int64_t M, SWN &swn)
+    int get_type(int64_t M, SWN &swn)
+    {
+        if (swn.n==Dot::DotQ)
+            return VALTYPE::Q;
+        if (swn.n==Dot::DotAbar)
+            return VALTYPE::ABAR;
+        if (swn.n>=0)
+        {
+            if (file2long.count(edges[swn.n]->name))
+                return VALTYPE::LID0;
+            if (edges[swn.n]->tail->scc_id==edges[swn.n]->head->scc_id)
+            {
+                EdgeLocalCircuit *egcr = (EdgeLocalCircuit *) edges[swn.n];
+                if (M >= egcr->D0vals[0]-vals.get())
+                {
+                    if (M < egcr->DXvals[0]-vals.get())
+                        return VALTYPE::SID0;
+                    return VALTYPE::SIDX;
+                }
+            }
+        }
+        return VALTYPE::OTHERS;
+    }
+
+    void outputdot(double Mval, int64_t M, SWN &swn, int type)
     {
         fout.write((char *)&swn.n, sizeof(Dot::n));
         fout.write((char *)&swn.s, sizeof(Dot::s));
         fout.write((char *)&swn.w, sizeof(Dot::w));
         fout.write((char *)&Mval, sizeof(Dot::val));
-        int s_sz = (swn.n<0 || file2short.count(edges[swn.n]->name)) ? s_szs[M] : 1;
+        int s_sz;
+        if (type==VALTYPE::Q)
+        {
+            s_sz = 0;
+            for (uint64_t i = 0; i < Qbools.size(); ++i)
+                if (Qbools[i])
+                    ++s_sz;
+        }
+        else
+        {
+            if (type==VALTYPE::ABAR)
+                s_sz = 0;
+            else
+            {
+                if (type==VALTYPE::LID0 || type==VALTYPE::SID0)
+                    s_sz = 1;
+                else
+                {
+                    if (type==VALTYPE::SIDX)
+                    {
+                        EdgeLocalCircuit *egcr = (EdgeLocalCircuit *) edges[swn.n];
+                        s_sz = (egcr->DXbits[swn.s*(Omax+1)+swn.w] + 1) / 2;
+                    }
+                    else
+                        s_sz = s_szs[M];
+                }
+            }
+        }
         fout.write((char *)&s_sz, sizeof(Dot::s_sz));
         fout.write((char *)&s_sz, sizeof(Dot::lambda)); // strange
     }
@@ -700,16 +752,43 @@ struct Align : Graph
                 double Mval = valuequeue.front();
                 valuequeue.pop();
                 SWN swn = get_swn(M);
+                int type = get_type(M, swn);
                 if (swn.n < Dot::DotQ && swn.s == 0)
-                    GlobalTrack(edge2tailAvals, Mval, M, swn, globalqueue, localqueue, valuequeue, id);
+                    GlobalTrack(edge2tailAvals, Mval, M, swn, type, globalqueue, localqueue, valuequeue, id);
                 else
                 {
-                    outputdot(Mval, M, swn);
-                    if (swn.n<0 || file2short.count(edges[swn.n]->name))
-                        for (int i = 0; i < s_szs[M]; ++i)
-                            arrangesource(valuequeue, sourcess[M][i], localqueue, id);
+                    outputdot(Mval, M, swn, type);
+                    if (type==VALTYPE::Q)
+                    {
+                        for (uint64_t i = 0, j = 0; i < nodes.size(); ++i)
+                            if (nodes[i].is_target && Qbools[j])
+                            {
+                                arrangesource(valuequeue, &(nodes[i].Avals[nodes[i].scc_sz - 1][O.size()]), localqueue, id);
+                                Qbools[j++] = false;
+                            }
+                    }
                     else
-                        arrangesource(valuequeue, &(edges[swn.n]->tail->Avals[swn.s][swn.w]), localqueue, id);
+                    {
+                        if (type==VALTYPE::LID0 || type==VALTYPE::SID0)
+                            arrangesource(valuequeue, &(edges[swn.n]->tail->Avals[swn.s][swn.w]), localqueue, id);
+                        else
+                        {
+                            if (type==VALTYPE::SIDX)
+                            {
+                                EdgeLocalCircuit *egcr = (EdgeLocalCircuit *) edges[swn.n];
+                                uint8_t &DXbit = egcr->DXbits[swn.s*(Omax+1)+swn.w];
+                                if (DXbit & uint8_t(1))
+                                    arrangesource(valuequeue, &(egcr->tail->Avals[swn.s][swn.w]), localqueue, id);
+                                if (DXbit & uint8_t(2))
+                                    arrangesource(valuequeue, &(egcr->D0vals[swn.s][swn.w]), localqueue, id);
+                                DXbit = 0;
+                            }
+                            else
+                                for (int i = 0; i < s_szs[M]; ++i)
+                                    arrangesource(valuequeue, sourcess[M][i], localqueue, id);
+                        }    
+                        
+                    }
                 }
             }
             else
@@ -741,11 +820,11 @@ struct Align : Graph
         dot_sources.clear();
     }
 
-    void GlobalTrack(std::map<Edge *, std::unique_ptr<double []>> &edge2tailAvals, double Mval, int64_t M, SWN &swn, std::queue<Dot *> &globalqueue, std::queue<int64_t> &localqueue, std::queue<double> &valuequeue, int64_t &id)
+    void GlobalTrack(std::map<Edge *, std::unique_ptr<double []>> &edge2tailAvals, double Mval, int64_t M, SWN &swn, int type, std::queue<Dot *> &globalqueue, std::queue<int64_t> &localqueue, std::queue<double> &valuequeue, int64_t &id)
     {
         auto &node = nodes[Dot::nidx_trans(swn.n)];
         s_szs[M] = node.AdeltaGlobal[swn.w].size() + node.AdeltaDot[swn.w].size();
-        outputdot(Mval, M, swn);
+        outputdot(Mval, M, swn, type);
         for (double *source : node.AdeltaDot[swn.w])
             arrangesource(valuequeue, source, localqueue, id);
 
