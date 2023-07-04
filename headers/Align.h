@@ -206,6 +206,9 @@ struct Align : Graph
             tnn += edge.get_tnn(Omax, ref_sz);
             tsn += edge.get_tsn(Omax, ref_sz);
         }
+        sources.reset(new double *[tsn]);
+        sourcess.reset(new double **[tnn]);
+        s_szs.reset(new int[tnn]);
         for (auto &edge : global_circuits)
         {
             trn += edge.get_trn();
@@ -213,9 +216,6 @@ struct Align : Graph
             tsn += edge.get_tsn(Omax);
         }
         vals.reset(new double[tnn]);
-        sources.reset(new double *[tsn]);
-        sourcess.reset(new double **[tnn]);
-        s_szs.reset(new int[tnn]);
         ids.reset(new int64_t[tnn]);
         ss.reset(new int[trn]);
         ns.reset(new int[trn]);
@@ -240,7 +240,7 @@ struct Align : Graph
         for (auto &edge : local_circuits)
             edge.apply_memory(Omax, fpval, fpsource, fpsources, fps_sz, fpid, fps, fpn, file2short[edge.name].second);
         for (auto &edge : global_circuits)
-            edge.apply_memory(Omax, fpval, fpsource, fpsources, fps_sz, fpid, fps, fpn);
+            edge.apply_memory(Omax, fpval, fpid, fps, fpn);
     }
 
     struct SWN
@@ -314,7 +314,7 @@ struct Align : Graph
                 for (uint64_t l = 1; l < scc.nodes.size(); ++l)
                 {
                     for (auto edge : scc.global_circuits)
-                        source_max(&edge->D0vals[l - 1][w], {&edge->tail->Avals[l - 1][w]}, {edge->tail->Avals[l - 1][w] + edge->T});
+                        edge->D0vals[l - 1][w] = edge->tail->Avals[l - 1][w] + edge->T;
                     for (auto edge : scc.local_circuits)
                     {
                         uint64_t ref_sz = file2short[edge->name].second;
@@ -630,8 +630,9 @@ struct Align : Graph
         fout.write((char *)&swn.s, sizeof(Dot::s));
         fout.write((char *)&swn.w, sizeof(Dot::w));
         fout.write((char *)&Mval, sizeof(Dot::val));
-        fout.write((char *)&s_szs[M], sizeof(Dot::s_sz));
-        fout.write((char *)&s_szs[M], sizeof(Dot::lambda)); // strange
+        int s_sz = (swn.n<0 || file2short.count(edges[swn.n]->name)) ? s_szs[M] : 1;
+        fout.write((char *)&s_sz, sizeof(Dot::s_sz));
+        fout.write((char *)&s_sz, sizeof(Dot::lambda)); // strange
     }
 
     void outputdot(double Mval, Dot *M)
@@ -699,13 +700,16 @@ struct Align : Graph
                 double Mval = valuequeue.front();
                 valuequeue.pop();
                 SWN swn = get_swn(M);
-                if (swn.n < -3 && swn.s == 0)
+                if (swn.n < Dot::DotQ && swn.s == 0)
                     GlobalTrack(edge2tailAvals, Mval, M, swn, globalqueue, localqueue, valuequeue, id);
                 else
                 {
                     outputdot(Mval, M, swn);
-                    for (int i = 0; i < s_szs[M]; ++i)
-                        arrangesource(valuequeue, sourcess[M][i], localqueue, id);
+                    if (swn.n<0 || file2short.count(edges[swn.n]->name))
+                        for (int i = 0; i < s_szs[M]; ++i)
+                            arrangesource(valuequeue, sourcess[M][i], localqueue, id);
+                    else
+                        arrangesource(valuequeue, &(edges[swn.n]->tail->Avals[swn.s][swn.w]), localqueue, id);
                 }
             }
             else

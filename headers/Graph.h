@@ -13,7 +13,6 @@ struct Dot
 {
     static const int DotQ = -3, DotAbar = -2, DotB = -1;
 
-    // bool visit; // the default value of bool is false in c++ standard, so it is not necessary to explicitly initialize visit as false
     int n; // n determines the type of Dot
     int64_t s;
     int w;
@@ -418,19 +417,11 @@ struct EdgeGlobalCircuit : Edge
         return new int[1]{1};
     }
 
-    void apply_memory(int Omax, double *&fpval, double **&fpsource, double ***&fpsources, int *&fps_sz, int64_t *&fpid, int *&fps, int *&fpn)
+    void apply_memory(int Omax, double *&fpval, int64_t *&fpid, int *&fps, int *&fpn)
     {
         std::unique_ptr<int[]> Ss(get_Ss());
         extend_ss_ns(1, Ss.get(), n, fps, fpn);
         type_initial(fpval, {}, {&D0vals}, Ss.get(), Omax);
-        double ***fpsources_old = fpsources;
-        type_initial(fpsources, {}, {&D0sourcess}, Ss.get(), Omax);
-        std::unique_ptr<int64_t[]> SE(get_SE(Omax));
-        std::unique_ptr<int[]> steps(get_steps());
-        for (int i = 0; i < 1; ++i)
-            for (int64_t j = SE[i]; j < SE[i + 1]; ++j, fpsource += steps[i])
-                fpsources_old[j] = fpsource;
-        type_initial(fps_sz, {}, {&D0s_szs}, Ss.get(), Omax);
         type_initial(fpid, {}, {&D0ids}, Ss.get(), Omax);
     }
 };
@@ -460,8 +451,6 @@ struct Graph
     const static int sigma = 6;
 
     std::deque<Node> nodes;
-    // std::vector<Node *> roots;
-    // std::vector<Node *> targets;
     std::deque<EdgeLocalCross> local_crosses; // cannot be changed to vector, because emplace_back of vector may change the addresses of elements
     std::deque<EdgeLocalCircuit> local_circuits;
     std::deque<EdgeGlobalCross> global_crosses;
