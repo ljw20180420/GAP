@@ -187,9 +187,8 @@ struct Track : Graph
         insertpair.first->second.fs = megasources.size();
 
         std::deque<Dot *> path;
-        std::queue<Dot *> visited;
-        megasource.first->visit = true;
-        visited.push(megasource.first);
+        std::set<Dot *> visited;
+        visited.insert(megasource.first);
         path.push_back(megasource.first);
         do
         {
@@ -207,15 +206,9 @@ struct Track : Graph
 
         } while (next_dot(path, visited, to_tail));
         insertpair.first->second.s_sz = megasources.size() - insertpair.first->second.fs;
-
-        while (!visited.empty())
-        {
-            visited.front()->visit = false;
-            visited.pop();
-        }
     }
 
-    bool next_dot(std::deque<Dot *> &path, std::queue<Dot *> &visited, bool to_tail)
+    bool next_dot(std::deque<Dot *> &path, std::set<Dot *> &visited, bool to_tail)
     {
         int is = 0;
         while (!path.empty())
@@ -223,10 +216,9 @@ struct Track : Graph
             for (int i = is; i < path[0]->s_sz; ++i)
             {
                 Dot *pdot = sources[path[0]->fs + i];
-                if (pdot->visit || to_tail == (pdot->n < 0 || path[0]->n < 0))
+                if (visited.count(pdot) || to_tail == (pdot->n < 0 || path[0]->n < 0))
                     continue;
-                pdot->visit = true;
-                visited.push(pdot);
+                visited.insert(pdot);
                 path.push_front(pdot);
                 return true;
             }
