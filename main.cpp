@@ -44,8 +44,7 @@ int main(int argc, char **argv)
 
     align_options.add_options()
         ("input", boost::program_options::value<std::string>(), "input")
-        ("threads_sz", boost::program_options::value<uint64_t>()->default_value(24), "# of align threads")
-        ("block_size", boost::program_options::value<uint64_t>()->default_value(10), "size of reads batch");
+        ("threads_sz", boost::program_options::value<uint64_t>()->default_value(24), "# of align threads");
 
     track_options.add_options()
         ("max_extract", boost::program_options::value<int>()->default_value(1), "max best maps to extract")

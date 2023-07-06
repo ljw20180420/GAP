@@ -2,7 +2,6 @@
 excu="/home/ljw/new_fold/old_desktop/shoujia/Graph_Projects/GAP/build/GAP"
 genome="/home/ljw/hg19_with_bowtie2_index/hg19.fa.True.True.True.True.concat"
 msn=1
-bs=5
 tz=24
 cd "/home/ljw/new_fold/old_desktop/shoujia/test_time_loop3"
 mr=5
@@ -28,7 +27,7 @@ for round in $(seq 0 $mr); do
 		break
 	fi
 	T=$(($Ti + $dT * $round))
-	$excu --threads_sz $tz --input $read_file --min_seg_num 1 --max_seg_num $msn --block_size $bs --nodes node0,1,1 --longs $genome,node0,node0,,,,,$T
+	$excu --threads_sz $tz --input $read_file --min_seg_num 1 --max_seg_num $msn --nodes node0,1,1 --longs $genome,node0,node0,,,,,$T
 	cd ..
 done
 mkdir tmplast
@@ -59,5 +58,5 @@ done
 echo $longs
 
 if [ -s $read_file ]; then
-	$excu --threads_sz $tz --input $read_file --block_size $bs --nodes $nodes --longs $longs
+	$excu --threads_sz $tz --input $read_file --nodes $nodes --longs $longs
 fi
