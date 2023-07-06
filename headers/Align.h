@@ -158,6 +158,8 @@ struct Align : Graph
 
     const static int ww = 3;
 
+    std::mutex &mtx;
+    std::ifstream &fin;
     std::vector<uint8_t> O;
     std::string Oname;
     std::ofstream fout;
@@ -265,8 +267,8 @@ struct Align : Graph
         return swn;
     }
 
-    Align(boost::program_options::variables_map &vm, std::map<std::string, std::pair<std::unique_ptr<uint8_t[]>, uint64_t>> &file2short, std::map<std::string, RankVec> &file2rankvec, std::map<std::string, std::pair<std::unique_ptr<uint8_t[]>, uint64_t>> &file2long, std::string mgfile, int Omax_)
-        : Graph(vm, file2short, file2rankvec, file2long), fout(mgfile, std::ifstream::binary), Omax(Omax_)
+    Align(std::mutex &mtx_, std::ifstream &fin_, boost::program_options::variables_map &vm, std::map<std::string, std::pair<std::unique_ptr<uint8_t[]>, uint64_t>> &file2short, std::map<std::string, RankVec> &file2rankvec, std::map<std::string, std::pair<std::unique_ptr<uint8_t[]>, uint64_t>> &file2long, std::string mgfile, int Omax_)
+        : mtx(mtx_), fin(fin_), Graph(vm, file2short, file2rankvec, file2long), fout(mgfile, std::ifstream::binary), Omax(Omax_)
     {
         for (Node &node : nodes)
             if (node.is_target)
@@ -278,6 +280,29 @@ struct Align : Graph
         crossglobaldata.E0.reset(new CrossGlobalData::Do[Omax + 1]);
         crossglobaldata.E.reset(new CrossGlobalData::Do[Omax + 1]);
         crossglobaldata.Ethres.reset(new double[Omax + 1]);
+    }
+
+    void run()
+    {
+        std::string Otmp;
+        while (true)
+        {
+            mtx.lock();
+            if (!std::getline(std::getline(fin, Oname), Otmp))
+            {
+                mtx.unlock();
+                break;
+            }
+            mtx.unlock();
+            O.clear();
+            for (uint64_t i = 0; i < Otmp.size(); ++i)
+                O.push_back(base2int[Otmp[i]]);
+            Mix();
+            GetMinimalGraph();
+        }
+        if (max_id>0)
+            fout.write((char *)&max_id, sizeof(max_id));
+        fout.close(); // close is must because even after run() return, fout as a member of align, is not destructed, thereby its buffer is not output
     }
 
     void Mix()

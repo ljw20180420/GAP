@@ -46,3 +46,11 @@ for i in [0,2,4,5]:
     numerize_concat_fasta(f"/home/ljw/new_fold/old_desktop/shoujia/test_RandomReads2/local_file{i}", poly, False, False, False, False)
 for i in [1,3,6,7]:
     numerize_concat_fasta(f"/home/ljw/new_fold/old_desktop/shoujia/test_RandomReads2/global_file{i}", poly, True, False, True, True)
+
+
+for i in range(24):
+    f = open(f"/home/ljw/new_fold/old_desktop/shoujia/test_RandomReads2/tmp0/mg{i}", "rb")
+    _ = f.seek(-8, 2) # Seek to 8 bytes from end of file  
+    data = f.read(8) 
+    print(i, numpy.frombuffer(data, dtype=numpy.int64)[0])
+    f.close()
