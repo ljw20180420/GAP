@@ -808,11 +808,10 @@ struct Align : Graph
                                     arrangesource(valuequeue, &(egcr->D0vals[swn.s][swn.w]), localqueue, id);
                                 DXbit = 0;
                             }
-                            else
+                            else if (type!=VALTYPE::ABAR)
                                 for (int i = 0; i < s_szs[M]; ++i)
                                     arrangesource(valuequeue, sourcess[M][i], localqueue, id);
                         }    
-                        
                     }
                 }
             }

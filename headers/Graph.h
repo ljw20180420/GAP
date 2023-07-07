@@ -277,9 +277,9 @@ struct EdgeLocalCircuit : EdgeLocal
 {
     std::unique_ptr<double *[]> Evals, F0vals, G0vals, Gvals, D0vals, DXvals;
     double *Dvals;
-    std::unique_ptr<double ***[]> Esourcess, F0sourcess, G0sourcess, Gsourcess, D0sourcess, DXsourcess;
+    std::unique_ptr<double ***[]> Esourcess, F0sourcess, G0sourcess, Gsourcess;
     double ***Dsourcess;
-    std::unique_ptr<int *[]> Es_szs, F0s_szs, G0s_szs, Gs_szs, D0s_szs, DXs_szs;
+    std::unique_ptr<int *[]> Es_szs, F0s_szs, G0s_szs, Gs_szs;
     int *Ds_szs;
     std::unique_ptr<int64_t *[]> Eids, F0ids, G0ids, Gids, D0ids, DXids;
     int64_t *Dids;
@@ -409,17 +409,6 @@ struct SCC
     std::vector<Edge *> global_crosses;
     std::vector<EdgeGlobalCircuit *> global_circuits;
 };
-
-template <typename T>
-    T beyond_access(std::deque<T> &vec, int i, T def)
-    {
-        if (i < vec.size())
-            return vec[i];
-        else if (!vec.empty())
-            return vec.back();
-        else
-            return def;
-    }
 
 struct Graph
 {
