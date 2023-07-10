@@ -11,18 +11,17 @@
 #include <ctime>
 
 
-int64_t set_Omax(std::string input)
+uint64_t set_Omax(std::string input)
 {
-    int64_t Omax = 0;
-    for (std::ifstream fin(input); fin.ignore(std::numeric_limits<std::streamsize>::max(),'\n');)
+    uint64_t Omax = 0;
+    for (std::ifstream fin(input); fin.ignore(std::numeric_limits<std::streamsize>::max(),'\n').good();)
     {
-        int64_t preg = fin.tellg(); // tellg returns -1 for exception, so nowg cannot be uint64_t
-        int64_t len = fin.ignore(std::numeric_limits<std::streamsize>::max(),'\n').tellg() - preg;
+        std::streampos preg = fin.tellg(); // tellg returns -1 for exception, so nowg cannot be uint64_t
+        uint64_t len = fin.ignore(std::numeric_limits<std::streamsize>::max(),'\n').tellg() - preg - 1;
         if (len > Omax)
             Omax = len;
     }
-    --Omax; // empty input makes Omax=-1, so Omax cannot be uint64_t
-
+    
     return Omax;
 }
 
@@ -117,7 +116,7 @@ int main(int argc, char **argv)
         graph.draw("graph.gv");
     }
 
-    int64_t Omax = set_Omax(vm["input"].as<std::string>());
+    uint64_t Omax = set_Omax(vm["input"].as<std::string>());
 
     std::unique_ptr<char []> inbuf(new char[10*1024*1024]);
     std::ifstream fin(vm["input"].as<std::string>());

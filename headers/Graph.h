@@ -61,7 +61,7 @@ struct EdgeLocal : Edge
 };
 
 template <typename T>
-void type_initial(T *&Ts, std::initializer_list<T **> pTss, std::initializer_list<std::unique_ptr<T *[]> *> pTsss, int *Ss, int Omax)
+void type_initial(T *&Ts, std::initializer_list<T **> pTss, std::initializer_list<std::unique_ptr<T *[]> *> pTsss, int *Ss, uint64_t Omax)
 {
     for (T **pTs : pTss)
     {
@@ -132,9 +132,9 @@ struct Node
 
     std::unique_ptr<std::deque<GlobalSuffix>[]> AdeltaGlobal;
 
-    int64_t get_tsn(uint64_t Aso, int Omax)
+    int64_t get_tsn(uint64_t Aso, uint64_t Omax)
     {
-        return int64_t(Omax + 1) * (2 + Aso * (scc_sz - 1));
+        return (Omax + 1) * (2 + Aso * (scc_sz - 1));
     }
 
     int *get_Ss()
@@ -152,7 +152,7 @@ struct Node
         return new int[3]{2, 0, Aso};
     }
 
-    void apply_memory(uint64_t Aso, int Omax, double *&fpval, double **&fpsource, double ***&fpsources, int *&fps_sz, int64_t *&fpid, int *&fps, int *&fpn, double *&rpval, int64_t *&rpid)
+    void apply_memory(uint64_t Aso, uint64_t Omax, double *&fpval, double **&fpsource, double ***&fpsources, int *&fps_sz, int64_t *&fpid, int *&fps, int *&fpn, double *&rpval, int64_t *&rpid)
     {
         std::unique_ptr<int[]> Ss(new int[1]{scc_sz - 1});
         extend_ss_ns(1, -1, fps, fpn);
@@ -229,14 +229,14 @@ struct EdgeLocalCross : EdgeLocal
         return 3 * (ref_sz + 1);
     }
 
-    int64_t get_tnn(int Omax, uint64_t ref_sz)
+    int64_t get_tnn(uint64_t Omax, uint64_t ref_sz)
     {
-        return int64_t(Omax + 1) * get_trn(ref_sz);
+        return (Omax + 1) * get_trn(ref_sz);
     }
 
-    int64_t get_tsn(int Omax, uint64_t ref_sz)
+    int64_t get_tsn(uint64_t Omax, uint64_t ref_sz)
     {
-        return int64_t(Omax + 1) * 8 * (ref_sz + 1);
+        return (Omax + 1) * 8 * (ref_sz + 1);
     }
 
     int *get_Ss(uint64_t ref_sz)
@@ -245,9 +245,9 @@ struct EdgeLocalCross : EdgeLocal
         return new int[3]{S, S, S};
     }
 
-    int64_t *get_SE(int Omax, uint64_t ref_sz)
+    int64_t *get_SE(uint64_t Omax, uint64_t ref_sz)
     {
-        int64_t mid = int64_t(Omax + 1) * 2 * (ref_sz + 1);
+        int64_t mid = (Omax + 1) * 2 * (ref_sz + 1);
         return new int64_t[3]{0, mid, get_tnn(Omax, ref_sz)};
     }
 
@@ -256,7 +256,7 @@ struct EdgeLocalCross : EdgeLocal
         return new int[2]{2, 4};
     }
 
-    void apply_memory(int Omax, double *&fpval, double **&fpsource, double ***&fpsources, int *&fps_sz, int64_t *&fpid, int *&fps, int *&fpn, uint64_t ref_sz)
+    void apply_memory(uint64_t Omax, double *&fpval, double **&fpsource, double ***&fpsources, int *&fps_sz, int64_t *&fpid, int *&fps, int *&fpn, uint64_t ref_sz)
     {
         std::unique_ptr<int[]> Ss(get_Ss(ref_sz));
         extend_ss_ns(3, Ss.get(), n, fps, fpn);
@@ -295,14 +295,14 @@ struct EdgeLocalCircuit : EdgeLocal
         return 1 + 4 * (ref_sz + 1) + 2 * (tail->scc_sz - 1);
     }
 
-    int64_t get_tnn(int Omax, uint64_t ref_sz)
+    int64_t get_tnn(uint64_t Omax, uint64_t ref_sz)
     {
-        return int64_t(Omax + 1) * get_trn(ref_sz);
+        return (Omax + 1) * get_trn(ref_sz);
     }
 
-    int64_t get_tsn(int Omax, uint64_t ref_sz)
+    int64_t get_tsn(uint64_t Omax, uint64_t ref_sz)
     {
-        return int64_t(Omax + 1) * (1 + 10 * (ref_sz + 1) + 3 * (tail->scc_sz - 1));
+        return (Omax + 1) * (1 + 10 * (ref_sz + 1) + 3 * (tail->scc_sz - 1));
     }
 
     int *get_Ss(uint64_t ref_sz)
@@ -312,11 +312,11 @@ struct EdgeLocalCircuit : EdgeLocal
         return new int[6]{S, S, S, S, scc_sz - 2, scc_sz - 2};
     }
 
-    int64_t *get_SE(int Omax, uint64_t ref_sz)
+    int64_t *get_SE(uint64_t Omax, uint64_t ref_sz)
     {
         int S = ref_sz;
         int scc_sz = tail->scc_sz;
-        return new int64_t[6]{0, Omax + 1, int64_t(Omax + 1) * (1 + 2 * (S + 1)), int64_t(Omax + 1) * (1 + 4 * (S + 1))};
+        return new int64_t[6]{0, Omax + 1, (Omax + 1) * (1 + 2 * (S + 1)), (Omax + 1) * (1 + 4 * (S + 1))};
     }
 
     int *get_steps()
@@ -324,7 +324,7 @@ struct EdgeLocalCircuit : EdgeLocal
         return new int[5]{1, 2, 3, 1, 2};
     }
 
-    void apply_memory(int Omax, double *&fpval, double **&fpsource, double ***&fpsources, int *&fps_sz, int64_t *&fpid, int *&fps, int *&fpn, uint64_t ref_sz)
+    void apply_memory(uint64_t Omax, double *&fpval, double **&fpsource, double ***&fpsources, int *&fps_sz, int64_t *&fpid, int *&fps, int *&fpn, uint64_t ref_sz)
     {
         DXbits.reset(new uint8_t[(tail->scc_sz-1)*(Omax+1)]);
         std::unique_ptr<int[]> Ss(get_Ss(ref_sz));
@@ -382,9 +382,9 @@ struct EdgeGlobalCircuit : Edge
         return tail->scc_sz - 1;
     }
 
-    int64_t get_tnn(int Omax)
+    int64_t get_tnn(uint64_t Omax)
     {
-        return int64_t(Omax + 1) * get_trn();
+        return (Omax + 1) * get_trn();
     }
 
     int *get_Ss()
@@ -392,7 +392,7 @@ struct EdgeGlobalCircuit : Edge
         return new int[1]{tail->scc_sz - 2};
     }
 
-    void apply_memory(int Omax, double *&fpval, int64_t *&fpid, int *&fps, int *&fpn)
+    void apply_memory(uint64_t Omax, double *&fpval, int64_t *&fpid, int *&fps, int *&fpn)
     {
         std::unique_ptr<int[]> Ss(get_Ss());
         extend_ss_ns(1, Ss.get(), n, fps, fpn);

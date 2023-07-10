@@ -164,7 +164,7 @@ struct Align : Graph
     std::string Oname;
     std::ofstream fout;
     int64_t max_id = 0;
-    int Omax;
+    uint64_t Omax;
     std::vector<bool> Qbools;
     enum VALTYPE{Q, ABAR, LID0, SID0, SIDX, OTHERS};
 
@@ -182,7 +182,7 @@ struct Align : Graph
         for (auto &node : nodes)
         {
             trn += node.scc_sz + 1;
-            tnn += int64_t(Omax + 1) * (node.scc_sz + 1);
+            tnn += (Omax + 1) * (node.scc_sz + 1);
             Asos.push_back(1);
             for (EdgeLocalCircuit &local_circuit : local_circuits)
                 if (local_circuit.head==&node)
