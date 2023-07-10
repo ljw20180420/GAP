@@ -55,9 +55,9 @@ uint8_t* SA2bwt(std::string SAfile, uint64_t batch, uint8_t *revseq)
 struct RankVec
 {
     uint64_t** R1=NULL;
-    uint16_t** R2=NULL;
+    uint8_t** R2=NULL;
     const static uint64_t b1=8;
-    const static uint64_t b2=256*32;
+    const static uint64_t b2=32;
     const static uint8_t sigma=6;
     std::array<uint64_t,sigma> C;
     uint8_t * bwt=NULL;
