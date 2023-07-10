@@ -23,7 +23,7 @@ static std::map<char, int8_t> base2int={{'#',0}, {'$',1}, {'N',2}, {'A',3}, {'C'
 
 void gsufsortSA(std::string SAfile, uint8_t *revref, uint64_t revref_sz)
 {
-    uint64_t *SA = (uint64_t *) malloc(revref_sz*sizeof(uint64_t));
+    uint64_t *SA = new uint64_t[revref_sz];
     sacak(revref, SA, revref_sz);
     std::ofstream fSA(SAfile);
     fSA.write((char *)SA, revref_sz*sizeof(uint64_t));
@@ -34,8 +34,8 @@ uint8_t* SA2bwt(std::string SAfile, uint64_t batch, uint8_t *revseq)
 {
     uint64_t revseq_sz = std::filesystem::file_size(SAfile)/sizeof(uint64_t);
     std::ifstream fin(SAfile);
-    uint64_t *SA = (uint64_t *) malloc(batch*sizeof(uint64_t));
-    uint8_t *bwt = (uint8_t *) malloc(revseq_sz);
+    uint64_t *SA = new uint64_t[batch];
+    uint8_t *bwt = new uint8_t[revseq_sz];
     uint64_t bwt_sz = 0;
     while (true)
     {
@@ -171,7 +171,7 @@ struct RankVec
     void loadRankVec(std::string bwtFile, std::string bwtRankFile)
     {
         bwt_sz = std::filesystem::file_size(bwtFile);
-        bwt = (uint8_t *) malloc(bwt_sz);
+        bwt = new uint8_t[bwt_sz];
         std::ifstream fin(bwtFile);
         fin.read((char*)bwt, bwt_sz);
         fin.close();

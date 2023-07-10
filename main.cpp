@@ -70,14 +70,14 @@ int main(int argc, char **argv)
     {
         std::string RevRefFile = vm["index"].as<std::string>();
         uint64_t revref_sz = std::filesystem::file_size(RevRefFile);
-        uint8_t *revref = (uint8_t *) malloc(revref_sz);
+        uint8_t *revref = new uint8_t[revref_sz];
         std::ifstream fin(RevRefFile);
         fin.read((char*)revref, revref_sz);
         gsufsortSA(RevRefFile+".sa", revref, revref_sz);
         RankVec bwtRank;
         bwtRank.bwt_sz = revref_sz;
         bwtRank.bwt = SA2bwt(RevRefFile+".sa", 10000, revref);
-        std::free(revref);
+        delete[] revref;
         bwtRank.count();
         bwtRank.saveRankVec(RevRefFile+".bwt", RevRefFile+".rnk");
         return EXIT_SUCCESS;
@@ -91,7 +91,7 @@ int main(int argc, char **argv)
             if (file2short.count(file))
                 continue;
             file2short[file].second = std::filesystem::file_size(file);
-            file2short[file].first.reset((uint8_t *) malloc(file2short[file].second));
+            file2short[file].first.reset(new uint8_t[file2short[file].second]);
             std::ifstream fin(file);
             fin.read((char*)file2short[file].first.get(), file2short[file].second);
         }
@@ -107,7 +107,7 @@ int main(int argc, char **argv)
             file2rankvec[file].loadRankVec(file+".bwt", file+".rnk");
 
             file2long[file].second = std::filesystem::file_size(file);
-            file2long[file].first.reset((uint8_t *) malloc(file2long[file].second));
+            file2long[file].first.reset(new uint8_t[file2long[file].second]);
             std::ifstream fin(file);
             fin.read((char *)file2long[file].first.get(), file2long[file].second);
         }
