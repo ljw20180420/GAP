@@ -119,7 +119,9 @@ int main(int argc, char **argv)
 
     int64_t Omax = set_Omax(vm["input"].as<std::string>());
 
+    std::unique_ptr<char []> inbuf(new char[10*1024*1024]);
     std::ifstream fin(vm["input"].as<std::string>());
+    fin.rdbuf()->pubsetbuf(inbuf.get(), 10*1024*1024);
     std::mutex mtx;
     std::deque<std::thread> threads;
     std::deque<Align> aligns;
@@ -139,6 +141,9 @@ int main(int argc, char **argv)
 
     Track track(vm, file2short, file2rankvec, file2long); 
     track.ReadTrack(mg_files);
+
+    // Align align(mtx, fin, vm, file2short, file2rankvec, file2long, "mg", Omax); // debug
+    // align.run(); // debug
 
     return EXIT_SUCCESS;
 }
