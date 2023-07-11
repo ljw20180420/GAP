@@ -52,10 +52,10 @@ struct Track : Graph
             fins.back().read((char *)&id, sizeof(Dot::id));
             max_id = id > max_id ? id : max_id;
             fins.back().seekg(0, fins.back().beg);
-            int Onsz;
+            uint64_t Onsz;
             fins.back().read((char *)&Onsz, sizeof(Onsz));
             Onames.emplace_back(Onsz, 'x');
-            fins.back().read((char *)Onames.back().data(), sizeof(char) * Onsz);
+            fins.back().read((char *)Onames.back().data(), Onsz);
         }
 
         dots.resize(max_id + 1);
@@ -66,11 +66,8 @@ struct Track : Graph
             {
                 if (Onames[f] == name)
                 {
-                    int64_t id = -1;
-                    int64_t uid = 0;
-                    do
+                    for (uint64_t id = 0, uid = 0; id <= uid; ++id)
                     {
-                        ++id;
                         fins[f].read((char *)&dots[id].n, sizeof(Dot::n));
                         fins[f].read((char *)&dots[id].s, sizeof(Dot::s));
                         fins[f].read((char *)&dots[id].w, sizeof(Dot::w));
@@ -78,24 +75,24 @@ struct Track : Graph
                         fins[f].read((char *)&dots[id].s_sz, sizeof(Dot::s_sz));
                         fins[f].read((char *)&dots[id].lambda, sizeof(Dot::lambda));
                         dots[id].fs = sources.offset;
-                        for (int i = 0; i < dots[id].s_sz; ++i)
+                        for (uint64_t i = 0; i < dots[id].s_sz; ++i)
                         {
-                            int64_t idd;
+                            uint64_t idd;
                             fins[f].read((char *)&idd, sizeof(idd));
                             sources.emplace_back(&dots[idd]);
                             uid = idd > uid ? idd : uid;
                         }
-                    } while (id < uid);
+                    }
 
                     BackTrack(&dots[0], name, read);
                     sources.clear();
 
                     if (fzs[f]-fins[f].tellg()>sizeof(Dot::id))
                     {
-                        int Onsz;
+                        uint64_t Onsz;
                         fins[f].read((char *)&Onsz, sizeof(Onsz));
                         Onames[f].resize(Onsz);
-                        fins[f].read((char *)Onames[f].data(), sizeof(char) * Onsz);
+                        fins[f].read((char *)Onames[f].data(), Onsz);
                     }
 
                     break;

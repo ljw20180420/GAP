@@ -757,9 +757,9 @@ struct Align : Graph
                 edge2tailAvals[edge].get()[i] = edge->tail->Avals[edge->tail->scc_sz - 1][i];
         }
 
-        int Onsz = Oname.size();
+        uint64_t Onsz = Oname.size();
         fout.write((char *)&Onsz, sizeof(Onsz));
-        fout.write(Oname.data(), sizeof(char) * Onsz);
+        fout.write(Oname.data(), Onsz);
         std::queue<Dot *> globalqueue;
         std::queue<int64_t> localqueue;
         std::queue<double> valuequeue;
