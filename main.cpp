@@ -16,12 +16,12 @@ uint64_t set_Omax(std::string input)
     uint64_t Omax = 0;
     for (std::ifstream fin(input); fin.ignore(std::numeric_limits<std::streamsize>::max(),'\n').good();)
     {
-        std::streampos preg = fin.tellg(); // tellg returns -1 for exception, so nowg cannot be uint64_t
+        std::streampos preg = fin.tellg();
         uint64_t len = fin.ignore(std::numeric_limits<std::streamsize>::max(),'\n').tellg() - preg - 1;
         if (len > Omax)
             Omax = len;
     }
-    
+
     return Omax;
 }
 
@@ -46,12 +46,12 @@ int main(int argc, char **argv)
         ("threads_sz", boost::program_options::value<uint64_t>()->default_value(24), "# of align threads");
 
     track_options.add_options()
-        ("max_extract", boost::program_options::value<int>()->default_value(1), "max best maps to extract")
-        ("max_mega", boost::program_options::value<int64_t>()->default_value(10000), "max steps to track map graph")
-        ("diff_thres", boost::program_options::value<int>()->default_value(10), "min bps to distinct two maps")
-        ("max_range", boost::program_options::value<int>()->default_value(10), "max map pos to show per seg")
-        ("min_seg_num", boost::program_options::value<int>()->default_value(0), "min map segments, 0 means no restriction")
-        ("max_seg_num", boost::program_options::value<int>()->default_value(0), "max map segments, 0 means no restriction");
+        ("max_extract", boost::program_options::value<uint64_t>()->default_value(1), "max best maps to extract")
+        ("max_mega", boost::program_options::value<uint64_t>()->default_value(10000), "max steps to track map graph")
+        ("diff_thres", boost::program_options::value<uint64_t>()->default_value(10), "min bps to distinct two maps")
+        ("max_range", boost::program_options::value<uint64_t>()->default_value(10), "max map pos to show per seg")
+        ("min_seg_num", boost::program_options::value<uint64_t>()->default_value(0), "min map segments, 0 means no restriction")
+        ("max_seg_num", boost::program_options::value<uint64_t>()->default_value(0), "max map segments, 0 means no restriction");
 
     general_options.add(graph_options).add(align_options).add(track_options);
     boost::program_options::variables_map vm;

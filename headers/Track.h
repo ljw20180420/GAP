@@ -7,8 +7,8 @@ struct Track : Graph
 {
     struct MegaRange
     {
-        int fs;
-        int s_sz;
+        uint64_t fs;
+        uint64_t s_sz;
     };
 
     std::ofstream fout_align, fout_extract, fout_fail, fout_death;
@@ -38,35 +38,31 @@ struct Track : Graph
     void ReadTrack(std::deque<std::string> mg_files)
     {
         std::vector<std::ifstream> fins;
-        for (auto &file : mg_files)
-            fins.emplace_back(file, std::ios::binary);
-        int64_t max_id = 0;
-        std::vector<std::string> Onames(fins.size());
-        std::vector<int64_t> fzs(fins.size());
-        for (int64_t i = 0; i < fins.size(); ++i)
+        std::vector<uintmax_t> fzs;
+        std::vector<std::string> Onames;
+        decltype(Dot::id) max_id = 0, id;
+        for (auto &mg_file : mg_files)
         {
-            int64_t id;
-            fins[i].seekg(0, fins[i].end);
-            fzs[i] = fins[i].tellg();
-            if (fzs[i] > sizeof(int64_t))
-            {
-                fins[i].seekg(-sizeof(int64_t), fins[i].end);
-                fins[i].read((char *)&id, sizeof(int64_t));
-                max_id = id > max_id ? id : max_id;
-                fins[i].seekg(0, fins[i].beg);
-                int Onsz;
-                fins[i].read((char *)&Onsz, sizeof(Onsz));
-                Onames[i].resize(Onsz);
-                fins[i].read((char *)Onames[i].data(), sizeof(char) * Onsz);
-            }
+            uintmax_t fz = std::filesystem::file_size(mg_file);
+            if (fz <= sizeof(Dot::id))
+                continue;
+            fzs.push_back(fz);
+            fins.emplace_back(mg_file, std::ios::binary);
+            fins.back().seekg(-sizeof(Dot::id), fins.back().end);
+            fins.back().read((char *)&id, sizeof(Dot::id));
+            max_id = id > max_id ? id : max_id;
+            fins.back().seekg(0, fins.back().beg);
+            int Onsz;
+            fins.back().read((char *)&Onsz, sizeof(Onsz));
+            Onames.emplace_back(Onsz, 'x');
+            fins.back().read((char *)Onames.back().data(), sizeof(char) * Onsz);
         }
+
         dots.resize(max_id + 1);
-        int64_t seq_num = 0;
         std::ifstream finput(vm["input"].as<std::string>());
         for (std::string name, read; std::getline(std::getline(finput, name), read); )
         {
-            ++seq_num;
-            for (int64_t f = 0; f < fins.size(); ++f)
+            for (uint64_t f = 0; f < fins.size(); ++f)
             {
                 if (Onames[f] == name)
                 {
@@ -92,15 +88,16 @@ struct Track : Graph
                     } while (id < uid);
 
                     BackTrack(&dots[0], name, read);
-
                     sources.clear();
-                    if (fzs[f] - fins[f].tellg() > sizeof(int64_t))
+
+                    if (fzs[f]-fins[f].tellg()>sizeof(Dot::id))
                     {
                         int Onsz;
                         fins[f].read((char *)&Onsz, sizeof(Onsz));
                         Onames[f].resize(Onsz);
                         fins[f].read((char *)Onames[f].data(), sizeof(char) * Onsz);
                     }
+
                     break;
                 }
             }
@@ -121,11 +118,11 @@ struct Track : Graph
         MegaRange *pmegarange;
         std::deque<std::deque<int64_t>> extracts;
 
-        for (int64_t i = Qrange.fs, next_mega = 0; i < Qrange.fs + Qrange.s_sz && extracts.size() < vm["max_extract"].as<int>(); ++i)
+        for (int64_t i = Qrange.fs, next_mega = 0; i < Qrange.fs + Qrange.s_sz && extracts.size() < vm["max_extract"].as<uint64_t>(); ++i)
         {
             std::deque<int64_t> extract;
             extract.push_front(i);
-            while (next_mega++ < vm["max_mega"].as<int64_t>() && next_megadot(extract))
+            while (next_mega++ < vm["max_mega"].as<uint64_t>() && next_megadot(extract))
             {
                 if (extract.size() % 2 == 0)
                     pmegarange = &megadots_tail[megasources[extract[0]].first];
@@ -134,12 +131,12 @@ struct Track : Graph
                 if (pmegarange->s_sz == 0)
                 {
                     bool addflag = true;
-                    if (vm["min_seg_num"].as<int>() > 0 && vm["max_seg_num"].as<int>() > 0 && (extract.size() < 2 * vm["min_seg_num"].as<int>() || extract.size() > 2 * vm["max_seg_num"].as<int>()))
+                    if (vm["min_seg_num"].as<uint64_t>() > 0 && vm["max_seg_num"].as<uint64_t>() > 0 && (extract.size() < 2 * vm["min_seg_num"].as<uint64_t>() || extract.size() > 2 * vm["max_seg_num"].as<uint64_t>()))
                         addflag = false;
                     else
                     {
                         for (auto &extract_pre : extracts)
-                            if (extract_dis(extract_pre, extract) < vm["diff_thres"].as<int>())
+                            if (extract_dis(extract_pre, extract) < vm["diff_thres"].as<uint64_t>())
                             {
                                 addflag = false;
                                 break;
@@ -148,7 +145,7 @@ struct Track : Graph
                     if (addflag)
                     {
                         extracts.push_back(extract);
-                        if (extracts.size() == vm["max_extract"].as<int>())
+                        if (extracts.size() == vm["max_extract"].as<uint64_t>())
                             break;
                     }
                 }
@@ -472,7 +469,7 @@ struct Track : Graph
             rankvec.PreRange(sr1, sr2, longref[tmp - s]);
         
         std::ifstream &SAfin = file2SA[edges[pdot->n]->name];
-        for (int64_t sx = sr1; sx <= sr2 && sx - sr1 < vm["max_range"].as<int>(); ++sx)
+        for (int64_t sx = sr1; sx <= sr2 && sx - sr1 < vm["max_range"].as<uint64_t>(); ++sx)
         {
             uint64_t s;
             SAfin.seekg(sx * sizeof(uint64_t));
