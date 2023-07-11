@@ -108,14 +108,14 @@ struct Track : Graph
         megadots_tail.clear();
         megasources.emplace_back(pQ, std::deque<Dot *>());
 
-        for (int64_t i = 0; i < megasources.size(); ++i)
+        for (uint64_t i = 0; i < megasources.size(); ++i)
             source_until(i);
         MegaRange Qrange = megadots_tail[pQ];
 
         MegaRange *pmegarange;
         std::deque<std::deque<int64_t>> extracts;
 
-        for (int64_t i = Qrange.fs, next_mega = 0; i < Qrange.fs + Qrange.s_sz && extracts.size() < vm["max_extract"].as<uint64_t>(); ++i)
+        for (uint64_t i = Qrange.fs, next_mega = 0; i < Qrange.fs + Qrange.s_sz && extracts.size() < vm["max_extract"].as<uint64_t>(); ++i)
         {
             std::deque<int64_t> extract;
             extract.push_front(i);
@@ -167,7 +167,7 @@ struct Track : Graph
         }
     }
 
-    void source_until(int64_t i)
+    void source_until(uint64_t i)
     {
         std::pair<Dot *, std::deque<Dot *>> &megasource = megasources[i];
         bool to_tail = i > 0 && megasource.second.empty();
@@ -188,7 +188,7 @@ struct Track : Graph
         {
             if (to_tail)
             {
-                for (int i = 0; i < path[0]->s_sz; ++i)
+                for (uint64_t i = 0; i < path[0]->s_sz; ++i)
                     if (sources[path[0]->fs + i]->n < 0)
                     {
                         megasources.emplace_back(path[0], path);
@@ -204,10 +204,10 @@ struct Track : Graph
 
     bool next_dot(std::deque<Dot *> &path, std::set<Dot *> &visited, bool to_tail)
     {
-        int is = 0;
+        uint64_t is = 0;
         while (!path.empty())
         {
-            for (int i = is; i < path[0]->s_sz; ++i)
+            for (uint64_t i = is; i < path[0]->s_sz; ++i)
             {
                 Dot *pdot = sources[path[0]->fs + i];
                 if (visited.count(pdot) || to_tail == (pdot->n < 0 || path[0]->n < 0))
@@ -233,16 +233,16 @@ struct Track : Graph
     bool next_megadot(std::deque<int64_t> &extract)
     {
         MegaRange *pmegarange;
-        int is = 0;
+        uint64_t is = 0;
         while (!extract.empty())
         {
             if (extract.size() % 2 == 0)
                 pmegarange = &megadots_tail[megasources[extract[0]].first];
             else
                 pmegarange = &megadots_head[megasources[extract[0]].first];
-            for (int i = is; i < pmegarange->s_sz; ++i)
+            for (uint64_t i = is; i < pmegarange->s_sz; ++i)
             {
-                int64_t idx = pmegarange->fs + i;
+                uint64_t idx = pmegarange->fs + i;
                 Dot *pdot = megasources[idx].first;
                 if (!legal_circle(pdot, extract))
                     continue;
@@ -255,7 +255,7 @@ struct Track : Graph
                     pmegarange = &megadots_head[megasources[extract[1]].first];
                 else
                     pmegarange = &megadots_tail[megasources[extract[1]].first];
-                is = extract[0] - pmegarange->fs + 1;
+                is = extract[0] + 1 - pmegarange->fs;
             }
             extract.pop_front();
         }
@@ -271,7 +271,7 @@ struct Track : Graph
         Node *new_node = edges[pdot->n]->tail;
         if (new_node == edges[pdot->n]->head && sumdiffval < summin_score)
             return false;
-        for (int i = 1; i < extract.size(); i += 2)
+        for (uint64_t i = 1; i < extract.size(); i += 2)
         {
             summin_score += edges[megasources[extract[i]].first->n]->min_score;
             sumdiffval += megasources[extract[i + 1]].first->val - megasources[extract[i]].first->val;
@@ -281,12 +281,12 @@ struct Track : Graph
         return true;
     }
 
-    int64_t extract_dis(std::deque<int64_t> extract1, std::deque<int64_t> extract2)
+    uint64_t extract_dis(std::deque<int64_t> extract1, std::deque<int64_t> extract2)
     {
-        int row = extract1.size() / 2 + 1, col = extract2.size() / 2 + 1;
-        std::unique_ptr<int64_t[]> PD(new int64_t[row * col]), Ed(new int64_t[col - 1]), Fd(new int64_t[row - 1]);
+        uint64_t row = extract1.size() / 2 + 1, col = extract2.size() / 2 + 1;
+        std::unique_ptr<uint64_t[]> PD(new uint64_t[row * col]), Ed(new uint64_t[col - 1]), Fd(new uint64_t[row - 1]);
         PD[0] = 0;
-        for (int64_t i = 1; i < row; ++i)
+        for (uint64_t i = 1; i < row; ++i)
         {
             if (file2short.count(edges[megasources[extract1[2 * i - 1]].first->n]->name))
                 Fd[i - 1] = megasources[extract1[2 * i - 1]].first->s - megasources[extract1[2 * i - 2]].first->s;
@@ -294,7 +294,7 @@ struct Track : Graph
                 Fd[i - 1] = megasources[extract1[2 * i - 1]].first->lambda;
             PD[i] = PD[i - 1] + Fd[i - 1];
         }
-        for (int64_t j = 1; j < col; ++j)
+        for (uint64_t j = 1; j < col; ++j)
         {
             if (file2short.count(edges[megasources[extract2[2 * j - 1]].first->n]->name))
                 Ed[j - 1] = megasources[extract2[2 * j - 1]].first->s - megasources[extract2[2 * j - 2]].first->s;
@@ -302,18 +302,18 @@ struct Track : Graph
                 Ed[j - 1] = megasources[extract2[2 * j - 1]].first->lambda;
             PD[j * row] = PD[(j - 1) * row] + Ed[j - 1];
         }
-        for (int64_t i = 1; i < row; ++i)
-            for (int64_t j = 1; j < col; ++j)
+        for (uint64_t i = 1; i < row; ++i)
+            for (uint64_t j = 1; j < col; ++j)
             {
-                int64_t F = PD[j * row + i - 1] + Fd[i - 1];
-                int64_t E = PD[(j - 1) * row + i] + Ed[j - 1];
+                uint64_t F = PD[j * row + i - 1] + Fd[i - 1];
+                uint64_t E = PD[(j - 1) * row + i] + Ed[j - 1];
                 PD[j * row + i] = std::min(E, F);
                 if (megasources[extract1[2 * i - 1]].first->n == megasources[extract2[2 * j - 1]].first->n)
                 {
-                    int64_t segdiff;
+                    uint64_t segdiff;
                     if (file2short.count(edges[megasources[extract1[2 * i - 1]].first->n]->name))
                     {
-                        int64_t inter = std::min(megasources[extract1[2 * i - 1]].first->s, megasources[extract2[2 * j - 1]].first->s) - std::max(megasources[extract1[2 * i - 2]].first->s, megasources[extract2[2 * j - 2]].first->s);
+                        int64_t inter = std::min(megasources[extract1[2 * i - 1]].first->s, megasources[extract2[2 * j - 1]].first->s) - std::max(megasources[extract1[2 * i - 2]].first->s, megasources[extract2[2 * j - 2]].first->s); // inter may be minus, so use signed type int64_t
                         segdiff = Fd[i - 1] + Ed[j - 1] - 2 * (inter > 0 ? inter : 0);
                     }
                     else
@@ -329,7 +329,7 @@ struct Track : Graph
 
     int64_t global_dis(std::map<std::string, std::deque<std::pair<int64_t, int64_t>>> &seqranges1, std::map<std::string, std::deque<std::pair<int64_t, int64_t>>> &seqranges2)
     {
-        int64_t max_inter = 0;
+        int64_t max_inter = 0; // max_inter need compare with int64_t inter, thereby being int64_t as well
         for (auto it1 = seqranges1.begin(), it2 = seqranges2.begin(); it1 != seqranges1.end() && it2 != seqranges2.end();)
         {
             int cmp = it1->first.compare(it2->first);
@@ -355,10 +355,10 @@ struct Track : Graph
 
     void extracts_to_aligns(std::deque<std::deque<int64_t>> &extracts, std::string &Oname, std::string &O)
     {
-        for (int i = 0; i < extracts.size(); ++i)
+        for (uint64_t i = 0; i < extracts.size(); ++i)
         {
             std::string align_query, align_mid, align_ref;
-            for (int j = 0; j < extracts[i].size(); j += 2)
+            for (uint64_t j = 0; j < extracts[i].size(); j += 2)
             {
                 std::deque<Dot *> &path = megasources[extracts[i][j]].second;
                 if (!align_query.empty())
@@ -375,11 +375,11 @@ struct Track : Graph
                 {
                     align_query.append(path[0]->s, '-');
                     align_mid.append(path[0]->s, ' ');
-                    for (int i=0; i<path[0]->s; ++i)
+                    for (uint64_t i=0; i<path[0]->s; ++i)
                         align_ref.push_back(int2base[ref->first[i]]);
                 }
 
-                for (int i = 1; i < path.size(); ++i)
+                for (uint64_t i = 1; i < path.size(); ++i)
                 {
                     bool E = path[i]->w > path[i - 1]->w, localF = islocal && path[i]->s > path[i - 1]->s, globalF = !islocal && path[i]->lambda > path[i - 1]->lambda;
 
@@ -406,10 +406,10 @@ struct Track : Graph
 
                 if (islocal)
                 {
-                    int sz = ref->second - path.back()->s;
+                    uint64_t sz = ref->second - path.back()->s;
                     align_query.append(sz, '-');
                     align_mid.append(sz, ' ');
-                    for (int i=path.back()->s; i<path.back()->s+sz; ++i)
+                    for (uint64_t i=path.back()->s; i<path.back()->s+sz; ++i)
                         align_ref.push_back(int2base[ref->first[i]]);
                 }
             }
@@ -423,10 +423,10 @@ struct Track : Graph
 
     void output_extracts(std::deque<std::deque<int64_t>> &extracts, std::string &Oname)
     {
-        for (int i = 0; i < extracts.size(); ++i)
+        for (uint64_t i = 0; i < extracts.size(); ++i)
         {
             fout_extract << Oname << '\t' << i << '\n';
-            for (int j = 0; j < extracts[i].size(); j += 2)
+            for (uint64_t j = 0; j < extracts[i].size(); j += 2)
             {
                 Dot *pdot1 = megasources[extracts[i][j]].first;
                 Dot *pdot2 = megasources[extracts[i][j + 1]].first;
@@ -460,13 +460,13 @@ struct Track : Graph
         uint8_t *longref = file2long[edges[pdot->n]->name].first.get();
         std::vector<std::pair<std::string, uint64_t>> &cumlen = file2cumlen[edges[pdot->n]->name];
         RankVec &rankvec = file2rankvec[edges[pdot->n]->name];
-        int64_t sr1 = 0, sr2 = rankvec.bwt_sz - 1;
+        int64_t sr1 = 0, sr2 = rankvec.bwt_sz - 1; // sr1 will minus 1 in rank(), thereby use signed type int64_t
  
         for (uint64_t s = 0, tmp = rankvec.bwt_sz - pdot->s + pdot->lambda - 2; s < pdot->lambda; ++s)
             rankvec.PreRange(sr1, sr2, longref[tmp - s]);
         
         std::ifstream &SAfin = file2SA[edges[pdot->n]->name];
-        for (int64_t sx = sr1; sx <= sr2 && sx - sr1 < vm["max_range"].as<uint64_t>(); ++sx)
+        for (uint64_t sx = sr1; sx <= sr2 && sx - sr1 < vm["max_range"].as<uint64_t>(); ++sx)
         {
             uint64_t s;
             SAfin.seekg(sx * sizeof(uint64_t));
