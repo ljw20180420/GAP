@@ -57,9 +57,10 @@ struct TrackTree
     void emplace_back(int64_t cidx_, int n_, int64_t s_, int lambda_)
     {
         tracknodes.emplace_back(cidx_);
-        dots.resize(tracknodes.size() * (enumG + 1) * (W + 1));
-        for (int k = (tracknodes.size() - 1) * (enumG + 1) * (W + 1), t = enumE; t <= enumG; ++t)
-            for (int w = 0; w <= W; ++w, ++k)
+        dots.resize(tracknodes.size() * (enumEFG::enumG + 1) * (W + 1));
+        uint64_t k = (tracknodes.size() - 1) * (enumEFG::enumG + 1) * (W + 1);
+        for (enumEFG t : {enumEFG::enumE, enumEFG::enumF, enumEFG::enumG})
+            for (uint64_t w = 0; w <= W; ++w, ++k)
             {
                 dots[k].n = n_;
                 dots[k].s = s_;
@@ -163,7 +164,7 @@ struct Align : Graph
     std::vector<uint8_t> O;
     std::string Oname;
     std::ofstream fout;
-    int64_t max_id = 0;
+    uint64_t max_id = 0;
     uint64_t Omax;
     std::vector<bool> Qbools;
     enum VALTYPE{Q, ABAR, LID0, SID0, SIDX, OTHERS};
@@ -215,7 +216,7 @@ struct Align : Graph
             tnn += edge.get_tnn(Omax);
         }
         vals.reset(new double[tnn]);
-        ids.reset(new int64_t[tnn]);
+        ids.reset(new uint64_t[tnn]);
         ss.reset(new int[trn]);
         ns.reset(new int[trn]);
 
@@ -224,7 +225,7 @@ struct Align : Graph
         double **fpsource = sources.get();
         double ***fpsources = sourcess.get();
         int *fps_sz = s_szs.get();
-        int64_t *fpid = ids.get(), *rpid = fpid + tnn;
+        uint64_t *fpid = ids.get(), *rpid = fpid + tnn;
         pQid = --rpid;
         int *fps = ss.get();
         int *fpn = ns.get();
@@ -245,7 +246,7 @@ struct Align : Graph
         int n;
     };
 
-    SWN get_swn(int64_t idx)
+    SWN get_swn(uint64_t idx)
     {
         SWN swn;
         swn.s = idx / (Omax + 1);
@@ -424,7 +425,7 @@ struct Align : Graph
         std::deque<CrossGlobalData::Doo> &FG = crossglobaldata.FG;
         RankVec &rankvec = file2rankvec[edge->name]; 
 
-        int c = -1;
+        int c = -1; // ? minus
         int64_t sr1 = 0, sr2 = rankvec.bwt_sz - 1;
         crossglobaldata.emplace_back(c, sr1, sr2);
         for (uint64_t w = 0; w <= O.size(); ++w)
@@ -556,7 +557,7 @@ struct Align : Graph
         {
             if (w == 1)
             {
-                edges[i]->sncs.emplace_back(-inf, -inf, -inf, -inf, -1, 5, 0, 0, prankvecs[i]->bwt_sz - 1, 1, (SNC *)NULL, (SNC *)NULL);
+                edges[i]->sncs.emplace_back(-inf, -inf, -inf, -inf, -1, 5, 0, 0, prankvecs[i]->bwt_sz - 1, 1, (SNC *)NULL, (SNC *)NULL); // minus
                 for (int c = 2; c <= 6; ++c)
                 {
                     int64_t sr1 = edges[i]->sncs.front().sr1;
@@ -722,9 +723,9 @@ struct Align : Graph
         fout.write((char *)&M->lambda, sizeof(Dot::lambda));
     }
 
-    void arrangesource(std::queue<double> &valuequeue, double *source, std::queue<int64_t> &localqueue, int64_t &id)
+    void arrangesource(std::queue<double> &valuequeue, double *source, std::queue<int64_t> &localqueue, uint64_t &id)
     {
-        int64_t idx = source - vals.get();
+        uint64_t idx = source - vals.get();
         if (*source != -inf)
         {
             ids[idx] = ++id;
@@ -735,7 +736,7 @@ struct Align : Graph
         fout.write((char *)&ids[idx], sizeof(Dot::id));
     }
 
-    void arrangesource(std::queue<double> &valuequeue, Dot *source, std::queue<Dot *> &globalqueue, int64_t &id)
+    void arrangesource(std::queue<double> &valuequeue, Dot *source, std::queue<Dot *> &globalqueue, uint64_t &id)
     {
         if (source->val != -inf)
         {
@@ -763,7 +764,7 @@ struct Align : Graph
         std::queue<Dot *> globalqueue;
         std::queue<int64_t> localqueue;
         std::queue<double> valuequeue;
-        int64_t id = 0;
+        uint64_t id = 0;
         *pQid = id;
         localqueue.push(pQval - vals.get());
         valuequeue.push(*pQval);
@@ -844,7 +845,7 @@ struct Align : Graph
         dot_sources.clear();
     }
 
-    void GlobalTrack(std::map<Edge *, std::unique_ptr<double []>> &edge2tailAvals, double Mval, int64_t M, SWN &swn, int type, std::queue<Dot *> &globalqueue, std::queue<int64_t> &localqueue, std::queue<double> &valuequeue, int64_t &id)
+    void GlobalTrack(std::map<Edge *, std::unique_ptr<double []>> &edge2tailAvals, double Mval, int64_t M, SWN &swn, int type, std::queue<Dot *> &globalqueue, std::queue<int64_t> &localqueue, std::queue<double> &valuequeue, uint64_t &id)
     {
         auto &node = nodes[Dot::nidx_trans(swn.n)];
         s_szs[M] = node.AdeltaGlobal[swn.w].size() + node.AdeltaDot[swn.w].size();
@@ -868,7 +869,7 @@ struct Align : Graph
             if (tracktree.tracknodes.empty())
             {
                 tracktree.W = O.size();
-                tracktree.emplace_back(-1, edge->n, rankvec.bwt_sz - 1 - start - globalsuffix.lambda, 0);
+                tracktree.emplace_back(-1, edge->n, rankvec.bwt_sz - 1 - start - globalsuffix.lambda, 0); // minus
             }
             tracktree.setidx(0);
             if (edge->head->scc_id != edge->tail->scc_id)
@@ -925,7 +926,7 @@ struct Align : Graph
                     uint8_t c = longref[start + i];
                     if (tracknodes[tracktree.idx].cidxs[c - 2] < 0)
                     {
-                        tracktree.emplace_back(-1, edge->n, rankvec.bwt_sz - 1 - start - i, dots[tracktree.shiftE].lambda + 1);
+                        tracktree.emplace_back(-1, edge->n, rankvec.bwt_sz - 1 - start - i, dots[tracktree.shiftE].lambda + 1); // minus
                         tracknodes[tracktree.idx].cidxs[c - 2] = tracknodes.size() - 1;
                     }
                     tracktree.setidx(tracknodes[tracktree.idx].cidxs[c - 2]);

@@ -20,7 +20,7 @@ struct Dot
     int64_t fs; // first source
     int s_sz;
     int lambda;
-    int64_t id;
+    uint64_t id;
 
     static int nidx_trans(int nidx)
     {
@@ -113,8 +113,8 @@ struct Node
     double ***Bsourcess;
     std::unique_ptr<int *[]> As_szs;
     int *Bs_szs;
-    std::unique_ptr<int64_t *[]> Aids;
-    int64_t *Bids, *pAbarid;
+    std::unique_ptr<uint64_t *[]> Aids;
+    uint64_t *Bids, *pAbarid;
 
     std::unique_ptr<std::deque<double *>[]> AdeltaDot;
 
@@ -152,7 +152,7 @@ struct Node
         return new int[3]{2, 0, Aso};
     }
 
-    void apply_memory(uint64_t Aso, uint64_t Omax, double *&fpval, double **&fpsource, double ***&fpsources, int *&fps_sz, int64_t *&fpid, int *&fps, int *&fpn, double *&rpval, int64_t *&rpid)
+    void apply_memory(uint64_t Aso, uint64_t Omax, double *&fpval, double **&fpsource, double ***&fpsources, int *&fps_sz, uint64_t *&fpid, int *&fps, int *&fpn, double *&rpval, uint64_t *&rpid)
     {
         std::unique_ptr<int[]> Ss(new int[1]{scc_sz - 1});
         extend_ss_ns(1, -1, fps, fpn);
@@ -217,7 +217,7 @@ struct EdgeLocalCross : EdgeLocal
     std::unique_ptr<double *[]> Evals, Fvals, Gvals;
     std::unique_ptr<double ***[]> Esourcess, Fsourcess, Gsourcess;
     std::unique_ptr<int *[]> Es_szs, Fs_szs, Gs_szs;
-    std::unique_ptr<int64_t *[]> Eids, Fids, Gids;
+    std::unique_ptr<uint64_t *[]> Eids, Fids, Gids;
 
     EdgeLocalCross(EdgeLocal &edge)
         : EdgeLocal(edge)
@@ -256,7 +256,7 @@ struct EdgeLocalCross : EdgeLocal
         return new int[2]{2, 4};
     }
 
-    void apply_memory(uint64_t Omax, double *&fpval, double **&fpsource, double ***&fpsources, int *&fps_sz, int64_t *&fpid, int *&fps, int *&fpn, uint64_t ref_sz)
+    void apply_memory(uint64_t Omax, double *&fpval, double **&fpsource, double ***&fpsources, int *&fps_sz, uint64_t *&fpid, int *&fps, int *&fpn, uint64_t ref_sz)
     {
         std::unique_ptr<int[]> Ss(get_Ss(ref_sz));
         extend_ss_ns(3, Ss.get(), n, fps, fpn);
@@ -281,8 +281,8 @@ struct EdgeLocalCircuit : EdgeLocal
     double ***Dsourcess;
     std::unique_ptr<int *[]> Es_szs, F0s_szs, G0s_szs, Gs_szs;
     int *Ds_szs;
-    std::unique_ptr<int64_t *[]> Eids, F0ids, G0ids, Gids, D0ids, DXids;
-    int64_t *Dids;
+    std::unique_ptr<uint64_t *[]> Eids, F0ids, G0ids, Gids, D0ids, DXids;
+    uint64_t *Dids;
     std::unique_ptr<uint8_t []> DXbits;
 
     EdgeLocalCircuit(EdgeLocal &edge)
@@ -324,7 +324,7 @@ struct EdgeLocalCircuit : EdgeLocal
         return new int[5]{1, 2, 3, 1, 2};
     }
 
-    void apply_memory(uint64_t Omax, double *&fpval, double **&fpsource, double ***&fpsources, int *&fps_sz, int64_t *&fpid, int *&fps, int *&fpn, uint64_t ref_sz)
+    void apply_memory(uint64_t Omax, double *&fpval, double **&fpsource, double ***&fpsources, int *&fps_sz, uint64_t *&fpid, int *&fps, int *&fpn, uint64_t ref_sz)
     {
         DXbits.reset(new uint8_t[(tail->scc_sz-1)*(Omax+1)]);
         std::unique_ptr<int[]> Ss(get_Ss(ref_sz));
@@ -370,7 +370,7 @@ struct EdgeGlobalCircuit : Edge
 {
     std::deque<SNC> sncs;
     std::unique_ptr<double *[]> D0vals;
-    std::unique_ptr<int64_t *[]> D0ids;
+    std::unique_ptr<uint64_t *[]> D0ids;
 
     EdgeGlobalCircuit(Edge &edge)
         : Edge(edge)
@@ -392,7 +392,7 @@ struct EdgeGlobalCircuit : Edge
         return new int[1]{tail->scc_sz - 2};
     }
 
-    void apply_memory(uint64_t Omax, double *&fpval, int64_t *&fpid, int *&fps, int *&fpn)
+    void apply_memory(uint64_t Omax, double *&fpval, uint64_t *&fpid, int *&fps, int *&fpn)
     {
         std::unique_ptr<int[]> Ss(get_Ss());
         extend_ss_ns(1, Ss.get(), n, fps, fpn);
@@ -427,7 +427,7 @@ struct Graph
     std::unique_ptr<double *[]> sources;
     std::unique_ptr<double **[]> sourcess;
     std::unique_ptr<int[]> s_szs;
-    std::unique_ptr<int64_t[]> ids;
+    std::unique_ptr<uint64_t[]> ids;
     std::unique_ptr<int[]> ss, ns;
     int trn;
     int64_t tnn, tsn;
@@ -435,7 +435,7 @@ struct Graph
     double *pQval;
     double ***pQsources;
     int *pQs_sz;
-    int64_t *pQid;
+    uint64_t *pQid;
 
     boost::program_options::variables_map &vm;
     std::map<std::string, std::pair<std::unique_ptr<uint8_t[]>, uint64_t>> &file2short;
