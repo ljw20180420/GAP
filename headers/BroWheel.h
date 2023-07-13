@@ -152,12 +152,6 @@ struct RankVec
         return r;
     }
 
-    void PreRange(int64_t& i, int64_t& j, NUCTYPE c)
-    {
-        i=C[c]+rank(c,i);
-        j=C[c]+rank(c,j);
-    }
-
     void saveRankVec(std::string bwtFile, std::string bwtRankFile)
     {
         std::ofstream fout(bwtFile);
