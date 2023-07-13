@@ -426,7 +426,7 @@ struct Align : Graph
         RankVec &rankvec = file2rankvec[edge->name]; 
 
         int c = -1; // ? minus
-        int64_t sr1 = 0, sr2 = rankvec.bwt_sz - 1;
+        int64_t sr1 = 0, sr2 = rankvec.bwt_sz;
         crossglobaldata.emplace_back(c, sr1, sr2);
         for (uint64_t w = 0; w <= O.size(); ++w)
         {
@@ -466,8 +466,8 @@ struct Align : Graph
                     sr1 = simnodes.back().sr1;
                     sr2 = simnodes.back().sr2;
                     rankvec.PreRange(sr1, sr2, c);
-                } while (sr1 > sr2 && c < 6);
-                if (sr1 <= sr2)
+                } while (sr1 >= sr2 && c < 6);
+                if (sr1 < sr2)
                 {
                     crossglobaldata.emplace_back(c, sr1, sr2);
                     break;
@@ -557,13 +557,13 @@ struct Align : Graph
         {
             if (w == 1)
             {
-                edges[i]->sncs.emplace_back(-inf, -inf, -inf, -inf, -1, 5, 0, 0, prankvecs[i]->bwt_sz - 1, 1, (SNC *)NULL, (SNC *)NULL); // minus
+                edges[i]->sncs.emplace_back(-inf, -inf, -inf, -inf, -1, 5, 0, 0, prankvecs[i]->bwt_sz, 1, (SNC *)NULL, (SNC *)NULL); // minus
                 for (int c = 2; c <= 6; ++c)
                 {
                     int64_t sr1 = edges[i]->sncs.front().sr1;
                     int64_t sr2 = edges[i]->sncs.front().sr2;
                     prankvecs[i]->PreRange(sr1, sr2, c);
-                    if (sr1 <= sr2)
+                    if (sr1 < sr2)
                     {
                         edges[i]->sncs.emplace_back(-inf, -inf, -inf, -inf, c, 0, 1, sr1, sr2, 0, &(edges[i]->sncs.front()), edges[i]->sncs.front().jump);
                         edges[i]->sncs.front().jump = &(edges[i]->sncs.back());
@@ -622,7 +622,7 @@ struct Align : Graph
                                 int64_t sr1 = jumps[i]->sr1;
                                 int64_t sr2 = jumps[i]->sr2;
                                 prankvecs[i]->PreRange(sr1, sr2, c);
-                                if (sr1 <= sr2)
+                                if (sr1 < sr2)
                                 {
                                     edges[i]->sncs.emplace_back(-inf, -inf, -inf, -inf, c, 0, jumps[i]->lambda + 1, sr1, sr2, 0, jumps[i], (SNC *)NULL);
                                     ++jumps[i]->idl;

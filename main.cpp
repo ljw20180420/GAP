@@ -79,6 +79,7 @@ int main(int argc, char **argv)
         delete[] revref;
         bwtRank.count();
         bwtRank.saveRankVec(RevRefFile+".bwt", RevRefFile+".rnk");
+
         return EXIT_SUCCESS;
     }
 

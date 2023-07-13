@@ -460,13 +460,13 @@ struct Track : Graph
         uint8_t *longref = file2long[edges[pdot->n]->name].first.get();
         std::vector<std::pair<std::string, uint64_t>> &cumlen = file2cumlen[edges[pdot->n]->name];
         RankVec &rankvec = file2rankvec[edges[pdot->n]->name];
-        int64_t sr1 = 0, sr2 = rankvec.bwt_sz - 1; // sr1 will minus 1 in rank(), thereby use signed type int64_t
+        int64_t sr1 = 0, sr2 = rankvec.bwt_sz;
  
         for (uint64_t s = 0, tmp = rankvec.bwt_sz - pdot->s + pdot->lambda - 2; s < pdot->lambda; ++s)
             rankvec.PreRange(sr1, sr2, longref[tmp - s]);
         
         std::ifstream &SAfin = file2SA[edges[pdot->n]->name];
-        for (uint64_t sx = sr1; sx <= sr2 && sx - sr1 < vm["max_range"].as<uint64_t>(); ++sx)
+        for (uint64_t sx = sr1; sx < sr2 && sx - sr1 < vm["max_range"].as<uint64_t>(); ++sx)
         {
             uint64_t s;
             SAfin.seekg(sx * sizeof(uint64_t));

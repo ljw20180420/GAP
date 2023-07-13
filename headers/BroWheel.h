@@ -132,17 +132,15 @@ struct RankVec
             }
         }
 
-        C[0]=0;
+        C[0]=1;
         for(int c=1; c<sigma; ++c)
             C[c]=C[c-1]+R1[c-1][j1];
     }
 
     uint64_t rank(uint8_t c, int64_t i)
     {
-        if (i<0)
-            return 0;
         uint64_t r=R1[c-1][i/(b1*b2)]+R2[c-1][i/b1];
-        for(uint64_t j=(i/b1)*b1; j<=i; ++j)
+        for(uint64_t j=(i/b1)*b1; j<i; ++j)
             if(bwt[j]==c)
                 ++r;
         return r;
@@ -150,7 +148,7 @@ struct RankVec
 
     void PreRange(int64_t& i, int64_t& j, uint8_t c)
     {
-        i=C[c-1]+rank(c,i-1)+1;
+        i=C[c-1]+rank(c,i);
         j=C[c-1]+rank(c,j);
     }
 
@@ -199,17 +197,5 @@ bool check_bwt(RankVec &bwtRank, uint8_t *revref)
     }
     return true;
 }
-
-// int64_t SimSuffix(int64_t i)
-// {
-//     int j=0;
-//     while(sra[i]==0)
-//     {
-//         int c=bwt[i];
-//         i=C[c-1]+bwtRank.rank(c,i,bwt);
-//         ++j;
-//     }
-//     return ssa[sraRank.rank(1,i,sra)-1]+j;
-// }
 
 #endif
