@@ -58,7 +58,7 @@ struct RankVec
     uint8_t** R2=NULL;
     const static uint64_t b1=8;
     const static uint64_t b2=32;
-    const static uint8_t sigma=6;
+    const static uint8_t sigma=7;
     std::array<uint64_t,sigma> C;
     uint8_t * bwt=NULL;
     uint64_t bwt_sz;
@@ -80,7 +80,7 @@ struct RankVec
     {
         if(R)
         {
-            delete[] R[0];
+            delete[] R[1];
             delete[] R;
         }
     }
@@ -90,9 +90,9 @@ struct RankVec
     {
         uint64_t sz=(bwt_sz-1)/block_size+2;
         release(R);
-        R=new U*[sigma];
-        R[0]=new U[sigma*sz];
-        for(uint8_t c=1; c<sigma; ++c)
+        R = new U*[sigma];
+        R[1] = new U[(sigma-1)*sz];
+        for(uint8_t c=2; c<sigma; ++c)
             R[c]=R[c-1]+sz;
     }
 
@@ -100,24 +100,24 @@ struct RankVec
     {
         apply(R1, b1*b2);
         apply(R2, b1);
-        for(uint8_t c=0; c<sigma; ++c)
+        for(uint8_t c = 1; c < sigma; ++c)
         {
-            R1[c][0]=0;
-            R2[c][0]=0;
+            R1[c][0] = 0;
+            R2[c][0] = 0;
         }
-        uint64_t j1=0;
-        for(uint64_t i=0, j2=0; i<bwt_sz; ++i)
+        uint64_t j1 = 0;
+        for(uint64_t i = 0, j2 = 0; i < bwt_sz; ++i)
         {
-            if(i%(b1*b2)==0)
+            if(i%(b1*b2) == 0)
             {
                 ++j1;
-                for(uint8_t c=0; c<sigma; ++c)
-                    R1[c][j1]=R1[c][j1-1];
+                for(uint8_t c = 1; c < sigma; ++c)
+                    R1[c][j1] = R1[c][j1-1];
             }
             if(i%b1==0)
             {
                 ++j2;
-                for(uint8_t c=0; c<sigma; ++c)
+                for(uint8_t c = 1; c < sigma; ++c)
                     if(j2%b2==0)
                         R2[c][j2]=0;
                     else
@@ -126,20 +126,20 @@ struct RankVec
             uint8_t c=bwt[i];
             if(c>0)
             {
-                ++R1[c-1][j1];
+                ++R1[c][j1];
                 if(j2%b2!=0)
-                    ++R2[c-1][j2];
+                    ++R2[c][j2];
             }
         }
 
-        C[0]=1;
-        for(int c=1; c<sigma; ++c)
+        C[1]=1;
+        for(int c = 2; c < sigma; ++c)
             C[c]=C[c-1]+R1[c-1][j1];
     }
 
     uint64_t rank(uint8_t c, int64_t i)
     {
-        uint64_t r=R1[c-1][i/(b1*b2)]+R2[c-1][i/b1];
+        uint64_t r=R1[c][i/(b1*b2)]+R2[c][i/b1];
         for(uint64_t j=(i/b1)*b1; j<i; ++j)
             if(bwt[j]==c)
                 ++r;
@@ -148,8 +148,8 @@ struct RankVec
 
     void PreRange(int64_t& i, int64_t& j, uint8_t c)
     {
-        i=C[c-1]+rank(c,i);
-        j=C[c-1]+rank(c,j);
+        i=C[c]+rank(c,i);
+        j=C[c]+rank(c,j);
     }
 
     void saveRankVec(std::string bwtFile, std::string bwtRankFile)
@@ -161,9 +161,9 @@ struct RankVec
         fout.open(bwtRankFile);
         fout.write((char*)C.data(), C.size() * sizeof(C[0]));
         uint64_t sz=(bwt_sz-1)/(b1*b2)+2;
-        fout.write((char*)R1[0],this->sigma*sz*sizeof(R1[0][0]));
+        fout.write((char*)R1[1], (sigma-1)*sz*sizeof(std::remove_pointer<std::remove_pointer<decltype(R1)>::type>::type));
         sz=(bwt_sz-1)/b1+2;
-        fout.write((char*)R2[0],this->sigma*sz*sizeof(R2[0][0]));
+        fout.write((char*)R2[1], (sigma-1)*sz*sizeof(std::remove_pointer<std::remove_pointer<decltype(R2)>::type>::type));
     }
 
     void loadRankVec(std::string bwtFile, std::string bwtRankFile)
@@ -179,9 +179,9 @@ struct RankVec
         fin.open(bwtRankFile);
         fin.read((char*)C.data(), C.size() * sizeof(C[0]));
         uint64_t sz=(bwt_sz+b1*b2-1)/(b1*b2)+1;
-        fin.read((char*)R1[0],this->sigma*sz*sizeof(R1[0][0]));
+        fin.read((char*)R1[1], (sigma-1)*sz*sizeof(std::remove_pointer<std::remove_pointer<decltype(R1)>::type>::type));
         sz=(bwt_sz-1)/b1+2;
-        fin.read((char*)R2[0],this->sigma*sz*sizeof(R2[0][0]));
+        fin.read((char*)R2[1], (sigma-1)*sz*sizeof(std::remove_pointer<std::remove_pointer<decltype(R2)>::type>::type));
     }
 };
 
@@ -193,7 +193,7 @@ bool check_bwt(RankVec &bwtRank, uint8_t *revref)
         if (bwtRank.bwt[i]!=revref[j])
             return false;
         int c=bwtRank.bwt[i];
-        i=bwtRank.C[c-1]+bwtRank.rank(c,i);
+        i=bwtRank.C[c]+bwtRank.rank(c,i);
     }
     return true;
 }
