@@ -425,9 +425,8 @@ struct Align : Graph
         std::deque<CrossGlobalData::Doo> &FG = crossglobaldata.FG;
         RankVec &rankvec = file2rankvec[edge->name]; 
 
-        int c = -1; // ? minus
         SIZETYPE sr1 = 0, sr2 = rankvec.bwt_sz;
-        crossglobaldata.emplace_back(c, sr1, sr2);
+        crossglobaldata.emplace_back(0, sr1, sr2); // the root SimNode has no base, we simply set it to 0, which does not mean that it has base #(0) 
         for (uint64_t w = 0; w <= O.size(); ++w)
         {
             double tgw = (O.size() > w ? (O.size() - w - 1) * edge->tail->ue + edge->tail->ve : 0);
@@ -448,6 +447,7 @@ struct Align : Graph
         {
             do
             {
+                NUCTYPE c;
                 if (simnodes.back().shiftFG < FG.size())
                     c = 1;
                 else
@@ -556,8 +556,8 @@ struct Align : Graph
         {
             if (w == 1)
             {
-                edges[i]->sncs.emplace_back(-inf, -inf, -inf, -inf, -1, 5, 0, 0, prankvecs[i]->bwt_sz, 1, (SNC *)NULL, (SNC *)NULL); // minus
-                for (int c = 2; c <= 6; ++c)
+                edges[i]->sncs.emplace_back(-inf, -inf, -inf, -inf, 0, 5, 0, 0, prankvecs[i]->bwt_sz, 1, (SNC *)NULL, (SNC *)NULL); // the root SNC has no base, we simply set it to 0, which does not mean that it has base #(0)
+                for (NUCTYPE c = 2; c <= 6; ++c)
                 {
                     SIZETYPE sr1 = prankvecs[i]->C[c] + prankvecs[i]->rank(c, edges[i]->sncs.front().sr1);
                     SIZETYPE sr2 = prankvecs[i]->C[c] + prankvecs[i]->rank(c, edges[i]->sncs.front().sr2);

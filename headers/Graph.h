@@ -7,20 +7,24 @@
 #include "BroWheel.h"
 #include <boost/program_options.hpp>
 
+using DOTTYPE = int16_t;
+using QUERYSIZE = uint32_t;
+using IDTYPE = uint64_t;
+
 constexpr static const double inf = std::numeric_limits<double>::infinity();
 
 struct Dot
 {
-    static const int DotQ = -3, DotAbar = -2, DotB = -1;
+    static const DOTTYPE DotQ = -3, DotAbar = -2, DotB = -1;
 
-    int n; // n determines the type of Dot
+    DOTTYPE n; // n determines the type of Dot
     int64_t s;
     int w;
     double val;
     int64_t fs; // first source
     int s_sz;
     int lambda;
-    uint64_t id;
+    IDTYPE id;
 
     static int nidx_trans(int nidx)
     {
@@ -77,7 +81,7 @@ void type_initial(T *&Ts, std::initializer_list<T **> pTss, std::initializer_lis
     }
 }
 
-void extend_ss_ns(int pTss_sz, int n, int *&fps, int *&fpn)
+void extend_ss_ns(int pTss_sz, DOTTYPE n, int *&fps, int *&fpn)
 {
     for (int i = 0; i < pTss_sz; ++i, ++fps, ++fpn)
     {
@@ -86,7 +90,7 @@ void extend_ss_ns(int pTss_sz, int n, int *&fps, int *&fpn)
     }
 }
 
-void extend_ss_ns(int pTsss_sz, int *Ss, int n, int *&fps, int *&fpn)
+void extend_ss_ns(int pTsss_sz, int *Ss, DOTTYPE n, int *&fps, int *&fpn)
 {
     for (int i = 0; i < pTsss_sz; ++i)
         for (int j = 0; j <= Ss[i]; ++j, ++fps, ++fpn)
