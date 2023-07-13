@@ -297,7 +297,7 @@ struct Align : Graph
             mtx.unlock();
             O.clear();
             for (uint64_t i = 0; i < Otmp.size(); ++i)
-                O.push_back(base2int[Otmp[i]]);
+                O.push_back(base2NUCTYPE[Otmp[i]]);
             Mix();
             GetMinimalGraph();
         }

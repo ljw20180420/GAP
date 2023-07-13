@@ -80,6 +80,8 @@ int main(int argc, char **argv)
         bwtRank.count();
         bwtRank.saveRankVec(RevRefFile+".bwt", RevRefFile+".rnk");
 
+        // std::cerr << "check bwt:" << check_bwt(bwtRank, revref) << '\n'; // debug
+
         return EXIT_SUCCESS;
     }
 

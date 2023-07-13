@@ -376,7 +376,7 @@ struct Track : Graph
                     align_query.append(path[0]->s, '-');
                     align_mid.append(path[0]->s, ' ');
                     for (uint64_t i=0; i<path[0]->s; ++i)
-                        align_ref.push_back(int2base[ref->first[i]]);
+                        align_ref.push_back(NUCTYPE2base[ref->first[i]]);
                 }
 
                 for (uint64_t i = 1; i < path.size(); ++i)
@@ -392,9 +392,9 @@ struct Track : Graph
                         align_query.push_back('-');
                     
                     if (localF)
-                        align_ref.push_back(int2base[ref->first[path[i]->s - 1]]);
+                        align_ref.push_back(NUCTYPE2base[ref->first[path[i]->s - 1]]);
                     else if (globalF)
-                        align_ref.push_back(int2base[ref->first[ref->second - 1 - path[i]->s]]);
+                        align_ref.push_back(NUCTYPE2base[ref->first[ref->second - 1 - path[i]->s]]);
                     else
                         align_ref.push_back('-');
 
@@ -410,7 +410,7 @@ struct Track : Graph
                     align_query.append(sz, '-');
                     align_mid.append(sz, ' ');
                     for (uint64_t i=path.back()->s; i<path.back()->s+sz; ++i)
-                        align_ref.push_back(int2base[ref->first[i]]);
+                        align_ref.push_back(NUCTYPE2base[ref->first[i]]);
                 }
             }
 

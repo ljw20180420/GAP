@@ -18,34 +18,38 @@
 #include "../external/gsacak.c"
 #undef max
 
-const static std::string int2base="#$NACGT";
-static std::map<char, int8_t> base2int={{'#',0}, {'$',1}, {'N',2}, {'A',3}, {'C',4}, {'G',5}, {'T',6}, {'n',2}, {'a',3}, {'c',4}, {'g',5}, {'t',6}};
+using NUCTYPE = uint8_t;
+using SIZETYPE = uint64_t;
+using R2TYPE = uint8_t;
 
-void gsufsortSA(std::string SAfile, uint8_t *revref, uint64_t revref_sz)
+const static std::string NUCTYPE2base="#$NACGT";
+static std::map<char, NUCTYPE> base2NUCTYPE={{'#',0}, {'$',1}, {'N',2}, {'A',3}, {'C',4}, {'G',5}, {'T',6}, {'n',2}, {'a',3}, {'c',4}, {'g',5}, {'t',6}};
+
+void gsufsortSA(std::string SAfile, NUCTYPE *revref, SIZETYPE revref_sz)
 {
-    uint64_t *SA = new uint64_t[revref_sz];
+    SIZETYPE *SA = new SIZETYPE[revref_sz];
     sacak(revref, SA, revref_sz);
     std::ofstream fSA(SAfile);
-    fSA.write((char *)SA, revref_sz*sizeof(uint64_t));
+    fSA.write((char *)SA, revref_sz*sizeof(SIZETYPE));
     delete[] SA;
 }
 
-uint8_t* SA2bwt(std::string SAfile, uint64_t batch, uint8_t *revseq)
+NUCTYPE* SA2bwt(std::string SAfile, SIZETYPE batch, NUCTYPE *revseq)
 {
-    uint64_t revseq_sz = std::filesystem::file_size(SAfile)/sizeof(uint64_t);
+    SIZETYPE revseq_sz = std::filesystem::file_size(SAfile)/sizeof(SIZETYPE);
     std::ifstream fin(SAfile);
-    uint64_t *SA = new uint64_t[batch];
-    uint8_t *bwt = new uint8_t[revseq_sz];
-    uint64_t bwt_sz = 0;
+    SIZETYPE *SA = new SIZETYPE[batch];
+    NUCTYPE *bwt = new NUCTYPE[revseq_sz];
+    SIZETYPE bwt_sz = 0;
     while (true)
     {
-        fin.read((char *)SA, batch*sizeof(uint64_t));
-        uint64_t gc = fin.gcount()/sizeof(uint64_t);
+        fin.read((char *)SA, batch*sizeof(SIZETYPE));
+        SIZETYPE gc = fin.gcount()/sizeof(SIZETYPE);
         if (gc==0)
             break;
-        for (uint64_t i=0; i<gc; ++i, ++bwt_sz)
+        for (SIZETYPE i=0; i<gc; ++i, ++bwt_sz)
         {
-            uint64_t j = (SA[i]>0 ? (SA[i]-1) : (revseq_sz-1));
+            SIZETYPE j = (SA[i]>0 ? (SA[i]-1) : (revseq_sz-1));
             bwt[bwt_sz] = revseq[j];
         }
     }
@@ -54,14 +58,14 @@ uint8_t* SA2bwt(std::string SAfile, uint64_t batch, uint8_t *revseq)
 
 struct RankVec
 {
-    uint64_t** R1=NULL;
-    uint8_t** R2=NULL;
-    const static uint64_t b1=8;
-    const static uint64_t b2=32;
-    const static uint8_t sigma=7;
-    std::array<uint64_t,sigma> C;
-    uint8_t * bwt=NULL;
-    uint64_t bwt_sz;
+    SIZETYPE** R1=NULL;
+    R2TYPE** R2=NULL;
+    const static SIZETYPE b1=8;
+    const static SIZETYPE b2 = (SIZETYPE(std::numeric_limits<R2TYPE>::max()) + 1) / b1;
+    const static NUCTYPE sigma=7;
+    SIZETYPE C[sigma];
+    NUCTYPE * bwt=NULL;
+    SIZETYPE bwt_sz;
 
     RankVec()
     {
@@ -71,28 +75,30 @@ struct RankVec
     {
         if (bwt)
             delete[] bwt;
-        release(R1);
-        release(R2);
+        if(R1)
+        {
+            delete[] R1[1];
+            delete[] R1;
+        }
+        if(R2)
+        {
+            delete[] R2[1];
+            delete[] R2;
+        }
     }
 
     template <typename U>
-    void release(U** R)
+    void apply(U** & R, SIZETYPE block_size)
     {
+        SIZETYPE sz=(bwt_sz-1)/block_size+2;
         if(R)
         {
             delete[] R[1];
             delete[] R;
         }
-    }
-
-    template <typename U>
-    void apply(U** & R, uint64_t block_size)
-    {
-        uint64_t sz=(bwt_sz-1)/block_size+2;
-        release(R);
         R = new U*[sigma];
         R[1] = new U[(sigma-1)*sz];
-        for(uint8_t c=2; c<sigma; ++c)
+        for(NUCTYPE c=2; c<sigma; ++c)
             R[c]=R[c-1]+sz;
     }
 
@@ -100,30 +106,30 @@ struct RankVec
     {
         apply(R1, b1*b2);
         apply(R2, b1);
-        for(uint8_t c = 1; c < sigma; ++c)
+        for(NUCTYPE c = 1; c < sigma; ++c)
         {
             R1[c][0] = 0;
             R2[c][0] = 0;
         }
-        uint64_t j1 = 0;
-        for(uint64_t i = 0, j2 = 0; i < bwt_sz; ++i)
+        SIZETYPE j1 = 0;
+        for(SIZETYPE i = 0, j2 = 0; i < bwt_sz; ++i)
         {
             if(i%(b1*b2) == 0)
             {
                 ++j1;
-                for(uint8_t c = 1; c < sigma; ++c)
+                for(NUCTYPE c = 1; c < sigma; ++c)
                     R1[c][j1] = R1[c][j1-1];
             }
             if(i%b1==0)
             {
                 ++j2;
-                for(uint8_t c = 1; c < sigma; ++c)
+                for(NUCTYPE c = 1; c < sigma; ++c)
                     if(j2%b2==0)
                         R2[c][j2]=0;
                     else
                         R2[c][j2]=R2[c][j2-1];
             }
-            uint8_t c=bwt[i];
+            NUCTYPE c=bwt[i];
             if(c>0)
             {
                 ++R1[c][j1];
@@ -133,20 +139,20 @@ struct RankVec
         }
 
         C[1]=1;
-        for(int c = 2; c < sigma; ++c)
+        for(NUCTYPE c = 2; c < sigma; ++c)
             C[c]=C[c-1]+R1[c-1][j1];
     }
 
-    uint64_t rank(uint8_t c, int64_t i)
+    SIZETYPE rank(NUCTYPE c, SIZETYPE i)
     {
-        uint64_t r=R1[c][i/(b1*b2)]+R2[c][i/b1];
-        for(uint64_t j=(i/b1)*b1; j<i; ++j)
+        SIZETYPE r=R1[c][i/(b1*b2)]+R2[c][i/b1];
+        for(SIZETYPE j=(i/b1)*b1; j<i; ++j)
             if(bwt[j]==c)
                 ++r;
         return r;
     }
 
-    void PreRange(int64_t& i, int64_t& j, uint8_t c)
+    void PreRange(int64_t& i, int64_t& j, NUCTYPE c)
     {
         i=C[c]+rank(c,i);
         j=C[c]+rank(c,j);
@@ -159,17 +165,17 @@ struct RankVec
         fout.close();
         
         fout.open(bwtRankFile);
-        fout.write((char*)C.data(), C.size() * sizeof(C[0]));
-        uint64_t sz=(bwt_sz-1)/(b1*b2)+2;
-        fout.write((char*)R1[1], (sigma-1)*sz*sizeof(std::remove_pointer<std::remove_pointer<decltype(R1)>::type>::type));
-        sz=(bwt_sz-1)/b1+2;
-        fout.write((char*)R2[1], (sigma-1)*sz*sizeof(std::remove_pointer<std::remove_pointer<decltype(R2)>::type>::type));
+        fout.write((char*)C, sigma * sizeof(SIZETYPE));
+        SIZETYPE sz=(bwt_sz+b1*b2-1)/(b1*b2)+1;
+        fout.write((char*)R1[1], (sigma-1)*sz*sizeof(SIZETYPE));
+        sz=(bwt_sz+b1-1)/b1+1;
+        fout.write((char*)R2[1], (sigma-1)*sz*sizeof(R2TYPE));
     }
 
     void loadRankVec(std::string bwtFile, std::string bwtRankFile)
     {
         bwt_sz = std::filesystem::file_size(bwtFile);
-        bwt = new uint8_t[bwt_sz];
+        bwt = new NUCTYPE[bwt_sz];
         std::ifstream fin(bwtFile);
         fin.read((char*)bwt, bwt_sz);
         fin.close();
@@ -177,22 +183,23 @@ struct RankVec
         apply(R1, b1*b2);
         apply(R2, b1);
         fin.open(bwtRankFile);
-        fin.read((char*)C.data(), C.size() * sizeof(C[0]));
-        uint64_t sz=(bwt_sz+b1*b2-1)/(b1*b2)+1;
-        fin.read((char*)R1[1], (sigma-1)*sz*sizeof(std::remove_pointer<std::remove_pointer<decltype(R1)>::type>::type));
-        sz=(bwt_sz-1)/b1+2;
-        fin.read((char*)R2[1], (sigma-1)*sz*sizeof(std::remove_pointer<std::remove_pointer<decltype(R2)>::type>::type));
+        fin.read((char*)C, sigma * sizeof(SIZETYPE));
+        SIZETYPE sz=(bwt_sz+b1*b2-1)/(b1*b2)+1;
+        fin.read((char*)R1[1], (sigma-1)*sz*sizeof(SIZETYPE));
+        sz=(bwt_sz+b1-1)/b1+1;
+        fin.read((char*)R2[1], (sigma-1)*sz*sizeof(R2TYPE));
     }
 };
 
 
-bool check_bwt(RankVec &bwtRank, uint8_t *revref)
+bool check_bwt(RankVec &bwtRank, NUCTYPE *revref)
 {
-    for(int64_t i=0, j=bwtRank.bwt_sz-2; j>=0; --j)
+    for(SIZETYPE i=0, j=bwtRank.bwt_sz-1; j>0; )
     {
+        --j;
         if (bwtRank.bwt[i]!=revref[j])
             return false;
-        int c=bwtRank.bwt[i];
+        NUCTYPE c=bwtRank.bwt[i];
         i=bwtRank.C[c]+bwtRank.rank(c,i);
     }
     return true;
