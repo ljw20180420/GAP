@@ -11,10 +11,11 @@ using DOTTYPE = int16_t;
 using QUERYSIZE = uint32_t;
 using SHORTSIZE = uint32_t;
 using IDTYPE = uint64_t;
-// using SCORETYPE = int32_t;
-using SCORETYPE = double;
+using SCORETYPE = int32_t;
+// using SCORETYPE = double;
 using SOURCESIZE = uint32_t;
-constexpr static const SCORETYPE inf = std::numeric_limits<SCORETYPE>::infinity();
+// constexpr static const SCORETYPE inf = std::numeric_limits<SCORETYPE>::infinity();
+constexpr static const SCORETYPE inf = std::numeric_limits<SCORETYPE>::max() / 2;
 
 struct Dot
 {
