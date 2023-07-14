@@ -104,7 +104,7 @@ struct MonoDeque
 
 struct Align : Graph
 {
-    std::map<std::string, TrackTree> long2tracktree;
+    std::map<Edge *, TrackTree> long2tracktree;
 
     struct CrossGlobalData
     {
@@ -833,7 +833,7 @@ struct Align : Graph
         if (id > max_id)
             max_id = id;
 
-        for (std::map<std::string, TrackTree>::iterator it = long2tracktree.begin(); it != long2tracktree.end(); ++it)
+        for (std::map<Edge *, TrackTree>::iterator it = long2tracktree.begin(); it != long2tracktree.end(); ++it)
             it->second.clear();
         for (Node &node : nodes)
             node.clearAdelta(O.size());
@@ -852,7 +852,7 @@ struct Align : Graph
         {
             Edge *edge = globalsuffix.edge;
             SCORETYPE *Avals = edge2tailAvals[edge].get();
-            TrackTree &tracktree = long2tracktree[edge->name];
+            TrackTree &tracktree = long2tracktree[edge];
             std::deque<TrackTree::TrackNode> &tracknodes = tracktree.tracknodes;
             std::deque<Dot> &dots = tracktree.dots;
             NUCTYPE *longref = file2long[edge->name].first.get();
