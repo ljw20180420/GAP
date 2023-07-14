@@ -393,15 +393,6 @@ struct EdgeGlobalCircuit : Edge
     }
 };
 
-struct SCC
-{
-    std::vector<Node *> nodes;
-    std::vector<EdgeLocalCross *> local_crosses;
-    std::vector<EdgeLocalCircuit *> local_circuits;
-    std::vector<Edge *> global_crosses;
-    std::vector<EdgeGlobalCircuit *> global_circuits;
-};
-
 struct Graph
 {
     std::deque<Node> nodes;
@@ -410,8 +401,6 @@ struct Graph
     std::deque<Edge> global_crosses;
     std::deque<EdgeGlobalCircuit> global_circuits;
     std::deque<Edge *> edges;
-
-    std::deque<SCC> sccs;
 
     std::unique_ptr<SCORETYPE []> vals;
     std::unique_ptr<SCORETYPE *[]> sources;
@@ -512,7 +501,6 @@ struct Graph
                 locals.push_back(local);
             }
 
-
         std::list<Edge> globals;
         if (vm.count("longs"))
             for (std::string longinfo : vm["longs"].as<std::vector<std::string>>())
@@ -550,38 +538,34 @@ struct Graph
         std::vector<bool> visit(locals.size() + globals.size());
         RemoveEdge(nodes, false, visit, locals, globals);
         RemoveEdge(nodes, true, visit, locals, globals);
-        SCCTS(locals, globals);
+        std::deque<std::deque<Node *>> sccs = SCCTS(locals, globals);
         for (SIZETYPE i = 0; i < sccs.size(); ++i)
-            for (auto node : sccs[i].nodes)
+            for (Node *node : sccs[i])
             {
                 node->scc_id = i;
-                node->scc_sz = sccs[i].nodes.size();
+                node->scc_sz = sccs[i].size();
             }
         edges.resize(locals.size() + globals.size());
         for (EdgeLocal &edge : locals)
             if (edge.tail->scc_id != edge.head->scc_id)
             {
                 local_crosses.emplace_back(edge);
-                sccs[edge.tail->scc_id].local_crosses.emplace_back(&local_crosses.back());
                 edges[edge.n] = &local_crosses.back();
             }
             else
             {
                 local_circuits.emplace_back(edge);
-                sccs[edge.tail->scc_id].local_circuits.emplace_back(&local_circuits.back());
                 edges[edge.n] = &local_circuits.back();
             }
         for (Edge &edge : globals)
             if (edge.tail->scc_id != edge.head->scc_id)
             {
                 global_crosses.emplace_back(edge);
-                sccs[edge.tail->scc_id].global_crosses.emplace_back(&global_crosses.back());
                 edges[edge.n] = &global_crosses.back();
             }
             else
             {
                 global_circuits.emplace_back(edge);
-                sccs[edge.tail->scc_id].global_circuits.emplace_back(&global_circuits.back());
                 edges[edge.n] = &global_circuits.back();
             }
     }
@@ -625,7 +609,7 @@ struct Graph
                 ++iter;
     }
 
-    void DeepFirst(Node *node, std::stack<Node *> &stack, SIZETYPE &id, std::vector<bool> &visit, std::vector<bool> &in_stack, std::vector<SIZETYPE> &disc, std::vector<SIZETYPE> &low, std::list<EdgeLocal> &locals, std::list<Edge> &globals)
+    void DeepFirst(Node *node, std::stack<Node *> &stack, SIZETYPE &id, std::vector<bool> &visit, std::vector<bool> &in_stack, std::vector<SIZETYPE> &disc, std::vector<SIZETYPE> &low, std::list<EdgeLocal> &locals, std::list<Edge> &globals, std::deque<std::deque<Node *>> &sccs)
     {
         DOTTYPE n = node->n;
         visit[n] = true;
@@ -639,7 +623,7 @@ struct Graph
             {
                 if (!visit[edge.head->n])
                 {
-                    DeepFirst(edge.head, stack, id, visit, in_stack, disc, low, locals, globals);
+                    DeepFirst(edge.head, stack, id, visit, in_stack, disc, low, locals, globals, sccs);
                     low[n] = low[n] < low[edge.head->n] ? low[n] : low[edge.head->n];
                 }
                 else if (in_stack[edge.head->n])
@@ -650,7 +634,7 @@ struct Graph
             {
                 if (!visit[edge.head->n])
                 {
-                    DeepFirst(edge.head, stack, id, visit, in_stack, disc, low, locals, globals);
+                    DeepFirst(edge.head, stack, id, visit, in_stack, disc, low, locals, globals, sccs);
                     low[n] = low[n] < low[edge.head->n] ? low[n] : low[edge.head->n];
                 }
                 else if (in_stack[edge.head->n])
@@ -665,12 +649,12 @@ struct Graph
                 top = stack.top();
                 stack.pop();
                 in_stack[top->n] = false;
-                sccs.front().nodes.push_back(top);
+                sccs.front().push_back(top);
             } while (top != node);
         }
     }
 
-    void SCCTS(std::list<EdgeLocal> &locals, std::list<Edge> &globals)
+    std::deque<std::deque<Node *>> SCCTS(std::list<EdgeLocal> &locals, std::list<Edge> &globals)
     {
         std::vector<bool> visit(nodes.size()), in_stack(nodes.size());
         std::vector<SIZETYPE> disc(nodes.size()), low(nodes.size());
@@ -681,9 +665,11 @@ struct Graph
         }
         std::stack<Node *> stack;
         SIZETYPE id = 0;
+        std::deque<std::deque<Node *>> sccs;
         for (SIZETYPE n = 0; n < nodes.size(); ++n)
             if (!visit[n])
-                DeepFirst(&nodes[n], stack, id, visit, in_stack, disc, low, locals, globals);
+                DeepFirst(&nodes[n], stack, id, visit, in_stack, disc, low, locals, globals, sccs);
+        return sccs;
     }
 
     int draw(std::string file)

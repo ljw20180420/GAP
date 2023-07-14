@@ -315,70 +315,105 @@ struct Align : Graph
             else
                 *nodes[i].pAbarval = -inf;
         }
-        for (SCC &scc : sccs)
+        for (SIZETYPE scc_id = 0, scc_sz = 0, cum_scc_sz = 0; cum_scc_sz < nodes.size(); ++scc_id, cum_scc_sz += scc_sz, scc_sz = 0)
         {
+            for (Node &node : nodes)
+                if (node.scc_id == scc_id)
+                    ++scc_sz;
+
             for (SIZETYPE w = 0; w <= O.size(); ++w)
             {
-                for (Node *node : scc.nodes)
+                for (Node &node : nodes)
                 {
-                    if (w == 0)
-                        source_max(&node->Bvals[w], {}, {});
-                    else
-                        source_max(&node->Bvals[w], {&node->Bvals[w - 1], &node->Avals[node->scc_sz - 1][w - 1]}, {node->Bvals[w - 1] + node->ue, node->Avals[node->scc_sz - 1][w - 1] + node->ve});
+                    if (node.scc_id != scc_id)
+                        continue;
 
-                    node->updateA0(w, node->Bvals[w], &node->Bvals[w]);
                     if (w == 0)
-                        node->updateA0(w, node->pAbarval[0], node->pAbarval);
+                        source_max(&node.Bvals[w], {}, {});
+                    else
+                        source_max(&node.Bvals[w], {&node.Bvals[w - 1], &node.Avals[node.scc_sz - 1][w - 1]}, {node.Bvals[w - 1] + node.ue, node.Avals[node.scc_sz - 1][w - 1] + node.ve});
+
+                    node.updateA0(w, node.Bvals[w], &node.Bvals[w]);
+                    if (w == 0)
+                        node.updateA0(w, node.pAbarval[0], node.pAbarval);
                 }
-                for (EdgeLocalCircuit *edge : scc.local_circuits)
-                    CircuitIteration(w, edge);
-                CircuitIterationGlobal(w, scc);
-                for (SIZETYPE l = 1; l < scc.nodes.size(); ++l)
+                for (Edge *edge : edges)
+                    if (edge->head->scc_id == scc_id && edge->tail->scc_id == scc_id && file2short.count(edge->name))
+                        CircuitIteration(w, (EdgeLocalCircuit*)edge);
+                CircuitIterationGlobal(w, scc_id);
+                for (SIZETYPE l = 1; l < scc_sz; ++l)
                 {
-                    for (EdgeGlobalCircuit *edge : scc.global_circuits)
-                        edge->D0vals[l - 1][w] = edge->tail->Avals[l - 1][w] + edge->T;
-                    for (EdgeLocalCircuit *edge : scc.local_circuits)
+                    for (Edge *edge : edges)
                     {
-                        SHORTSIZE ref_sz = file2short[edge->name].second;
-                        edge->D0vals[l - 1][w] = edge->tail->Avals[l - 1][w] + edge->T;
-                        edge->DXvals[l - 1][w] = std::max(edge->tail->Avals[l - 1][w] + edge->gfpT[ref_sz], edge->D0vals[l - 1][w] + edge->gf[ref_sz]);
-                        if (edge->DXvals[l - 1][w] == edge->tail->Avals[l - 1][w] + edge->gfpT[ref_sz])
-                            edge->DXbits[(l-1)*(Omax+1)+w] |= uint8_t(1);
-                        if (edge->DXvals[l - 1][w] == edge->D0vals[l - 1][w] + edge->gf[ref_sz])
-                            edge->DXbits[(l-1)*(Omax+1)+w] |= uint8_t(2);
+                        if (edge->head->scc_id != scc_id || edge->tail->scc_id != scc_id || !file2long.count(edge->name))
+                            continue;
+                        EdgeGlobalCircuit *circuit = (EdgeGlobalCircuit *)edge;
+                        circuit->D0vals[l - 1][w] = circuit->tail->Avals[l - 1][w] + circuit->T;
                     }
-                    for (Node *node : scc.nodes)
+                    for (Edge *edge : edges)
                     {
-                        node->Avals[l][w] = node->Avals[0][w];
-                        for (EdgeLocalCircuit &edge : local_circuits)
-                            if (edge.head==node)
-                                node->Avals[l][w] = std::max({node->Avals[l][w], edge.D0vals[l - 1][w] + edge.gfm, edge.DXvals[l - 1][w]});
-                        for (EdgeGlobalCircuit &edge : global_circuits)
-                            if (edge.head==node)
-                                node->Avals[l][w] = std::max(node->Avals[l][w], edge.D0vals[l - 1][w]);
-                        SIZETYPE idx = &node->Avals[l][w] - vals.get();
-                        s_szs[idx] = 0;
-                        if (node->Avals[0][w] == node->Avals[l][w])
-                            sourcess[idx][s_szs[idx]++] = &node->Avals[0][w];
-                        for (EdgeLocalCircuit &edge : local_circuits)
+                        if (edge->head->scc_id != scc_id || edge->tail->scc_id != scc_id || !file2short.count(edge->name))
+                            continue;
+                        EdgeLocalCircuit *circuit = (EdgeLocalCircuit *)edge;
+                        SHORTSIZE ref_sz = file2short[circuit->name].second;
+                        circuit->D0vals[l - 1][w] = circuit->tail->Avals[l - 1][w] + circuit->T;
+                        circuit->DXvals[l - 1][w] = std::max(circuit->tail->Avals[l - 1][w] + circuit->gfpT[ref_sz], circuit->D0vals[l - 1][w] + circuit->gf[ref_sz]);
+                        if (circuit->DXvals[l - 1][w] == circuit->tail->Avals[l - 1][w] + circuit->gfpT[ref_sz])
+                            circuit->DXbits[(l-1)*(Omax+1)+w] |= uint8_t(1);
+                        if (circuit->DXvals[l - 1][w] == circuit->D0vals[l - 1][w] + circuit->gf[ref_sz])
+                            circuit->DXbits[(l-1)*(Omax+1)+w] |= uint8_t(2);
+                    }
+                    for (Node &node : nodes)
+                    {
+                        if (node.scc_id != scc_id)
+                            continue;
+                        
+                        node.Avals[l][w] = node.Avals[0][w];
+                        for (Edge *edge : edges)
                         {
-                            if (edge.head!=node)
+                            if (edge->head != &node || edge->tail->scc_id != scc_id || !file2short.count(edge->name))
                                 continue;
-                            if (edge.D0vals[l - 1][w] + edge.gfm == node->Avals[l][w])
-                                sourcess[idx][s_szs[idx]++] = &edge.D0vals[l - 1][w];
-                            if (edge.DXvals[l - 1][w] == node->Avals[l][w])
-                                sourcess[idx][s_szs[idx]++] = &edge.DXvals[l - 1][w];
+                            EdgeLocalCircuit *circuit = (EdgeLocalCircuit *)edge;
+                            node.Avals[l][w] = std::max({node.Avals[l][w], circuit->D0vals[l - 1][w] + circuit->gfm, circuit->DXvals[l - 1][w]});
                         }
-                        for (EdgeGlobalCircuit &edge : global_circuits)
-                            if (edge.head==node && edge.D0vals[l - 1][w] == node->Avals[l][w])
-                                sourcess[idx][s_szs[idx]++] = &edge.D0vals[l - 1][w];
+                        for (Edge *edge : edges)
+                        {
+                            if (edge->head != &node || edge->tail->scc_id != scc_id || !file2long.count(edge->name))
+                                continue;
+                            EdgeGlobalCircuit *circuit = (EdgeGlobalCircuit *)edge;
+                            node.Avals[l][w] = std::max(node.Avals[l][w], circuit->D0vals[l - 1][w]);
+                        }
+                        SIZETYPE idx = &node.Avals[l][w] - vals.get();
+                        s_szs[idx] = 0;
+                        if (node.Avals[0][w] == node.Avals[l][w])
+                            sourcess[idx][s_szs[idx]++] = &node.Avals[0][w];
+                        for (Edge *edge : edges)
+                        {
+                            if (edge->head != &node || edge->tail->scc_id != scc_id || !file2short.count(edge->name))
+                                continue;
+                            EdgeLocalCircuit *circuit = (EdgeLocalCircuit *)edge;
+                            if (circuit->D0vals[l - 1][w] + circuit->gfm == node.Avals[l][w])
+                                sourcess[idx][s_szs[idx]++] = &circuit->D0vals[l - 1][w];
+                            if (circuit->DXvals[l - 1][w] == node.Avals[l][w])
+                                sourcess[idx][s_szs[idx]++] = &circuit->DXvals[l - 1][w];
+                        }
+                        for (Edge *edge : edges)
+                        {
+                            if (edge->head != &node || edge->tail->scc_id !=scc_id || !file2long.count(edge->name))
+                                continue;
+                            EdgeGlobalCircuit *circuit = (EdgeGlobalCircuit *)edge;
+                            if (circuit->D0vals[l - 1][w] == node.Avals[l][w])
+                                sourcess[idx][s_szs[idx]++] = &circuit->D0vals[l - 1][w];
+                        }
                     }
                 }
             }
-            for (EdgeLocalCross *edge : scc.local_crosses)
-                CrossIteration(edge);
-            for (Edge *edge : scc.global_crosses)
-                CrossIterationGlobal(edge);
+            for (Edge *edge : edges)
+                if (edge->tail->scc_id == scc_id && edge->head->scc_id != scc_id && file2short.count(edge->name))
+                    CrossIteration((EdgeLocalCross *)edge);
+            for (Edge *edge : edges)
+                if (edge->tail->scc_id == scc_id && edge->head->scc_id != scc_id && file2long.count(edge->name))
+                    CrossIterationGlobal(edge);
         }
         *pQval = -inf;
         for (Node &node : nodes)
@@ -538,97 +573,100 @@ struct Align : Graph
         }
     }
 
-    void CircuitIterationGlobal(QUERYSIZE w, SCC &scc)
+    void CircuitIterationGlobal(QUERYSIZE w, SIZETYPE scc_id)
     {
         if (w == 0)
             return;
 
-        std::vector<EdgeGlobalCircuit *> edges = scc.global_circuits;
-        std::vector<SCORETYPE> tgws(edges.size());
-        std::vector<SNC *> jumps(edges.size());
+        std::vector<EdgeGlobalCircuit *> circuits;
+        for (Edge *edge : edges)
+            if (edge->head->scc_id == scc_id && edge->tail->scc_id == scc_id && file2long.count(edge->name))
+                circuits.push_back((EdgeGlobalCircuit *)edge);
+        std::vector<SCORETYPE> tgws(circuits.size());
+        std::vector<SNC *> jumps(circuits.size());
         std::vector<RankVec *> prankvecs;
-        for (SIZETYPE i = 0; i < edges.size(); ++i)
-            prankvecs.push_back(&file2rankvec[edges[i]->name]);
+        for (SIZETYPE i = 0; i < circuits.size(); ++i)
+            prankvecs.push_back(&file2rankvec[circuits[i]->name]);
 
-        for (SIZETYPE i = 0; i < edges.size(); ++i)
+        for (SIZETYPE i = 0; i < circuits.size(); ++i)
         {
             if (w == 1)
             {
-                edges[i]->sncs.emplace_back(-inf, -inf, -inf, -inf, 0, 5, 0, 0, prankvecs[i]->bwt_sz, 1, (SNC *)NULL, (SNC *)NULL); // the root SNC has no base, we simply set it to 0, which does not mean that it has base #(0)
+                circuits[i]->sncs.emplace_back(-inf, -inf, -inf, -inf, 0, 5, 0, 0, prankvecs[i]->bwt_sz, 1, (SNC *)NULL, (SNC *)NULL); // the root SNC has no base, we simply set it to 0, which does not mean that it has base #(0)
                 for (NUCTYPE c = 2; c <= 6; ++c)
                 {
-                    SIZETYPE sr1 = prankvecs[i]->C[c] + prankvecs[i]->rank(c, edges[i]->sncs.front().sr1);
-                    SIZETYPE sr2 = prankvecs[i]->C[c] + prankvecs[i]->rank(c, edges[i]->sncs.front().sr2);
+                    SIZETYPE sr1 = prankvecs[i]->C[c] + prankvecs[i]->rank(c, circuits[i]->sncs.front().sr1);
+                    SIZETYPE sr2 = prankvecs[i]->C[c] + prankvecs[i]->rank(c, circuits[i]->sncs.front().sr2);
                     if (sr1 < sr2)
                     {
-                        edges[i]->sncs.emplace_back(-inf, -inf, -inf, -inf, c, 0, 1, sr1, sr2, 0, &(edges[i]->sncs.front()), edges[i]->sncs.front().jump);
-                        edges[i]->sncs.front().jump = &(edges[i]->sncs.back());
+                        circuits[i]->sncs.emplace_back(-inf, -inf, -inf, -inf, c, 0, 1, sr1, sr2, 0, &(circuits[i]->sncs.front()), circuits[i]->sncs.front().jump);
+                        circuits[i]->sncs.front().jump = &(circuits[i]->sncs.back());
                     }
                 }
             }
             else
             {
-                for (SNC *prejump = &(edges[i]->sncs.front()), *jump = prejump->jump; jump; jump = prejump->jump)
+                for (SNC *prejump = &(circuits[i]->sncs.front()), *jump = prejump->jump; jump; jump = prejump->jump)
                 {
                     jump->hatG = jump->G0;
-                    if (jump->itp != &(edges[i]->sncs.front()) && jump->itp->hatG == -inf && jump->hatG == -inf && jump->E == -inf)
+                    if (jump->itp != &(circuits[i]->sncs.front()) && jump->itp->hatG == -inf && jump->hatG == -inf && jump->E == -inf)
                         prejump->jump = jump->jump;
                     else
                         prejump = jump;
                 }
             }
 
-            edges[i]->sncs.front().hatG = std::max(edges[i]->sncs.front().G0, edges[i]->tail->Avals[edges[i]->tail->scc_sz - 1][w - 1] + edges[i]->T);
-            edges[i]->sncs.front().E = std::max(edges[i]->sncs.front().hatG + edges[i]->ve, edges[i]->sncs.front().E + edges[i]->ue);
-            tgws[i] = (O.size() > w ? (O.size() - w - 1) * edges[i]->tail->ue + edges[i]->tail->ve : 0);
-            edges[i]->sncs.front().F0 = -inf;
-            edges[i]->sncs.front().G0 = edges[i]->sncs.front().E;
-            edges[i]->head->updateA0(w, edges[i]->sncs.front().G0, edges[i], edges[i]->sncs.front().sr1, edges[i]->sncs.front().lambda);
+            circuits[i]->sncs.front().hatG = std::max(circuits[i]->sncs.front().G0, circuits[i]->tail->Avals[circuits[i]->tail->scc_sz - 1][w - 1] + circuits[i]->T);
+            circuits[i]->sncs.front().E = std::max(circuits[i]->sncs.front().hatG + circuits[i]->ve, circuits[i]->sncs.front().E + circuits[i]->ue);
+            tgws[i] = (O.size() > w ? (O.size() - w - 1) * circuits[i]->tail->ue + circuits[i]->tail->ve : 0);
+            circuits[i]->sncs.front().F0 = -inf;
+            circuits[i]->sncs.front().G0 = circuits[i]->sncs.front().E;
+            circuits[i]->head->updateA0(w, circuits[i]->sncs.front().G0, circuits[i], circuits[i]->sncs.front().sr1, circuits[i]->sncs.front().lambda);
 
-            jumps[i] = edges[i]->sncs.front().jump;
+            jumps[i] = circuits[i]->sncs.front().jump;
         }
 
-        while (edges.size() > 0)
-            for (SIZETYPE i = 0; i < edges.size();)
+        while (circuits.size() > 0)
+            for (SIZETYPE i = 0; i < circuits.size();)
             {
-                SCORETYPE Gthres = std::max(edges[i]->sncs.front().E, edges[i]->tail->Avals[0][w] + edges[i]->T);
-                SCORETYPE Ethres = std::max(edges[i]->sncs.front().E, Gthres + std::min(SCORETYPE(0), std::min(edges[i]->tail->ve - edges[i]->ue, SCORETYPE(tgws[i] - (O.size() - w) * edges[i]->ue))));
+                SCORETYPE Gthres = std::max(circuits[i]->sncs.front().E, circuits[i]->tail->Avals[0][w] + circuits[i]->T);
+                SCORETYPE Ethres = std::max(circuits[i]->sncs.front().E, Gthres + std::min(SCORETYPE(0), std::min(circuits[i]->tail->ve - circuits[i]->ue, SCORETYPE(tgws[i] - (O.size() - w) * circuits[i]->ue))));
 
                 if (jumps[i])
                 {
-                    jumps[i]->E = std::max(jumps[i]->hatG + edges[i]->ve, jumps[i]->E + edges[i]->ue);
+                    jumps[i]->E = std::max(jumps[i]->hatG + circuits[i]->ve, jumps[i]->E + circuits[i]->ue);
                     if (jumps[i]->E < Ethres)
                         jumps[i]->E = -inf;
-                    jumps[i]->F0 = std::max(jumps[i]->itp->G0 + edges[i]->vf, jumps[i]->itp->F0 + edges[i]->uf);
-                    jumps[i]->G0 = std::max(std::max(jumps[i]->E, jumps[i]->F0), jumps[i]->itp->hatG + edges[i]->gamma[jumps[i]->c][O[w - 1]]);
+                    jumps[i]->F0 = std::max(jumps[i]->itp->G0 + circuits[i]->vf, jumps[i]->itp->F0 + circuits[i]->uf);
+                    jumps[i]->G0 = std::max(std::max(jumps[i]->E, jumps[i]->F0), jumps[i]->itp->hatG + circuits[i]->gamma[jumps[i]->c][O[w - 1]]);
                     if (jumps[i]->G0 < Gthres)
                     {
                         jumps[i]->F0 = -inf;
                         jumps[i]->G0 = -inf;
                     }
                     else
-                        edges[i]->head->updateA0(w, jumps[i]->G0, edges[i], jumps[i]->sr1, jumps[i]->lambda);
+                        circuits[i]->head->updateA0(w, jumps[i]->G0, circuits[i], jumps[i]->sr1, jumps[i]->lambda);
                     if (jumps[i]->G0 != -inf && jumps[i]->hatG == -inf)
                     {
                         if (jumps[i]->cid == 0)
                         {
-                            jumps[i]->cid = edges[i]->sncs.size();
+                            jumps[i]->cid = circuits[i]->sncs.size();
                             for (NUCTYPE c = 2; c < RankVec::sigma; ++c)
                             {
                                 SIZETYPE sr1 = prankvecs[i]->C[c] + prankvecs[i]->rank(c, jumps[i]->sr1);
                                 SIZETYPE sr2 = prankvecs[i]->C[c] + prankvecs[i]->rank(c, jumps[i]->sr2);
                                 if (sr1 < sr2)
                                 {
-                                    edges[i]->sncs.emplace_back(-inf, -inf, -inf, -inf, c, 0, jumps[i]->lambda + 1, sr1, sr2, 0, jumps[i], (SNC *)NULL);
+                                    circuits[i]->sncs.emplace_back(-inf, -inf, -inf, -inf, c, 0, jumps[i]->lambda + 1, sr1, sr2, 0, jumps[i], (SNC *)NULL);
                                     ++jumps[i]->idl;
                                 }
                             }
                         }
                         for (NUCTYPE idi = 0; idi < jumps[i]->idl; ++idi)
-                            if (edges[i]->sncs[jumps[i]->cid + idi].E == -inf && edges[i]->sncs[jumps[i]->cid + idi].G0 == -inf)
+                            if (circuits[i]->sncs[jumps[i]->cid + idi].E == -inf && circuits[i]->sncs[jumps[i]->cid + idi].G0 == -inf)
                             {
-                                edges[i]->sncs[jumps[i]->cid + idi].jump = jumps[i]->jump;
-                                jumps[i]->jump = &(edges[i]->sncs[jumps[i]->cid + idi]);
+                                circuits[i]->sncs[jumps[i]->cid + idi].jump = jumps[i]->jump;
+                                jumps[i]->jump = &(circuits[i]->sncs[jumps[i]->cid + idi]);
                             }
                     }
                     jumps[i] = jumps[i]->jump;
@@ -638,8 +676,8 @@ struct Align : Graph
                 else
                 {
                     if (w == O.size())
-                        edges[i]->sncs.clear();
-                    edges.erase(edges.begin() + i);
+                        circuits[i]->sncs.clear();
+                    circuits.erase(circuits.begin() + i);
                     tgws.erase(tgws.begin() + i);
                     jumps.erase(jumps.begin() + i);
                 }
