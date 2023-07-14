@@ -11,13 +11,13 @@
 #include <ctime>
 
 
-uint64_t set_Omax(std::string input)
+QUERYSIZE set_Omax(std::string input)
 {
-    uint64_t Omax = 0;
+    QUERYSIZE Omax = 0;
     for (std::ifstream fin(input); fin.ignore(std::numeric_limits<std::streamsize>::max(),'\n').good();)
     {
-        std::streampos preg = fin.tellg();
-        uint64_t len = fin.ignore(std::numeric_limits<std::streamsize>::max(),'\n').tellg() - preg - 1;
+        SIZETYPE preg = fin.tellg();
+        QUERYSIZE len = fin.ignore(std::numeric_limits<std::streamsize>::max(),'\n').tellg() - preg - 1;
         if (len > Omax)
             Omax = len;
     }
@@ -43,15 +43,15 @@ int main(int argc, char **argv)
 
     align_options.add_options()
         ("input", boost::program_options::value<std::string>(), "input")
-        ("threads_sz", boost::program_options::value<uint64_t>()->default_value(24), "# of align threads");
+        ("threads_sz", boost::program_options::value<SIZETYPE>()->default_value(24), "# of align threads");
 
     track_options.add_options()
-        ("max_extract", boost::program_options::value<uint64_t>()->default_value(1), "max best maps to extract")
-        ("max_mega", boost::program_options::value<uint64_t>()->default_value(10000), "max steps to track map graph")
-        ("diff_thres", boost::program_options::value<uint64_t>()->default_value(10), "min bps to distinct two maps")
-        ("max_range", boost::program_options::value<uint64_t>()->default_value(10), "max map pos to show per seg")
-        ("min_seg_num", boost::program_options::value<uint64_t>()->default_value(0), "min map segments, 0 means no restriction")
-        ("max_seg_num", boost::program_options::value<uint64_t>()->default_value(0), "max map segments, 0 means no restriction");
+        ("max_extract", boost::program_options::value<SIZETYPE>()->default_value(1), "max best maps to extract")
+        ("max_mega", boost::program_options::value<SIZETYPE>()->default_value(10000), "max steps to track map graph")
+        ("diff_thres", boost::program_options::value<SIZETYPE>()->default_value(10), "min bps to distinct two maps")
+        ("max_range", boost::program_options::value<SIZETYPE>()->default_value(10), "max map pos to show per seg")
+        ("min_seg_num", boost::program_options::value<SIZETYPE>()->default_value(0), "min map segments, 0 means no restriction")
+        ("max_seg_num", boost::program_options::value<SIZETYPE>()->default_value(0), "max map segments, 0 means no restriction");
 
     general_options.add(graph_options).add(align_options).add(track_options);
     boost::program_options::variables_map vm;
@@ -68,8 +68,8 @@ int main(int argc, char **argv)
     if (vm.count("index"))
     {
         std::string RevRefFile = vm["index"].as<std::string>();
-        uint64_t revref_sz = std::filesystem::file_size(RevRefFile);
-        uint8_t *revref = new uint8_t[revref_sz];
+        SIZETYPE revref_sz = std::filesystem::file_size(RevRefFile);
+        NUCTYPE *revref = new NUCTYPE[revref_sz];
         std::ifstream fin(RevRefFile);
         fin.read((char*)revref, revref_sz);
         gsufsortSA(RevRefFile+".sa", revref, revref_sz);
@@ -85,7 +85,7 @@ int main(int argc, char **argv)
         return EXIT_SUCCESS;
     }
 
-    std::map<std::string, std::pair<std::unique_ptr<uint8_t[]>, uint64_t>> file2short;
+    std::map<std::string, std::pair<std::unique_ptr<NUCTYPE []>, SHORTSIZE>> file2short;
     if (vm.count("shorts"))
         for (std::string file : vm["shorts"].as<std::vector<std::string>>())
         {
@@ -99,7 +99,7 @@ int main(int argc, char **argv)
         }
     
     std::map<std::string, RankVec> file2rankvec;
-    std::map<std::string, std::pair<std::unique_ptr<uint8_t[]>, uint64_t>> file2long;
+    std::map<std::string, std::pair<std::unique_ptr<NUCTYPE []>, SIZETYPE>> file2long;
     if (vm.count("longs"))
         for (std::string file : vm["longs"].as<std::vector<std::string>>())
         {
@@ -109,7 +109,7 @@ int main(int argc, char **argv)
             file2rankvec[file].loadRankVec(file+".bwt", file+".rnk");
 
             file2long[file].second = std::filesystem::file_size(file);
-            file2long[file].first.reset(new uint8_t[file2long[file].second]);
+            file2long[file].first.reset(new NUCTYPE[file2long[file].second]);
             std::ifstream fin(file);
             fin.read((char *)file2long[file].first.get(), file2long[file].second);
         }
@@ -119,7 +119,7 @@ int main(int argc, char **argv)
         graph.draw("graph.gv");
     }
 
-    uint64_t Omax = set_Omax(vm["input"].as<std::string>());
+    QUERYSIZE Omax = set_Omax(vm["input"].as<std::string>());
 
     std::unique_ptr<char []> inbuf(new char[10*1024*1024]);
     std::ifstream fin(vm["input"].as<std::string>());
@@ -128,24 +128,24 @@ int main(int argc, char **argv)
     std::deque<std::thread> threads;
     std::deque<Align> aligns;
     std::deque<std::string> mg_files;
-    for (uint64_t i = 0; i < vm["threads_sz"].as<uint64_t>(); ++i)
+    for (SIZETYPE i = 0; i < vm["threads_sz"].as<SIZETYPE>(); ++i)
     {
         mg_files.emplace_back("mg" + std::to_string(i));
         aligns.emplace_back(mtx, fin, vm, file2short, file2rankvec, file2long, mg_files.back(), Omax);
         threads.emplace_back(&Align::run, &aligns.back());
     }
-    for (uint64_t i = 0; i < vm["threads_sz"].as<uint64_t>(); ++i)
+    for (SIZETYPE i = 0; i < vm["threads_sz"].as<SIZETYPE>(); ++i)
         threads[i].join();
-
-    // std::deque<std::string> mg_files; // debug
-    // for (uint64_t i = 0; i < vm["threads_sz"].as<uint64_t>(); ++i) // debug
-    //     mg_files.emplace_back("mg" + std::to_string(i)); // debug
-
-    Track track(vm, file2short, file2rankvec, file2long); 
-    track.ReadTrack(mg_files);
 
     // Align align(mtx, fin, vm, file2short, file2rankvec, file2long, "mg", Omax); // debug
     // align.run(); // debug
+
+    // // std::deque<std::string> mg_files; // debug
+    // // for (SIZETYPE i = 0; i < vm["threads_sz"].as<SIZETYPE>(); ++i) // debug
+    // //     mg_files.emplace_back("mg" + std::to_string(i)); // debug
+
+    Track track(vm, file2short, file2rankvec, file2long); 
+    track.ReadTrack(mg_files);
 
     return EXIT_SUCCESS;
 }

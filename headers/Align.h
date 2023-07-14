@@ -19,10 +19,10 @@ struct TrackTree
         enumG
     };
 
-    int W;
+    QUERYSIZE W;
     std::deque<Dot> dots;
     int64_t idx, pidx;
-    int shiftE, shiftF, shiftG, shiftPE, shiftPF, shiftPG;
+    SIZETYPE shiftE, shiftF, shiftG, shiftPE, shiftPF, shiftPG;
 
     void setidx(int64_t idx_)
     {
@@ -43,24 +43,24 @@ struct TrackTree
     struct TrackNode
     {
         int64_t cidxs[5];
-        int tau = 0;
+        QUERYSIZE tau = 0;
 
         TrackNode(int64_t cidx_)
         {
-            for (int i = 0; i < 5; ++i)
+            for (SIZETYPE i = 0; i < 5; ++i)
                 cidxs[i] = cidx_;
         }
     };
 
     std::deque<TrackNode> tracknodes;
 
-    void emplace_back(int64_t cidx_, int n_, int64_t s_, int lambda_)
+    void emplace_back(int64_t cidx_, DOTTYPE n_, SIZETYPE s_, QUERYSIZE lambda_)
     {
         tracknodes.emplace_back(cidx_);
         dots.resize(tracknodes.size() * (enumEFG::enumG + 1) * (W + 1));
-        uint64_t k = (tracknodes.size() - 1) * (enumEFG::enumG + 1) * (W + 1);
+        SIZETYPE k = (tracknodes.size() - 1) * (enumEFG::enumG + 1) * (W + 1);
         for (enumEFG t : {enumEFG::enumE, enumEFG::enumF, enumEFG::enumG})
-            for (uint64_t w = 0; w <= W; ++w, ++k)
+            for (SIZETYPE w = 0; w <= W; ++w, ++k)
             {
                 dots[k].n = n_;
                 dots[k].s = s_;
@@ -80,7 +80,7 @@ template <typename T>
 struct MonoDeque
 {
     std::deque<T> data;
-    uint64_t offset = 0;
+    SIZETYPE offset = 0;
 
     void emplace_back(T t)
     {
@@ -91,7 +91,7 @@ struct MonoDeque
         ++offset;
     }
 
-    T &operator[](int64_t idx)
+    T &operator[](SIZETYPE idx)
     {
         return data[idx];
     }
@@ -110,10 +110,10 @@ struct Align : Graph
     {
         struct Doo
         {
-            int w;
-            double F, G;
+            QUERYSIZE w;
+            SCORETYPE F, G;
 
-            Doo(int w_, double F_, double G_)
+            Doo(QUERYSIZE w_, SCORETYPE F_, SCORETYPE G_)
                 : w(w_), F(F_), G(G_)
             {
             }
@@ -123,11 +123,11 @@ struct Align : Graph
 
         struct SimNode
         {
-            int c;
-            int64_t sr1, sr2;
-            uint64_t shiftFG;
+            NUCTYPE c;
+            SIZETYPE sr1, sr2;
+            SIZETYPE shiftFG;
 
-            SimNode(int c_, int64_t sr1_, int64_t sr2_, uint64_t shiftFG_)
+            SimNode(NUCTYPE c_, SIZETYPE sr1_, SIZETYPE sr2_, SIZETYPE shiftFG_)
                 : c(c_), sr1(sr1_), sr2(sr2_), shiftFG(shiftFG_)
             {
             }
@@ -135,7 +135,7 @@ struct Align : Graph
 
         std::deque<SimNode> simnodes;
 
-        void emplace_back(int c_, int64_t sr1_, int64_t sr2_)
+        void emplace_back(NUCTYPE c_, SIZETYPE sr1_, SIZETYPE sr2_)
         {
             simnodes.emplace_back(c_, sr1_, sr2_, FG.size());
         }
@@ -149,23 +149,21 @@ struct Align : Graph
 
         struct Do
         {
-            int w;
-            double E;
+            QUERYSIZE w;
+            SCORETYPE E;
         };
 
-        std::unique_ptr<Do[]> E0, E;
-        std::unique_ptr<double[]> Ethres;
+        std::unique_ptr<Do []> E0, E;
+        std::unique_ptr<SCORETYPE []> Ethres;
     };
-
-    const static int ww = 3;
 
     std::mutex &mtx;
     std::ifstream &fin;
-    std::vector<uint8_t> O;
+    std::vector<NUCTYPE> O;
     std::string Oname;
     std::ofstream fout;
-    uint64_t max_id = 0;
-    uint64_t Omax;
+    IDTYPE max_id = 0;
+    QUERYSIZE Omax;
     std::vector<bool> Qbools;
     enum VALTYPE{Q, ABAR, LID0, SID0, SIDX, OTHERS};
 
@@ -179,8 +177,8 @@ struct Align : Graph
         tnn = 1 + nodes.size();
         tsn = 0;
 
-        std::vector<uint64_t> Asos;
-        for (auto &node : nodes)
+        std::vector<SIZETYPE> Asos;
+        for (Node &node : nodes)
         {
             trn += node.scc_sz + 1;
             tnn += (Omax + 1) * (node.scc_sz + 1);
@@ -193,60 +191,60 @@ struct Align : Graph
                     Asos.back() += 1;   
             tsn += node.get_tsn(Asos.back(), Omax);
         }
-        for (auto &edge : local_crosses)
+        for (EdgeLocalCross &edge : local_crosses)
         {
-            uint64_t ref_sz = file2short[edge.name].second;
+            SHORTSIZE ref_sz = file2short[edge.name].second;
             trn += edge.get_trn(ref_sz);
             tnn += edge.get_tnn(Omax, ref_sz);
             tsn += edge.get_tsn(Omax, ref_sz);
         }
-        for (auto &edge : local_circuits)
+        for (EdgeLocalCircuit &edge : local_circuits)
         {
-            uint64_t ref_sz = file2short[edge.name].second;
+            SHORTSIZE ref_sz = file2short[edge.name].second;
             trn += edge.get_trn(ref_sz);
             tnn += edge.get_tnn(Omax, ref_sz);
             tsn += edge.get_tsn(Omax, ref_sz);
         }
-        sources.reset(new double *[tsn]);
-        sourcess.reset(new double **[tnn-1-nodes.size()]);
-        s_szs.reset(new int[tnn-1-nodes.size()]);
-        for (auto &edge : global_circuits)
+        sources.reset(new SCORETYPE *[tsn]);
+        sourcess.reset(new SCORETYPE **[tnn-1-nodes.size()]);
+        s_szs.reset(new SOURCESIZE[tnn-1-nodes.size()]);
+        for (EdgeGlobalCircuit &edge : global_circuits)
         {
             trn += edge.get_trn();
             tnn += edge.get_tnn(Omax);
         }
-        vals.reset(new double[tnn]);
-        ids.reset(new uint64_t[tnn]);
-        ss.reset(new int[trn]);
-        ns.reset(new int[trn]);
+        vals.reset(new SCORETYPE[tnn]);
+        ids.reset(new IDTYPE[tnn]);
+        ss.reset(new SHORTSIZE[trn]);
+        ns.reset(new DOTTYPE[trn]);
 
-        double *fpval = vals.get(), *rpval = fpval + tnn;
+        SCORETYPE *fpval = vals.get(), *rpval = fpval + tnn;
         pQval = --rpval;
-        double **fpsource = sources.get();
-        double ***fpsources = sourcess.get();
-        int *fps_sz = s_szs.get();
-        uint64_t *fpid = ids.get(), *rpid = fpid + tnn;
+        SCORETYPE **fpsource = sources.get();
+        SCORETYPE ***fpsources = sourcess.get();
+        SOURCESIZE *fps_sz = s_szs.get();
+        IDTYPE *fpid = ids.get(), *rpid = fpid + tnn;
         pQid = --rpid;
-        int *fps = ss.get();
-        int *fpn = ns.get();
-        for (uint64_t i=0; i<nodes.size(); ++i)
+        SHORTSIZE *fps = ss.get();
+        DOTTYPE *fpn = ns.get();
+        for (SIZETYPE i=0; i<nodes.size(); ++i)
             nodes[i].apply_memory(Asos[i], Omax, fpval, fpsource, fpsources, fps_sz, fpid, fps, fpn, rpval, rpid);
-        for (auto &edge : local_crosses)
+        for (EdgeLocalCross &edge : local_crosses)
             edge.apply_memory(Omax, fpval, fpsource, fpsources, fps_sz, fpid, fps, fpn, file2short[edge.name].second);
-        for (auto &edge : local_circuits)
+        for (EdgeLocalCircuit &edge : local_circuits)
             edge.apply_memory(Omax, fpval, fpsource, fpsources, fps_sz, fpid, fps, fpn, file2short[edge.name].second);
-        for (auto &edge : global_circuits)
+        for (EdgeGlobalCircuit &edge : global_circuits)
             edge.apply_memory(Omax, fpval, fpid, fps, fpn);
     }
 
     struct SWN
     {
-        int64_t s;
-        int w;
-        int n;
+        SIZETYPE s;
+        QUERYSIZE w;
+        DOTTYPE n;
     };
 
-    SWN get_swn(uint64_t idx)
+    SWN get_swn(SIZETYPE idx)
     {
         SWN swn;
         swn.s = idx / (Omax + 1);
@@ -268,7 +266,7 @@ struct Align : Graph
         return swn;
     }
 
-    Align(std::mutex &mtx_, std::ifstream &fin_, boost::program_options::variables_map &vm, std::map<std::string, std::pair<std::unique_ptr<uint8_t[]>, uint64_t>> &file2short, std::map<std::string, RankVec> &file2rankvec, std::map<std::string, std::pair<std::unique_ptr<uint8_t[]>, uint64_t>> &file2long, std::string mgfile, int Omax_)
+    Align(std::mutex &mtx_, std::ifstream &fin_, boost::program_options::variables_map &vm, std::map<std::string, std::pair<std::unique_ptr<NUCTYPE []>, SHORTSIZE>> &file2short, std::map<std::string, RankVec> &file2rankvec, std::map<std::string, std::pair<std::unique_ptr<NUCTYPE []>, SIZETYPE>> &file2long, std::string mgfile, QUERYSIZE Omax_)
         : mtx(mtx_), fin(fin_), Graph(vm, file2short, file2rankvec, file2long), fout(mgfile, std::ifstream::binary), Omax(Omax_)
     {
         for (Node &node : nodes)
@@ -280,7 +278,7 @@ struct Align : Graph
 
         crossglobaldata.E0.reset(new CrossGlobalData::Do[Omax + 1]);
         crossglobaldata.E.reset(new CrossGlobalData::Do[Omax + 1]);
-        crossglobaldata.Ethres.reset(new double[Omax + 1]);
+        crossglobaldata.Ethres.reset(new SCORETYPE[Omax + 1]);
     }
 
     void run()
@@ -296,7 +294,7 @@ struct Align : Graph
             }
             mtx.unlock();
             O.clear();
-            for (uint64_t i = 0; i < Otmp.size(); ++i)
+            for (SIZETYPE i = 0; i < Otmp.size(); ++i)
                 O.push_back(base2NUCTYPE[Otmp[i]]);
             Mix();
             GetMinimalGraph();
@@ -308,20 +306,20 @@ struct Align : Graph
 
     void Mix()
     {
-        for (uint64_t i = 0; i < nodes.size(); ++i)
+        for (SIZETYPE i = 0; i < nodes.size(); ++i)
         {
-            for (uint64_t w = 0; w <= O.size(); ++w)
+            for (SIZETYPE w = 0; w <= O.size(); ++w)
                 nodes[i].Avals[0][w] = -inf;
             if (nodes[i].is_root)
                 *nodes[i].pAbarval = 0;
             else
                 *nodes[i].pAbarval = -inf;
         }
-        for (auto &scc : sccs)
+        for (SCC &scc : sccs)
         {
-            for (uint64_t w = 0; w <= O.size(); ++w)
+            for (SIZETYPE w = 0; w <= O.size(); ++w)
             {
-                for (auto node : scc.nodes)
+                for (Node *node : scc.nodes)
                 {
                     if (w == 0)
                         source_max(&node->Bvals[w], {}, {});
@@ -332,16 +330,16 @@ struct Align : Graph
                     if (w == 0)
                         node->updateA0(w, node->pAbarval[0], node->pAbarval);
                 }
-                for (auto edge : scc.local_circuits)
+                for (EdgeLocalCircuit *edge : scc.local_circuits)
                     CircuitIteration(w, edge);
                 CircuitIterationGlobal(w, scc);
-                for (uint64_t l = 1; l < scc.nodes.size(); ++l)
+                for (SIZETYPE l = 1; l < scc.nodes.size(); ++l)
                 {
-                    for (auto edge : scc.global_circuits)
+                    for (EdgeGlobalCircuit *edge : scc.global_circuits)
                         edge->D0vals[l - 1][w] = edge->tail->Avals[l - 1][w] + edge->T;
-                    for (auto edge : scc.local_circuits)
+                    for (EdgeLocalCircuit *edge : scc.local_circuits)
                     {
-                        uint64_t ref_sz = file2short[edge->name].second;
+                        SHORTSIZE ref_sz = file2short[edge->name].second;
                         edge->D0vals[l - 1][w] = edge->tail->Avals[l - 1][w] + edge->T;
                         edge->DXvals[l - 1][w] = std::max(edge->tail->Avals[l - 1][w] + edge->gfpT[ref_sz], edge->D0vals[l - 1][w] + edge->gf[ref_sz]);
                         if (edge->DXvals[l - 1][w] == edge->tail->Avals[l - 1][w] + edge->gfpT[ref_sz])
@@ -349,7 +347,7 @@ struct Align : Graph
                         if (edge->DXvals[l - 1][w] == edge->D0vals[l - 1][w] + edge->gf[ref_sz])
                             edge->DXbits[(l-1)*(Omax+1)+w] |= uint8_t(2);
                     }
-                    for (auto node : scc.nodes)
+                    for (Node *node : scc.nodes)
                     {
                         node->Avals[l][w] = node->Avals[0][w];
                         for (EdgeLocalCircuit &edge : local_circuits)
@@ -358,7 +356,7 @@ struct Align : Graph
                         for (EdgeGlobalCircuit &edge : global_circuits)
                             if (edge.head==node)
                                 node->Avals[l][w] = std::max(node->Avals[l][w], edge.D0vals[l - 1][w]);
-                        int64_t idx = &node->Avals[l][w] - vals.get();
+                        SIZETYPE idx = &node->Avals[l][w] - vals.get();
                         s_szs[idx] = 0;
                         if (node->Avals[0][w] == node->Avals[l][w])
                             sourcess[idx][s_szs[idx]++] = &node->Avals[0][w];
@@ -377,28 +375,28 @@ struct Align : Graph
                     }
                 }
             }
-            for (auto edge : scc.local_crosses)
+            for (EdgeLocalCross *edge : scc.local_crosses)
                 CrossIteration(edge);
-            for (auto edge : scc.global_crosses)
+            for (Edge *edge : scc.global_crosses)
                 CrossIterationGlobal(edge);
         }
         *pQval = -inf;
         for (Node &node : nodes)
             if (node.is_target)
                 *pQval = std::max(*pQval, node.Avals[node.scc_sz - 1][O.size()]);
-        for (uint64_t i = 0, j = 0; i < nodes.size(); ++i)
+        for (SIZETYPE i = 0, j = 0; i < nodes.size(); ++i)
             if (nodes[i].is_target && nodes[i].Avals[nodes[i].scc_sz - 1][O.size()] == *pQval)
                 Qbools[j++] = true;
     }
 
     void CrossIteration(EdgeLocalCross *edge)
     {
-        uint8_t *ref = file2short[edge->name].first.get();
-        uint64_t ref_sz = file2short[edge->name].second;
-        double *Avals = edge->tail->Avals[edge->tail->scc_sz - 1];
-        double **Evals = edge->Evals.get(), **Fvals = edge->Fvals.get(), **Gvals = edge->Gvals.get();
-        for (uint64_t s = 0; s <= ref_sz; ++s)
-            for (uint64_t w = 0; w <= O.size(); ++w)
+        NUCTYPE *ref = file2short[edge->name].first.get();
+        SHORTSIZE ref_sz = file2short[edge->name].second;
+        SCORETYPE *Avals = edge->tail->Avals[edge->tail->scc_sz - 1];
+        SCORETYPE **Evals = edge->Evals.get(), **Fvals = edge->Fvals.get(), **Gvals = edge->Gvals.get();
+        for (SIZETYPE s = 0; s <= ref_sz; ++s)
+            for (SIZETYPE w = 0; w <= O.size(); ++w)
             {
                 if (w == 0)
                     source_max(&Evals[s][w], {}, {});
@@ -418,28 +416,28 @@ struct Align : Graph
 
     void CrossIterationGlobal(Edge *edge)
     {
-        double *Avals = edge->tail->Avals[edge->tail->scc_sz - 1];
+        SCORETYPE *Avals = edge->tail->Avals[edge->tail->scc_sz - 1];
         std::deque<CrossGlobalData::SimNode> &simnodes = crossglobaldata.simnodes;
         std::unique_ptr<CrossGlobalData::Do[]> &E0 = crossglobaldata.E0, &E = crossglobaldata.E;
-        std::unique_ptr<double[]> &Ethres = crossglobaldata.Ethres;
+        std::unique_ptr<SCORETYPE []> &Ethres = crossglobaldata.Ethres;
         std::deque<CrossGlobalData::Doo> &FG = crossglobaldata.FG;
         RankVec &rankvec = file2rankvec[edge->name]; 
 
         SIZETYPE sr1 = 0, sr2 = rankvec.bwt_sz;
         crossglobaldata.emplace_back(0, sr1, sr2); // the root SimNode has no base, we simply set it to 0, which does not mean that it has base #(0) 
-        for (uint64_t w = 0; w <= O.size(); ++w)
+        for (SIZETYPE w = 0; w <= O.size(); ++w)
         {
-            double tgw = (O.size() > w ? (O.size() - w - 1) * edge->tail->ue + edge->tail->ve : 0);
+            SCORETYPE tgw = (O.size() > w ? (O.size() - w - 1) * edge->tail->ue + edge->tail->ve : 0);
             E0[w].w = w;
             if (w > 0)
                 E0[w].E = std::max(E0[w - 1].E + edge->ue, FG[w - 1].G + edge->ve);
             else
                 E0[w].E = -inf;
-            double tmp = std::max(E0[w].E, Avals[w] + edge->T);
+            SCORETYPE tmp = std::max(E0[w].E, Avals[w] + edge->T);
             if (E0[w].E + edge->ue < tmp + edge->tail->ve && E0[w].E + (O.size() - w) * edge->ue < tmp + tgw)
                 E0[w].E = -inf;
             FG.emplace_back(w, -inf, std::max(E0[w].E, Avals[w] + edge->T));
-            Ethres[w] = std::max(E0[w].E, FG[w].G + std::min({0.0, edge->tail->ve - edge->ue, tgw - (O.size() - w) * edge->ue}));
+            Ethres[w] = std::max(E0[w].E, FG[w].G + std::min({SCORETYPE(0), edge->tail->ve - edge->ue, SCORETYPE(tgw - (O.size() - w) * edge->ue)}));
             edge->head->updateA0(w, FG[w].G, edge, simnodes[0].sr1, 0);
         }
 
@@ -477,16 +475,16 @@ struct Align : Graph
             if (simnodes.empty())
                 break;
 
-            uint64_t idx = simnodes[simnodes.size() - 2].shiftFG;
-            for (uint64_t e = 0, w = FG[idx].w;; ++e)
+            SIZETYPE idx = simnodes[simnodes.size() - 2].shiftFG;
+            for (SIZETYPE e = 0, w = FG[idx].w;; ++e)
             {
                 E[e].w = w;
                 E[e].E = std::max((e > 0 && E[e - 1].w == w - 1) ? E[e - 1].E + edge->ue : -inf, (simnodes.back().shiftFG < FG.size() && FG.back().w == w - 1) ? FG.back().G + edge->ve : -inf);
                 if (E[e].E < Ethres[w])
                     E[e].E = -inf;
 
-                double F_val = idx < simnodes.back().shiftFG && FG[idx].w == w ? std::max(FG[idx].F + edge->uf, FG[idx].G + edge->vf) : -inf;
-                double G_val = idx > simnodes[simnodes.size() - 2].shiftFG && FG[idx - 1].w == w - 1 ? FG[idx - 1].G + edge->gamma[simnodes.back().c][O[w - 1]] : -inf;
+                SCORETYPE F_val = idx < simnodes.back().shiftFG && FG[idx].w == w ? std::max(FG[idx].F + edge->uf, FG[idx].G + edge->vf) : -inf;
+                SCORETYPE G_val = idx > simnodes[simnodes.size() - 2].shiftFG && FG[idx - 1].w == w - 1 ? FG[idx - 1].G + edge->gamma[simnodes.back().c][O[w - 1]] : -inf;
                 G_val = std::max({G_val, E[e].E, F_val});
                 if (G_val >= FG[w].G)
                 {
@@ -507,15 +505,15 @@ struct Align : Graph
 
     void CircuitIteration(int64_t w, EdgeLocalCircuit *edge)
     {
-        uint8_t *ref = file2short[edge->name].first.get();
-        uint64_t ref_sz = file2short[edge->name].second;
-        double *Avals = edge->tail->Avals[edge->tail->scc_sz - 1];
-        double *Dvals = edge->Dvals;
-        double **Evals = edge->Evals.get(), **F0vals = edge->F0vals.get(), **G0vals = edge->G0vals.get(), **Gvals = edge->Gvals.get();
+        NUCTYPE *ref = file2short[edge->name].first.get();
+        SHORTSIZE ref_sz = file2short[edge->name].second;
+        SCORETYPE *Avals = edge->tail->Avals[edge->tail->scc_sz - 1];
+        SCORETYPE *Dvals = edge->Dvals;
+        SCORETYPE **Evals = edge->Evals.get(), **F0vals = edge->F0vals.get(), **G0vals = edge->G0vals.get(), **Gvals = edge->Gvals.get();
 
         if (w > 0)
             source_max(&Dvals[w - 1], {&Avals[w - 1]}, {Avals[w - 1] + edge->T});
-        for (uint64_t s = 0; s <= ref_sz; ++s)
+        for (SIZETYPE s = 0; s <= ref_sz; ++s)
         {
             if (w > 0)
             {
@@ -540,19 +538,19 @@ struct Align : Graph
         }
     }
 
-    void CircuitIterationGlobal(int64_t w, SCC &scc)
+    void CircuitIterationGlobal(QUERYSIZE w, SCC &scc)
     {
         if (w == 0)
             return;
 
         std::vector<EdgeGlobalCircuit *> edges = scc.global_circuits;
-        std::vector<double> tgws(edges.size());
+        std::vector<SCORETYPE> tgws(edges.size());
         std::vector<SNC *> jumps(edges.size());
         std::vector<RankVec *> prankvecs;
-        for (int i = 0; i < edges.size(); ++i)
+        for (SIZETYPE i = 0; i < edges.size(); ++i)
             prankvecs.push_back(&file2rankvec[edges[i]->name]);
 
-        for (int i = 0; i < edges.size(); ++i)
+        for (SIZETYPE i = 0; i < edges.size(); ++i)
         {
             if (w == 1)
             {
@@ -570,7 +568,7 @@ struct Align : Graph
             }
             else
             {
-                for (auto prejump = &(edges[i]->sncs.front()), jump = prejump->jump; jump; jump = prejump->jump)
+                for (SNC *prejump = &(edges[i]->sncs.front()), *jump = prejump->jump; jump; jump = prejump->jump)
                 {
                     jump->hatG = jump->G0;
                     if (jump->itp != &(edges[i]->sncs.front()) && jump->itp->hatG == -inf && jump->hatG == -inf && jump->E == -inf)
@@ -591,10 +589,10 @@ struct Align : Graph
         }
 
         while (edges.size() > 0)
-            for (int i = 0; i < edges.size();)
+            for (SIZETYPE i = 0; i < edges.size();)
             {
-                double Gthres = std::max(edges[i]->sncs.front().E, edges[i]->tail->Avals[0][w] + edges[i]->T);
-                double Ethres = std::max(edges[i]->sncs.front().E, Gthres + std::min(0.0, std::min(edges[i]->tail->ve - edges[i]->ue, tgws[i] - (O.size() - w) * edges[i]->ue)));
+                SCORETYPE Gthres = std::max(edges[i]->sncs.front().E, edges[i]->tail->Avals[0][w] + edges[i]->T);
+                SCORETYPE Ethres = std::max(edges[i]->sncs.front().E, Gthres + std::min(SCORETYPE(0), std::min(edges[i]->tail->ve - edges[i]->ue, SCORETYPE(tgws[i] - (O.size() - w) * edges[i]->ue))));
 
                 if (jumps[i])
                 {
@@ -615,7 +613,7 @@ struct Align : Graph
                         if (jumps[i]->cid == 0)
                         {
                             jumps[i]->cid = edges[i]->sncs.size();
-                            for (int c = 2; c <= 6; ++c)
+                            for (NUCTYPE c = 2; c < RankVec::sigma; ++c)
                             {
                                 SIZETYPE sr1 = prankvecs[i]->C[c] + prankvecs[i]->rank(c, jumps[i]->sr1);
                                 SIZETYPE sr2 = prankvecs[i]->C[c] + prankvecs[i]->rank(c, jumps[i]->sr2);
@@ -626,7 +624,7 @@ struct Align : Graph
                                 }
                             }
                         }
-                        for (int idi = 0; idi < jumps[i]->idl; ++idi)
+                        for (NUCTYPE idi = 0; idi < jumps[i]->idl; ++idi)
                             if (edges[i]->sncs[jumps[i]->cid + idi].E == -inf && edges[i]->sncs[jumps[i]->cid + idi].G0 == -inf)
                             {
                                 edges[i]->sncs[jumps[i]->cid + idi].jump = jumps[i]->jump;
@@ -648,7 +646,7 @@ struct Align : Graph
             }
     }
 
-    int get_type(int64_t M, SWN &swn)
+    Align::VALTYPE get_type(SIZETYPE M, SWN &swn)
     {
         if (swn.n==Dot::DotQ)
             return VALTYPE::Q;
@@ -672,17 +670,17 @@ struct Align : Graph
         return VALTYPE::OTHERS;
     }
 
-    void outputdot(double Mval, int64_t M, SWN &swn, int type)
+    void outputdot(SCORETYPE Mval, SIZETYPE M, SWN &swn, Align::VALTYPE type)
     {
         fout.write((char *)&swn.n, sizeof(Dot::n));
         fout.write((char *)&swn.s, sizeof(Dot::s));
         fout.write((char *)&swn.w, sizeof(Dot::w));
         fout.write((char *)&Mval, sizeof(Dot::val));
-        int s_sz;
+        SOURCESIZE s_sz;
         if (type==VALTYPE::Q)
         {
             s_sz = 0;
-            for (uint64_t i = 0; i < Qbools.size(); ++i)
+            for (SIZETYPE i = 0; i < Qbools.size(); ++i)
                 if (Qbools[i])
                     ++s_sz;
         }
@@ -710,7 +708,7 @@ struct Align : Graph
         fout.write((char *)&s_sz, sizeof(Dot::lambda)); // strange
     }
 
-    void outputdot(double Mval, Dot *M)
+    void outputdot(SCORETYPE Mval, Dot *M)
     {
         fout.write((char *)&M->n, sizeof(Dot::n));
         fout.write((char *)&M->s, sizeof(Dot::s));
@@ -720,9 +718,9 @@ struct Align : Graph
         fout.write((char *)&M->lambda, sizeof(Dot::lambda));
     }
 
-    void arrangesource(std::queue<double> &valuequeue, double *source, std::queue<int64_t> &localqueue, uint64_t &id)
+    void arrangesource(std::queue<SCORETYPE> &valuequeue, SCORETYPE *source, std::queue<SIZETYPE> &localqueue, IDTYPE &id)
     {
-        uint64_t idx = source - vals.get();
+        SIZETYPE idx = source - vals.get();
         if (*source != -inf)
         {
             ids[idx] = ++id;
@@ -733,7 +731,7 @@ struct Align : Graph
         fout.write((char *)&ids[idx], sizeof(Dot::id));
     }
 
-    void arrangesource(std::queue<double> &valuequeue, Dot *source, std::queue<Dot *> &globalqueue, uint64_t &id)
+    void arrangesource(std::queue<SCORETYPE> &valuequeue, Dot *source, std::queue<Dot *> &globalqueue, IDTYPE &id)
     {
         if (source->val != -inf)
         {
@@ -747,21 +745,21 @@ struct Align : Graph
 
     void GetMinimalGraph()
     {
-        std::map<Edge *, std::unique_ptr<double[]>> edge2tailAvals;
+        std::map<Edge *, std::unique_ptr<SCORETYPE []>> edge2tailAvals;
         for (Edge *edge : edges)
         {
-            edge2tailAvals[edge].reset(new double[O.size()+1]);
-            for (uint64_t i=0; i<=O.size(); ++i)
+            edge2tailAvals[edge].reset(new SCORETYPE[O.size()+1]);
+            for (SIZETYPE i=0; i<=O.size(); ++i)
                 edge2tailAvals[edge].get()[i] = edge->tail->Avals[edge->tail->scc_sz - 1][i];
         }
 
-        uint64_t Onsz = Oname.size();
+        SIZETYPE Onsz = Oname.size();
         fout.write((char *)&Onsz, sizeof(Onsz));
         fout.write(Oname.data(), Onsz);
         std::queue<Dot *> globalqueue;
-        std::queue<int64_t> localqueue;
-        std::queue<double> valuequeue;
-        uint64_t id = 0;
+        std::queue<SIZETYPE> localqueue;
+        std::queue<SCORETYPE> valuequeue;
+        IDTYPE id = 0;
         *pQid = id;
         localqueue.push(pQval - vals.get());
         valuequeue.push(*pQval);
@@ -770,12 +768,12 @@ struct Align : Graph
         {
             if (globalqueue.empty() || !localqueue.empty() && ids[localqueue.front()] < globalqueue.front()->id)
             {
-                int64_t M = localqueue.front();
+                SIZETYPE M = localqueue.front();
                 localqueue.pop();
-                double Mval = valuequeue.front();
+                SCORETYPE Mval = valuequeue.front();
                 valuequeue.pop();
                 SWN swn = get_swn(M);
-                int type = get_type(M, swn);
+                Align::VALTYPE type = get_type(M, swn);
                 if (swn.n < Dot::DotQ && swn.s == 0)
                     GlobalTrack(edge2tailAvals, Mval, M, swn, type, globalqueue, localqueue, valuequeue, id);
                 else
@@ -783,7 +781,7 @@ struct Align : Graph
                     outputdot(Mval, M, swn, type);
                     if (type==VALTYPE::Q)
                     {
-                        for (uint64_t i = 0, j = 0; i < nodes.size(); ++i)
+                        for (SIZETYPE i = 0, j = 0; i < nodes.size(); ++i)
                             if (nodes[i].is_target && Qbools[j])
                             {
                                 arrangesource(valuequeue, &(nodes[i].Avals[nodes[i].scc_sz - 1][O.size()]), localqueue, id);
@@ -807,7 +805,7 @@ struct Align : Graph
                                 DXbit = 0;
                             }
                             else if (type!=VALTYPE::ABAR)
-                                for (int i = 0; i < s_szs[M]; ++i)
+                                for (SIZETYPE i = 0; i < s_szs[M]; ++i)
                                     arrangesource(valuequeue, sourcess[M][i], localqueue, id);
                         }    
                     }
@@ -817,10 +815,10 @@ struct Align : Graph
             {
                 Dot *M = globalqueue.front();
                 globalqueue.pop();
-                double Mval = valuequeue.front();
+                SCORETYPE Mval = valuequeue.front();
                 valuequeue.pop();
                 outputdot(Mval, M);
-                for (int i = 0; i < M->s_sz; ++i)
+                for (SIZETYPE i = 0; i < M->s_sz; ++i)
                 {
                     if (dot_sources[M->fs + i])
                         arrangesource(valuequeue, dot_sources[M->fs + i], globalqueue, id);
@@ -837,32 +835,32 @@ struct Align : Graph
 
         for (std::map<std::string, TrackTree>::iterator it = long2tracktree.begin(); it != long2tracktree.end(); ++it)
             it->second.clear();
-        for (auto &node : nodes)
+        for (Node &node : nodes)
             node.clearAdelta(O.size());
         dot_sources.clear();
     }
 
-    void GlobalTrack(std::map<Edge *, std::unique_ptr<double []>> &edge2tailAvals, double Mval, int64_t M, SWN &swn, int type, std::queue<Dot *> &globalqueue, std::queue<int64_t> &localqueue, std::queue<double> &valuequeue, uint64_t &id)
+    void GlobalTrack(std::map<Edge *, std::unique_ptr<SCORETYPE []>> &edge2tailAvals, SCORETYPE Mval, SIZETYPE M, SWN &swn, Align::VALTYPE type, std::queue<Dot *> &globalqueue, std::queue<SIZETYPE> &localqueue, std::queue<SCORETYPE> &valuequeue, IDTYPE &id)
     {
-        auto &node = nodes[Dot::nidx_trans(swn.n)];
+        Node &node = nodes[Dot::nidx_trans(swn.n)];
         s_szs[M] = node.AdeltaGlobal[swn.w].size() + node.AdeltaDot[swn.w].size();
         outputdot(Mval, M, swn, type);
-        for (double *source : node.AdeltaDot[swn.w])
+        for (SCORETYPE *source : node.AdeltaDot[swn.w])
             arrangesource(valuequeue, source, localqueue, id);
 
-        for (auto &globalsuffix : node.AdeltaGlobal[swn.w])
+        for (Node::GlobalSuffix &globalsuffix : node.AdeltaGlobal[swn.w])
         {
             Edge *edge = globalsuffix.edge;
-            double *Avals = edge2tailAvals[edge].get();
+            SCORETYPE *Avals = edge2tailAvals[edge].get();
             TrackTree &tracktree = long2tracktree[edge->name];
             std::deque<TrackTree::TrackNode> &tracknodes = tracktree.tracknodes;
             std::deque<Dot> &dots = tracktree.dots;
-            uint8_t *longref = file2long[edge->name].first.get();
+            NUCTYPE *longref = file2long[edge->name].first.get();
             RankVec &rankvec = file2rankvec[edge->name];
             std::ifstream &SAfin = file2SA[edge->name];
-            int64_t start;
-            SAfin.seekg(globalsuffix.start * sizeof(uint64_t));
-            SAfin.read((char*)&start, sizeof(uint64_t));
+            SIZETYPE start;
+            SAfin.seekg(globalsuffix.start * sizeof(SIZETYPE));
+            SAfin.read((char*)&start, sizeof(SIZETYPE));
             if (tracktree.tracknodes.empty())
             {
                 tracktree.W = O.size();
@@ -871,7 +869,7 @@ struct Align : Graph
             tracktree.setidx(0);
             if (edge->head->scc_id != edge->tail->scc_id)
             {
-                for (int w = tracknodes[tracktree.idx].tau; w <= swn.w; ++w)
+                for (SIZETYPE w = tracknodes[tracktree.idx].tau; w <= swn.w; ++w)
                 {
                     if (w == 0)
                         source_max(dots[tracktree.shiftE + w], {}, {});
@@ -881,16 +879,17 @@ struct Align : Graph
                     source_max(dots[tracktree.shiftG + w], {&dots[tracktree.shiftE + w], &dots[tracktree.shiftF + w], NULL}, {dots[tracktree.shiftE + w].val, dots[tracktree.shiftF + w].val, Avals[w] + edge->T});
                 }
                 tracknodes[tracktree.idx].tau = std::max(tracknodes[tracktree.idx].tau, swn.w + 1);
-                for (int i = globalsuffix.lambda - 1; i >= 0; --i)
+                for (SIZETYPE i = globalsuffix.lambda; i > 0;)
                 {
-                    uint8_t c = longref[start + i];
+                    --i;
+                    NUCTYPE c = longref[start + i];
                     if (tracknodes[tracktree.idx].cidxs[c - 2] < 0)
                     {
                         tracktree.emplace_back(-1, edge->n, rankvec.bwt_sz - 1 - start - i, dots[tracktree.shiftE].lambda + 1);
                         tracknodes[tracktree.idx].cidxs[c - 2] = tracknodes.size() - 1;
                     }
                     tracktree.setidx(tracknodes[tracktree.idx].cidxs[c - 2]);
-                    for (int w = tracknodes[tracktree.idx].tau; w <= swn.w; ++w)
+                    for (SIZETYPE w = tracknodes[tracktree.idx].tau; w <= swn.w; ++w)
                     {
                         if (w == 0)
                             source_max(dots[tracktree.shiftE + w], {}, {});
@@ -907,7 +906,7 @@ struct Align : Graph
             }
             else
             {
-                for (int w = tracknodes[tracktree.idx].tau; w <= swn.w; ++w)
+                for (SIZETYPE w = tracknodes[tracktree.idx].tau; w <= swn.w; ++w)
                 {
                     if (w > 0)
                         source_max(dots[tracktree.shiftG + w - 1], {&dots[tracktree.shiftE + w - 1], NULL}, {dots[tracktree.shiftE + w - 1].val, Avals[w - 1] + edge->T});
@@ -918,16 +917,17 @@ struct Align : Graph
                     source_max(dots[tracktree.shiftF + w], {}, {});
                 }
                 tracknodes[tracktree.idx].tau = std::max(tracknodes[tracktree.idx].tau, swn.w + 1);
-                for (int i = globalsuffix.lambda - 1; i >= 0; --i)
+                for (SIZETYPE i = globalsuffix.lambda; i > 0; )
                 {
-                    uint8_t c = longref[start + i];
+                    --i;
+                    NUCTYPE c = longref[start + i];
                     if (tracknodes[tracktree.idx].cidxs[c - 2] < 0)
                     {
                         tracktree.emplace_back(-1, edge->n, rankvec.bwt_sz - 1 - start - i, dots[tracktree.shiftE].lambda + 1); // minus
                         tracknodes[tracktree.idx].cidxs[c - 2] = tracknodes.size() - 1;
                     }
                     tracktree.setidx(tracknodes[tracktree.idx].cidxs[c - 2]);
-                    for (int w = tracknodes[tracktree.idx].tau; w <= swn.w; ++w)
+                    for (SIZETYPE w = tracknodes[tracktree.idx].tau; w <= swn.w; ++w)
                     {
                         if (w == 0)
                             source_max(dots[tracktree.shiftE + w], {}, {});
@@ -949,23 +949,23 @@ struct Align : Graph
         }
     }
 
-    void source_max(double *val, std::initializer_list<double *> sources, std::initializer_list<double> source_vals)
+    void source_max(SCORETYPE *val, std::initializer_list<SCORETYPE *> sources, std::initializer_list<SCORETYPE> source_vals)
     {
-        int64_t idx = val - vals.get();
+        SIZETYPE idx = val - vals.get();
         s_szs[idx] = 0;
         if (source_vals.begin() == source_vals.end())
             *val = -inf;
         else
         {
             *val = std::max(source_vals);
-            auto sources_it = sources.begin();
+            std::initializer_list<SCORETYPE *>::iterator sources_it = sources.begin();
             for (auto source_vals_it = source_vals.begin(); source_vals_it != source_vals.end(); ++source_vals_it, ++sources_it)
                 if (*source_vals_it == *val)
                     sourcess[idx][s_szs[idx]++] = *sources_it;
         }
     }
 
-    void source_max(Dot &dot, std::initializer_list<Dot *> adrs, std::initializer_list<double> vals)
+    void source_max(Dot &dot, std::initializer_list<Dot *> adrs, std::initializer_list<SCORETYPE> vals)
     {
         source_max(dot, adrs.begin(), vals.begin(), vals.end());
     }

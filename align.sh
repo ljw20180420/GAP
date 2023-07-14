@@ -53,7 +53,7 @@ echo $nodes
 
 longs=""
 for i in $(seq 0 $(($msn-1))); do
-	longs=$longs" "$genome",node"$i",node"$(($i+1))",,,,,0.0"
+	longs=$longs" "$genome",node"$i",node"$(($i+1))",,,,,0"
 done
 echo $longs
 
