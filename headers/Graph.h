@@ -117,7 +117,7 @@ struct Node
     std::unique_ptr<IDTYPE *[]> Aids;
     IDTYPE *Bids, *pAbarid;
 
-    std::unique_ptr<std::deque<SCORETYPE *>[]> AdeltaDot;
+    std::unique_ptr<std::deque<SCORETYPE *> []> AdeltaDot;
 
     struct GlobalSuffix
     {
@@ -125,13 +125,13 @@ struct Node
         SIZETYPE start;
         QUERYSIZE lambda;
 
-        GlobalSuffix(Edge *edge_, SIZETYPE start_, QUERYSIZE lambda_) // not used ?
+        GlobalSuffix(Edge *edge_, SIZETYPE start_, QUERYSIZE lambda_)
             : edge(edge_), start(start_), lambda(lambda_)
         {
         }
     };
 
-    std::unique_ptr<std::deque<GlobalSuffix>[]> AdeltaGlobal;
+    std::unique_ptr<std::deque<GlobalSuffix> []> AdeltaGlobal;
 
     SIZETYPE get_tsn(SIZETYPE Aso, QUERYSIZE Omax)
     {
@@ -582,21 +582,6 @@ struct Graph
                 sccs[edge.tail->scc_id].global_circuits.emplace_back(&global_circuits.back());
                 edges[edge.n] = &global_circuits.back();
             }
-    }
-
-    double str2double(std::string &str)
-    {
-        return str2double(str.c_str());
-    }
-
-    double str2double(const char *str)
-    {
-        if (!strcmp(str, "inf"))
-            return inf;
-        else if (!strcmp(str, "-inf"))
-            return -inf;
-        else
-            return std::stod(str);
     }
 
     void DeepFirstLine(Node *node, bool reverse, std::vector<bool> &visit, std::list<EdgeLocal> &locals, std::list<Edge> &globals)
