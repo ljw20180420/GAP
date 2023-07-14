@@ -61,7 +61,7 @@ struct EdgeLocal : Edge
 };
 
 template <typename T>
-void type_initial(T *&Ts, std::initializer_list<T **> pTss, std::initializer_list<std::unique_ptr<T *[]> *> pTsss, int64_t *Ss, QUERYSIZE Omax)
+void type_initial(T *&Ts, std::initializer_list<T **> pTss, std::initializer_list<std::unique_ptr<T *[]> *> pTsss, SIZETYPE *Ss, QUERYSIZE Omax)
 {
     for (T **pTs : pTss)
     {
@@ -71,8 +71,8 @@ void type_initial(T *&Ts, std::initializer_list<T **> pTss, std::initializer_lis
     SIZETYPE si = 0;
     for (typename std::initializer_list<std::unique_ptr<T *[]> *>::iterator it = pTsss.begin(); it != pTsss.end(); ++it, ++si)
     {
-        (*it)->reset(new T *[Ss[si] + 1]);
-        for (int64_t s = 0; s <= Ss[si]; ++s, Ts += Omax + 1)
+        (*it)->reset(new T *[Ss[si]]);
+        for (SIZETYPE s = 0; s < Ss[si]; ++s, Ts += Omax + 1)
             (**it)[s] = Ts;
     }
 }
@@ -86,10 +86,10 @@ void extend_ss_ns(SIZETYPE pTss_sz, DOTTYPE n, SHORTSIZE *&fps, DOTTYPE *&fpn)
     }
 }
 
-void extend_ss_ns(SIZETYPE pTsss_sz, int64_t *Ss, DOTTYPE n, SHORTSIZE *&fps, DOTTYPE *&fpn)
+void extend_ss_ns(SIZETYPE pTsss_sz, SIZETYPE *Ss, DOTTYPE n, SHORTSIZE *&fps, DOTTYPE *&fpn)
 {
     for (SIZETYPE i = 0; i < pTsss_sz; ++i)
-        for (int64_t j = 0; j <= Ss[i]; ++j, ++fps, ++fpn)
+        for (SIZETYPE j = 0; j < Ss[i]; ++j, ++fps, ++fpn)
         {
             *fps = j;
             *fpn = n;
@@ -150,7 +150,7 @@ struct Node
 
     void apply_memory(SIZETYPE Aso, QUERYSIZE Omax, SCORETYPE *&fpval, SCORETYPE **&fpsource, SCORETYPE ***&fpsources, SOURCESIZE *&fps_sz, IDTYPE *&fpid, SHORTSIZE *&fps, DOTTYPE *&fpn, SCORETYPE *&rpval, IDTYPE *&rpid)
     {
-        std::unique_ptr<int64_t []> Ss(new int64_t[1]{scc_sz - 1});
+        std::unique_ptr<SIZETYPE []> Ss(new SIZETYPE[1]{scc_sz});
         extend_ss_ns(1, -1, fps, fpn);
         extend_ss_ns(1, Ss.get(), Dot::nidx_trans(n), fps, fpn);
         type_initial(fpval, {&Bvals}, {&Avals}, Ss.get(), Omax);
@@ -235,9 +235,9 @@ struct EdgeLocalCross : EdgeLocal
         return SIZETYPE(Omax + 1) * 8 * (ref_sz + 1);
     }
 
-    int64_t *get_Ss(SHORTSIZE ref_sz)
+    SIZETYPE *get_Ss(SHORTSIZE ref_sz)
     {
-        return new int64_t[3]{ref_sz, ref_sz, ref_sz};
+        return new SIZETYPE[3]{ref_sz+1, ref_sz+1, ref_sz+1};
     }
 
     SIZETYPE *get_SE(QUERYSIZE Omax, SHORTSIZE ref_sz)
@@ -253,7 +253,7 @@ struct EdgeLocalCross : EdgeLocal
 
     void apply_memory(QUERYSIZE Omax, SCORETYPE *&fpval, SCORETYPE **&fpsource, SCORETYPE ***&fpsources, SOURCESIZE *&fps_sz, IDTYPE *&fpid, SHORTSIZE *&fps, DOTTYPE *&fpn, SHORTSIZE ref_sz)
     {
-        std::unique_ptr<int64_t []> Ss(get_Ss(ref_sz));
+        std::unique_ptr<SIZETYPE []> Ss(get_Ss(ref_sz));
         extend_ss_ns(3, Ss.get(), n, fps, fpn);
         type_initial(fpval, {}, {&Evals, &Fvals, &Gvals}, Ss.get(), Omax);
         SCORETYPE ***fpsources_old = fpsources;
@@ -300,9 +300,9 @@ struct EdgeLocalCircuit : EdgeLocal
         return SIZETYPE(Omax + 1) * (1 + 10 * (ref_sz + 1) + 3 * (tail->scc_sz - 1));
     }
 
-    int64_t *get_Ss(SHORTSIZE ref_sz)
+    SIZETYPE *get_Ss(SHORTSIZE ref_sz)
     {
-        return new int64_t[6]{ref_sz, ref_sz, ref_sz, ref_sz, tail->scc_sz - 2, tail->scc_sz - 2};
+        return new SIZETYPE[6]{ref_sz+1, ref_sz+1, ref_sz+1, ref_sz+1, tail->scc_sz-1, tail->scc_sz-1};
     }
 
     SIZETYPE *get_SE(QUERYSIZE Omax, SHORTSIZE ref_sz)
@@ -318,7 +318,7 @@ struct EdgeLocalCircuit : EdgeLocal
     void apply_memory(QUERYSIZE Omax, SCORETYPE *&fpval, SCORETYPE **&fpsource, SCORETYPE ***&fpsources, SOURCESIZE *&fps_sz, IDTYPE *&fpid, SHORTSIZE *&fps, DOTTYPE *&fpn, SHORTSIZE ref_sz)
     {
         DXbits.reset(new uint8_t[(tail->scc_sz-1)*(Omax+1)]);
-        std::unique_ptr<int64_t []> Ss(get_Ss(ref_sz));
+        std::unique_ptr<SIZETYPE []> Ss(get_Ss(ref_sz));
         extend_ss_ns(1, n, fps, fpn);
         extend_ss_ns(6, Ss.get(), n, fps, fpn);
         type_initial(fpval, {&Dvals}, {&Evals, &F0vals, &G0vals, &Gvals, &D0vals, &DXvals}, Ss.get(), Omax);
@@ -378,14 +378,14 @@ struct EdgeGlobalCircuit : Edge
         return (Omax + 1) * get_trn();
     }
 
-    int64_t *get_Ss()
+    SIZETYPE *get_Ss()
     {
-        return new int64_t[1]{tail->scc_sz - 2};
+        return new SIZETYPE[1]{tail->scc_sz-1};
     }
 
     void apply_memory(SHORTSIZE Omax, SCORETYPE *&fpval, IDTYPE *&fpid, SHORTSIZE *&fps, DOTTYPE *&fpn)
     {
-        std::unique_ptr<int64_t []> Ss(get_Ss());
+        std::unique_ptr<SIZETYPE []> Ss(get_Ss());
         extend_ss_ns(1, Ss.get(), n, fps, fpn);
         type_initial(fpval, {}, {&D0vals}, Ss.get(), Omax);
         type_initial(fpid, {}, {&D0ids}, Ss.get(), Omax);

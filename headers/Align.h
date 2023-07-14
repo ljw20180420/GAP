@@ -503,7 +503,7 @@ struct Align : Graph
         }
     }
 
-    void CircuitIteration(int64_t w, EdgeLocalCircuit *edge)
+    void CircuitIteration(QUERYSIZE w, EdgeLocalCircuit *edge)
     {
         NUCTYPE *ref = file2short[edge->name].first.get();
         SHORTSIZE ref_sz = file2short[edge->name].second;

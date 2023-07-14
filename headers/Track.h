@@ -318,7 +318,7 @@ struct Track : Graph
                     }
                     else
                     {
-                        std::map<std::string, std::deque<std::pair<int64_t, int64_t>>> seqranges1 = get_seqranges(megasources[extract1[2 * i - 1]].first), seqranges2 = get_seqranges(megasources[extract2[2 * j - 1]].first);
+                        std::map<std::string, std::deque<std::pair<SIZETYPE, SIZETYPE>>> seqranges1 = get_seqranges(megasources[extract1[2 * i - 1]].first), seqranges2 = get_seqranges(megasources[extract2[2 * j - 1]].first);
                         segdiff = global_dis(seqranges1, seqranges2);
                     }
                     PD[j * row + i] = std::min(PD[j * row + i], PD[(j - 1) * row + i - 1] + segdiff);
@@ -327,7 +327,7 @@ struct Track : Graph
         return PD[row * col - 1];
     }
 
-    int64_t global_dis(std::map<std::string, std::deque<std::pair<int64_t, int64_t>>> &seqranges1, std::map<std::string, std::deque<std::pair<int64_t, int64_t>>> &seqranges2)
+    SIZETYPE global_dis(std::map<std::string, std::deque<std::pair<SIZETYPE, SIZETYPE>>> &seqranges1, std::map<std::string, std::deque<std::pair<SIZETYPE, SIZETYPE>>> &seqranges2)
     {
         int64_t max_inter = 0; // max_inter need compare with int64_t inter, thereby being int64_t as well
         for (auto it1 = seqranges1.begin(), it2 = seqranges2.begin(); it1 != seqranges1.end() && it2 != seqranges2.end();)
@@ -339,8 +339,8 @@ struct Track : Graph
                 ++it2;
             else
             {
-                for (auto &range1 : it1->second)
-                    for (auto &range2 : it2->second)
+                for (std::pair<SIZETYPE, SIZETYPE> &range1 : it1->second)
+                    for (std::pair<SIZETYPE, SIZETYPE> &range2 : it2->second)
                     {
                         int64_t inter = std::min(range1.second, range2.second) - std::max(range1.first, range2.first);
                         max_inter = std::max(max_inter, inter);
@@ -349,7 +349,7 @@ struct Track : Graph
                 ++it2;
             }
         }
-        std::pair<int64_t, int64_t> &range1 = (seqranges1.begin())->second.front(), &range2 = (seqranges2.begin())->second.front();
+        std::pair<SIZETYPE, SIZETYPE> &range1 = (seqranges1.begin())->second.front(), &range2 = (seqranges2.begin())->second.front();
         return range1.second - range1.first + range2.second - range2.first - 2 * max_inter;
     }
 
@@ -446,15 +446,15 @@ struct Track : Graph
                 Edge *edge = edges[pdot2->n];
                 if (file2rankvec.count(edge->name))
                 {
-                    std::map<std::string, std::deque<std::pair<int64_t, int64_t>>> seqranges = get_seqranges(pdot2);
+                    std::map<std::string, std::deque<std::pair<SIZETYPE, SIZETYPE>>> seqranges = get_seqranges(pdot2);
                     fout_extract << edge->name << ':';
-                    for (std::pair<const std::string, std::deque<std::pair<int64_t, int64_t>>> &seqrange : seqranges)
-                        for (std::pair<int64_t, int64_t> &range : seqrange.second)
+                    for (std::pair<const std::string, std::deque<std::pair<SIZETYPE, SIZETYPE>>> &seqrange : seqranges)
+                        for (std::pair<SIZETYPE, SIZETYPE> &range : seqrange.second)
                             fout_extract << seqrange.first << '\t' << range.first << '\t';
                     fout_extract << pdot1->w << '\t' << pdot1->val << '\n';
                     fout_extract << edge->name << ':';
-                    for (std::pair<const std::string, std::deque<std::pair<int64_t, int64_t>>> &seqrange : seqranges)
-                        for (std::pair<int64_t, int64_t> &range : seqrange.second)
+                    for (std::pair<const std::string, std::deque<std::pair<SIZETYPE, SIZETYPE>>> &seqrange : seqranges)
+                        for (std::pair<SIZETYPE, SIZETYPE> &range : seqrange.second)
                             fout_extract << seqrange.first << '\t' << range.second << '\t';
                     fout_extract << pdot2->w << '\t' << pdot2->val << '\n';
                 }
@@ -467,9 +467,9 @@ struct Track : Graph
         }
     }
 
-    std::map<std::string, std::deque<std::pair<int64_t, int64_t>>> get_seqranges(Dot *pdot)
+    std::map<std::string, std::deque<std::pair<SIZETYPE, SIZETYPE>>> get_seqranges(Dot *pdot)
     {
-        std::map<std::string, std::deque<std::pair<int64_t, int64_t>>> seqranges;
+        std::map<std::string, std::deque<std::pair<SIZETYPE, SIZETYPE>>> seqranges;
         NUCTYPE *longref = file2long[edges[pdot->n]->name].first.get();
         std::vector<std::pair<std::string, SIZETYPE>> &cumlen = file2cumlen[edges[pdot->n]->name];
         RankVec &rankvec = file2rankvec[edges[pdot->n]->name];
