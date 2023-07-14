@@ -266,8 +266,8 @@ struct Align : Graph
         return swn;
     }
 
-    Align(std::mutex &mtx_, std::ifstream &fin_, boost::program_options::variables_map &vm, std::map<std::string, std::pair<std::unique_ptr<NUCTYPE []>, SHORTSIZE>> &file2short, std::map<std::string, RankVec> &file2rankvec, std::map<std::string, std::pair<std::unique_ptr<NUCTYPE []>, SIZETYPE>> &file2long, std::string mgfile, QUERYSIZE Omax_)
-        : mtx(mtx_), fin(fin_), Graph(vm, file2short, file2rankvec, file2long), fout(mgfile, std::ifstream::binary), Omax(Omax_)
+    Align(std::mutex &mtx_, std::ifstream &fin_, boost::program_options::variables_map &vm, std::map<std::string, std::pair<std::unique_ptr<NUCTYPE []>, SHORTSIZE>> &file2short, std::map<std::string, RankVec> &file2rankvec, std::string mgfile, QUERYSIZE Omax_)
+        : mtx(mtx_), fin(fin_), Graph(vm, file2short, file2rankvec), fout(mgfile, std::ifstream::binary), Omax(Omax_)
     {
         for (Node &node : nodes)
             if (node.is_target)
@@ -855,12 +855,16 @@ struct Align : Graph
             TrackTree &tracktree = long2tracktree[edge];
             std::deque<TrackTree::TrackNode> &tracknodes = tracktree.tracknodes;
             std::deque<Dot> &dots = tracktree.dots;
-            NUCTYPE *longref = file2long[edge->name].first.get();
             RankVec &rankvec = file2rankvec[edge->name];
             std::ifstream &SAfin = file2SA[edge->name];
             SIZETYPE start;
             SAfin.seekg(globalsuffix.start * sizeof(SIZETYPE));
             SAfin.read((char*)&start, sizeof(SIZETYPE));
+            std::ifstream &REVREFfin = file2long[edge->name];
+            std::unique_ptr<NUCTYPE []> revref(new NUCTYPE[globalsuffix.lambda]);
+            REVREFfin.seekg(start);
+            REVREFfin.read((char*)revref.get(), globalsuffix.lambda);
+
             if (tracktree.tracknodes.empty())
             {
                 tracktree.W = O.size();
@@ -882,7 +886,7 @@ struct Align : Graph
                 for (SIZETYPE i = globalsuffix.lambda; i > 0;)
                 {
                     --i;
-                    NUCTYPE c = longref[start + i];
+                    NUCTYPE c = revref[i];
                     if (tracknodes[tracktree.idx].cidxs[c - 2] < 0)
                     {
                         tracktree.emplace_back(-1, edge->n, rankvec.bwt_sz - 1 - start - i, dots[tracktree.shiftE].lambda + 1);
@@ -920,7 +924,7 @@ struct Align : Graph
                 for (SIZETYPE i = globalsuffix.lambda; i > 0; )
                 {
                     --i;
-                    NUCTYPE c = longref[start + i];
+                    NUCTYPE c = revref[i];
                     if (tracknodes[tracktree.idx].cidxs[c - 2] < 0)
                     {
                         tracktree.emplace_back(-1, edge->n, rankvec.bwt_sz - 1 - start - i, dots[tracktree.shiftE].lambda + 1); // minus

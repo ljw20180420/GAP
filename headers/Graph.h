@@ -430,7 +430,7 @@ struct Graph
     boost::program_options::variables_map &vm;
     std::map<std::string, std::pair<std::unique_ptr<NUCTYPE []>, SHORTSIZE>> &file2short;
     std::map<std::string, RankVec> &file2rankvec;
-    std::map<std::string, std::pair<std::unique_ptr<NUCTYPE []>, SIZETYPE>> &file2long;
+    std::map<std::string, std::ifstream> file2long;
     std::map<std::string, std::ifstream> file2SA;
 
     void get_affine(std::vector<SCORETYPE> &g, SHORTSIZE seqlen, SCORETYPE initial, SCORETYPE u, SCORETYPE v)
@@ -444,13 +444,14 @@ struct Graph
                 g[s + 1] = g[s] + u;
     }
 
-    Graph(boost::program_options::variables_map &vm_, std::map<std::string, std::pair<std::unique_ptr<NUCTYPE []>, SHORTSIZE>> &file2short_, std::map<std::string, RankVec> &file2rankvec_, std::map<std::string, std::pair<std::unique_ptr<NUCTYPE []>, SIZETYPE>> &file2long_) : vm(vm_), file2short(file2short_), file2rankvec(file2rankvec_), file2long(file2long_)
+    Graph(boost::program_options::variables_map &vm_, std::map<std::string, std::pair<std::unique_ptr<NUCTYPE []>, SHORTSIZE>> &file2short_, std::map<std::string, RankVec> &file2rankvec_) : vm(vm_), file2short(file2short_), file2rankvec(file2rankvec_)
     {
         for (std::string file : vm["longs"].as<std::vector<std::string>>())
         {
             file = file.substr(0, file.find(','));
-            if (file2SA.count(file))
+            if (file2long.count(file))
                 continue;
+            file2long[file].open(file);
             file2SA[file].open(file+".sa");
         }
 

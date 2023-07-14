@@ -19,8 +19,8 @@ struct Track : Graph
     std::deque<std::pair<Dot *, std::deque<Dot *>>> megasources;
     std::map<std::string, std::vector<std::pair<std::string, SIZETYPE>>> file2cumlen;
 
-    Track(boost::program_options::variables_map &vm, std::map<std::string, std::pair<std::unique_ptr<NUCTYPE []>, SHORTSIZE>> &file2short, std::map<std::string, RankVec> &file2rankvec, std::map<std::string, std::pair<std::unique_ptr<NUCTYPE []>, SIZETYPE>> &file2long)
-    : Graph(vm, file2short, file2rankvec, file2long), fout_align("alg"), fout_extract("ext"), fout_fail("fail"), fout_death("death")
+    Track(boost::program_options::variables_map &vm, std::map<std::string, std::pair<std::unique_ptr<NUCTYPE []>, SHORTSIZE>> &file2short, std::map<std::string, RankVec> &file2rankvec)
+    : Graph(vm, file2short, file2rankvec), fout_align("alg"), fout_extract("ext"), fout_fail("fail"), fout_death("death")
     {
         for (std::string file : vm["longs"].as<std::vector<std::string>>())
         {
@@ -371,6 +371,7 @@ struct Track : Graph
                 bool islocal = file2short.count(edges[path[0]->n]->name);
                 NUCTYPE *ref;
                 SIZETYPE ref_sz;
+                std::unique_ptr<NUCTYPE []> revref(new NUCTYPE[path.back()->lambda]);
                 if (islocal)
                 {
                     std::pair<std::unique_ptr<NUCTYPE []>, SHORTSIZE> &pair = file2short[edges[path[0]->n]->name];
@@ -379,9 +380,9 @@ struct Track : Graph
                 }
                 else
                 {
-                    std::pair<std::unique_ptr<NUCTYPE []>, SIZETYPE> &pair = file2long[edges[path[0]->n]->name];
-                    ref = pair.first.get();
-                    ref_sz = pair.second;
+                    std::ifstream &REVREFfin = file2long[edges[path[0]->n]->name];
+                    REVREFfin.seekg(file2rankvec[edges[path[0]->n]->name].bwt_sz - 1 - path.back()->s);
+                    REVREFfin.read((char*)revref.get(), path.back()->lambda);
                 }
 
                 if (islocal)
@@ -407,7 +408,7 @@ struct Track : Graph
                     if (localF)
                         align_ref.push_back(NUCTYPE2base[ref[path[i]->s - 1]]);
                     else if (globalF)
-                        align_ref.push_back(NUCTYPE2base[ref[ref_sz - 1 - path[i]->s]]);
+                        align_ref.push_back(NUCTYPE2base[revref[path.back()->lambda - path[i]->lambda]]);
                     else
                         align_ref.push_back('-');
 
@@ -470,15 +471,19 @@ struct Track : Graph
     std::map<std::string, std::deque<std::pair<SIZETYPE, SIZETYPE>>> get_seqranges(Dot *pdot)
     {
         std::map<std::string, std::deque<std::pair<SIZETYPE, SIZETYPE>>> seqranges;
-        NUCTYPE *longref = file2long[edges[pdot->n]->name].first.get();
         std::vector<std::pair<std::string, SIZETYPE>> &cumlen = file2cumlen[edges[pdot->n]->name];
         RankVec &rankvec = file2rankvec[edges[pdot->n]->name];
+        std::ifstream &REVREFfin = file2long[edges[pdot->n]->name];
+        std::unique_ptr<NUCTYPE []> revref(new NUCTYPE[pdot->lambda]);
+        REVREFfin.seekg(rankvec.bwt_sz - pdot->s - 1);
+        REVREFfin.read((char*)revref.get(), pdot->lambda);
 
         SIZETYPE sr1 = 0, sr2 = rankvec.bwt_sz;
-        for (SIZETYPE s = 0, tmp = rankvec.bwt_sz - pdot->s + pdot->lambda - 2; s < pdot->lambda; ++s)
+        for (SIZETYPE s = 1; s <= pdot->lambda; ++s)
         {
-            sr1 = rankvec.C[longref[tmp - s]] + rankvec.rank(longref[tmp - s],sr1);
-            sr2 = rankvec.C[longref[tmp - s]] + rankvec.rank(longref[tmp - s],sr2);
+            NUCTYPE c = revref[pdot->lambda - s];
+            sr1 = rankvec.C[c] + rankvec.rank(c,sr1);
+            sr2 = rankvec.C[c] + rankvec.rank(c,sr2);
         }
             
         

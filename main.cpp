@@ -107,15 +107,10 @@ int main(int argc, char **argv)
             if (file2rankvec.count(file))
                 continue;
             file2rankvec[file].loadRankVec(file+".bwt", file+".rnk");
-
-            file2long[file].second = std::filesystem::file_size(file);
-            file2long[file].first.reset(new NUCTYPE[file2long[file].second]);
-            std::ifstream fin(file);
-            fin.read((char *)file2long[file].first.get(), file2long[file].second);
         }
 
     {
-        Graph graph(vm, file2short, file2rankvec, file2long);
+        Graph graph(vm, file2short, file2rankvec);
         graph.draw("graph.gv");
     }
 
@@ -131,20 +126,20 @@ int main(int argc, char **argv)
     for (SIZETYPE i = 0; i < vm["threads_sz"].as<SIZETYPE>(); ++i)
     {
         mg_files.emplace_back("mg" + std::to_string(i));
-        aligns.emplace_back(mtx, fin, vm, file2short, file2rankvec, file2long, mg_files.back(), Omax);
+        aligns.emplace_back(mtx, fin, vm, file2short, file2rankvec, mg_files.back(), Omax);
         threads.emplace_back(&Align::run, &aligns.back());
     }
     for (SIZETYPE i = 0; i < vm["threads_sz"].as<SIZETYPE>(); ++i)
         threads[i].join();
 
-    // Align align(mtx, fin, vm, file2short, file2rankvec, file2long, "mg", Omax); // debug
+    // Align align(mtx, fin, vm, file2short, file2rankvec, "mg", Omax); // debug
     // align.run(); // debug
 
     // // std::deque<std::string> mg_files; // debug
     // // for (SIZETYPE i = 0; i < vm["threads_sz"].as<SIZETYPE>(); ++i) // debug
     // //     mg_files.emplace_back("mg" + std::to_string(i)); // debug
 
-    Track track(vm, file2short, file2rankvec, file2long); 
+    Track track(vm, file2short, file2rankvec); 
     track.ReadTrack(mg_files);
 
     return EXIT_SUCCESS;
