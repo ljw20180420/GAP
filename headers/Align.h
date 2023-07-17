@@ -165,7 +165,9 @@ struct Align : Graph
     IDTYPE max_id = 0;
     QUERYSIZE Omax;
     std::vector<bool> Qbools;
-    enum VALTYPE{Q, ABAR, LID0, SID0, SIDX, OTHERS};
+    enum VALTYPE{NA, NB, SOE, SOF, SOG, SIE, SIF0, SIG0, SIG, SID0, SIDX, LID0, ABAR, Q, OTHERS};
+    std::unique_ptr<IDTYPE []> ids;
+    std::unique_ptr<BITSTYPE []> bits;
 
     CrossGlobalData crossglobaldata;
 
@@ -217,6 +219,7 @@ struct Align : Graph
         ids.reset(new IDTYPE[tnn]);
         ss.reset(new SHORTSIZE[trn]);
         ns.reset(new DOTTYPE[trn]);
+        bits.reset(new BITSTYPE[tnn]);
 
         SCORETYPE *fpval = vals.get(), *rpval = fpval + tnn;
         pQval = --rpval;
@@ -326,10 +329,18 @@ struct Align : Graph
                     if (node.scc_id != scc_id)
                         continue;
 
+                    SIZETYPE M = &node.Bvals[w] - vals.get();
+                    bits[M] = 0;
                     if (w == 0)
-                        source_max(&node.Bvals[w], {}, {});
+                        node.Bvals[w] = -inf;
                     else
-                        source_max(&node.Bvals[w], {&node.Bvals[w - 1], &node.Avals[node.scc_sz - 1][w - 1]}, {node.Bvals[w - 1] + node.ue, node.Avals[node.scc_sz - 1][w - 1] + node.ve});
+                    {
+                        node.Bvals[w] = std::max(node.Bvals[w - 1] + node.ue, node.Avals[node.scc_sz - 1][w - 1] + node.ve);
+                        if (node.Bvals[w] == node.Bvals[w - 1] + node.ue)
+                            bits[M] += 1;
+                        if (node.Bvals[w] == node.Avals[node.scc_sz - 1][w - 1] + node.ve)
+                            bits[M] += 2;
+                    }
 
                     node.updateA0(w, node.Bvals[w], &node.Bvals[w]);
                     if (w == 0)
@@ -356,10 +367,12 @@ struct Align : Graph
                         SHORTSIZE ref_sz = file2short[circuit->name].second;
                         circuit->D0vals[l - 1][w] = circuit->tail->Avals[l - 1][w] + circuit->T;
                         circuit->DXvals[l - 1][w] = std::max(circuit->tail->Avals[l - 1][w] + circuit->gfpT[ref_sz], circuit->D0vals[l - 1][w] + circuit->gf[ref_sz]);
+                        SIZETYPE M = &(circuit->DXvals[l - 1][w]) - vals.get();
+                        bits[M] = 0;
                         if (circuit->DXvals[l - 1][w] == circuit->tail->Avals[l - 1][w] + circuit->gfpT[ref_sz])
-                            circuit->DXbits[(l-1)*(Omax+1)+w] |= uint8_t(1);
+                            bits[M] += 1;
                         if (circuit->DXvals[l - 1][w] == circuit->D0vals[l - 1][w] + circuit->gf[ref_sz])
-                            circuit->DXbits[(l-1)*(Omax+1)+w] |= uint8_t(2);
+                            bits[M] += 2;
                     }
                     for (Node &node : nodes)
                     {
@@ -684,9 +697,9 @@ struct Align : Graph
 
     Align::VALTYPE get_type(SIZETYPE M, SWN &swn)
     {
-        if (swn.n==Dot::DotQ)
+        if (swn.n == Dot::DotQ)
             return VALTYPE::Q;
-        if (swn.n==Dot::DotAbar)
+        if (swn.n == Dot::DotAbar)
             return VALTYPE::ABAR;
         if (swn.n>=0)
         {
@@ -703,6 +716,13 @@ struct Align : Graph
                 }
             }
         }
+        else
+        {
+            if (swn.n % 2)
+                return VALTYPE::NA;
+            else
+                return VALTYPE::NB;
+        }
         return VALTYPE::OTHERS;
     }
 
@@ -713,32 +733,26 @@ struct Align : Graph
         fout.write((char *)&swn.w, sizeof(Dot::w));
         fout.write((char *)&Mval, sizeof(Dot::val));
         SOURCESIZE s_sz;
-        if (type==VALTYPE::Q)
+        switch (type)
         {
+        case VALTYPE::Q:
             s_sz = 0;
             for (SIZETYPE i = 0; i < Qbools.size(); ++i)
                 if (Qbools[i])
                     ++s_sz;
-        }
-        else
-        {
-            if (type==VALTYPE::ABAR)
-                s_sz = 0;
-            else
-            {
-                if (type==VALTYPE::LID0 || type==VALTYPE::SID0)
-                    s_sz = 1;
-                else
-                {
-                    if (type==VALTYPE::SIDX)
-                    {
-                        EdgeLocalCircuit *egcr = (EdgeLocalCircuit *) edges[swn.n];
-                        s_sz = (egcr->DXbits[swn.s*(Omax+1)+swn.w] + 1) / 2;
-                    }
-                    else
-                        s_sz = s_szs[M];
-                }
-            }
+            break;
+        case VALTYPE::ABAR:
+            s_sz = 0;
+            break;
+        case VALTYPE::NB: case VALTYPE::SIDX:
+            s_sz = (bits[M] + 1) / 2; // 0, 1, 3 -> 0, 1, 2
+            break;
+        case VALTYPE::LID0: case VALTYPE::SID0:
+            s_sz = 1;
+            break;
+        default:
+            s_sz = s_szs[M];
+            break;
         }
         fout.write((char *)&s_sz, sizeof(Dot::s_sz));
         fout.write((char *)&s_sz, sizeof(Dot::lambda)); // strange
@@ -810,40 +824,48 @@ struct Align : Graph
                 valuequeue.pop();
                 SWN swn = get_swn(M);
                 Align::VALTYPE type = get_type(M, swn);
-                if (swn.n < Dot::DotQ && swn.s == 0)
+                if (swn.n < Dot::DotQ && swn.n % 2 && swn.s == 0)
                     GlobalTrack(edge2tailAvals, Mval, M, swn, type, globalqueue, localqueue, valuequeue, id);
                 else
                 {
                     outputdot(Mval, M, swn, type);
-                    if (type==VALTYPE::Q)
+                    switch (type)
                     {
+                    case VALTYPE::Q:
                         for (SIZETYPE i = 0, j = 0; i < nodes.size(); ++i)
                             if (nodes[i].is_target && Qbools[j])
                             {
                                 arrangesource(valuequeue, &(nodes[i].Avals[nodes[i].scc_sz - 1][O.size()]), localqueue, id);
                                 Qbools[j++] = false;
                             }
-                    }
-                    else
+                        break;
+                    case VALTYPE::ABAR:
+                        break;
+                    case VALTYPE::NB:
                     {
-                        if (type==VALTYPE::LID0 || type==VALTYPE::SID0)
-                            arrangesource(valuequeue, &(edges[swn.n]->tail->Avals[swn.s][swn.w]), localqueue, id);
-                        else
-                        {
-                            if (type==VALTYPE::SIDX)
-                            {
-                                EdgeLocalCircuit *egcr = (EdgeLocalCircuit *) edges[swn.n];
-                                uint8_t &DXbit = egcr->DXbits[swn.s*(Omax+1)+swn.w];
-                                if (DXbit & uint8_t(1))
-                                    arrangesource(valuequeue, &(egcr->tail->Avals[swn.s][swn.w]), localqueue, id);
-                                if (DXbit & uint8_t(2))
-                                    arrangesource(valuequeue, &(egcr->D0vals[swn.s][swn.w]), localqueue, id);
-                                DXbit = 0;
-                            }
-                            else if (type!=VALTYPE::ABAR)
-                                for (SIZETYPE i = 0; i < s_szs[M]; ++i)
-                                    arrangesource(valuequeue, sourcess[M][i], localqueue, id);
-                        }    
+                        DOTTYPE n = Dot::DOTTYPE2NODEIDX(swn.n);
+                        if (bits[M] & uint8_t(1))
+                            arrangesource(valuequeue, &(nodes[n].Bvals[swn.w - 1]), localqueue, id);
+                        if (bits[M] & uint8_t(2))
+                            arrangesource(valuequeue, &(nodes[n].Avals[nodes[n].scc_sz - 1][swn.w - 1]), localqueue, id);
+                        break;
+                    }
+                    case VALTYPE::LID0: case VALTYPE::SID0:
+                        arrangesource(valuequeue, &(edges[swn.n]->tail->Avals[swn.s][swn.w]), localqueue, id);
+                        break;
+                    case VALTYPE::SIDX:
+                    {
+                        EdgeLocalCircuit *edge = (EdgeLocalCircuit *) edges[swn.n];
+                        if (bits[M] & uint8_t(1))
+                            arrangesource(valuequeue, &(edge->tail->Avals[swn.s][swn.w]), localqueue, id);
+                        if (bits[M] & uint8_t(2))
+                            arrangesource(valuequeue, &(edge->D0vals[swn.s][swn.w]), localqueue, id);
+                        break;
+                    }
+                    default:
+                        for (SIZETYPE i = 0; i < s_szs[M]; ++i)
+                            arrangesource(valuequeue, sourcess[M][i], localqueue, id);
+                        break;
                     }
                 }
             }
@@ -878,7 +900,7 @@ struct Align : Graph
 
     void GlobalTrack(std::map<Edge *, std::unique_ptr<SCORETYPE []>> &edge2tailAvals, SCORETYPE Mval, SIZETYPE M, SWN &swn, Align::VALTYPE type, std::queue<Dot *> &globalqueue, std::queue<SIZETYPE> &localqueue, std::queue<SCORETYPE> &valuequeue, IDTYPE &id)
     {
-        Node &node = nodes[Dot::nidx_trans(swn.n)];
+        Node &node = nodes[Dot::DOTTYPE2NODEIDX(swn.n)];
         s_szs[M] = node.AdeltaGlobal[swn.w].size() + node.AdeltaDot[swn.w].size();
         outputdot(Mval, M, swn, type);
         for (SCORETYPE *source : node.AdeltaDot[swn.w])

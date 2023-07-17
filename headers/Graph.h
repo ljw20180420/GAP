@@ -12,14 +12,13 @@ using QUERYSIZE = uint32_t;
 using SHORTSIZE = uint32_t;
 using IDTYPE = uint64_t;
 using SCORETYPE = int32_t;
-// using SCORETYPE = double;
 using SOURCESIZE = uint32_t;
-// constexpr static const SCORETYPE inf = std::numeric_limits<SCORETYPE>::infinity();
+using BITSTYPE = uint8_t; // this is used for track the alignment, e.g. 8bits (uint8_t) can track 8 maxmial sources
 constexpr static const SCORETYPE inf = std::numeric_limits<SCORETYPE>::max() / 2;
 
 struct Dot
 {
-    static const DOTTYPE DotQ = -3, DotAbar = -2, DotB = -1;
+    static const DOTTYPE DotQ = -3, DotAbar = -2;
 
     DOTTYPE n; // n determines the type of Dot
     SIZETYPE s;
@@ -30,9 +29,19 @@ struct Dot
     QUERYSIZE lambda;
     IDTYPE id;
 
-    static DOTTYPE nidx_trans(DOTTYPE nidx)
+    static DOTTYPE DOTTYPE2NODEIDX(DOTTYPE nidx)
     {
-        return -nidx - 4;
+        return (-nidx - 4) / 2;
+    }
+
+    static DOTTYPE NODEIDX2DOTTYPEB(DOTTYPE nidx)
+    {
+        return -2 * nidx - 4;
+    }
+
+    static DOTTYPE NODEIDX2DOTTYPEA(DOTTYPE nidx)
+    {
+        return -2 * nidx - 5;
     }
 };
 
@@ -150,8 +159,8 @@ struct Node
     void apply_memory(SIZETYPE Aso, QUERYSIZE Omax, SCORETYPE *&fpval, SCORETYPE **&fpsource, SCORETYPE ***&fpsources, SOURCESIZE *&fps_sz, SHORTSIZE *&fps, DOTTYPE *&fpn, SCORETYPE *&rpval)
     {
         std::unique_ptr<SIZETYPE []> Ss(new SIZETYPE[1]{scc_sz});
-        extend_ss_ns(1, -1, fps, fpn);
-        extend_ss_ns(1, Ss.get(), Dot::nidx_trans(n), fps, fpn);
+        extend_ss_ns(1, Dot::NODEIDX2DOTTYPEB(n), fps, fpn);
+        extend_ss_ns(1, Ss.get(), Dot::NODEIDX2DOTTYPEA(n), fps, fpn);
         type_initial(fpval, {&Bvals}, {&Avals}, Ss.get(), Omax);
         pAbarval = --rpval;
         SCORETYPE ***fpsources_old = fpsources;
@@ -271,7 +280,6 @@ struct EdgeLocalCircuit : EdgeLocal
     SCORETYPE ***Dsourcess;
     std::unique_ptr<SOURCESIZE *[]> Es_szs, F0s_szs, G0s_szs, Gs_szs;
     SOURCESIZE *Ds_szs;
-    std::unique_ptr<uint8_t []> DXbits;
 
     EdgeLocalCircuit(EdgeLocal &edge)
         : EdgeLocal(edge)
@@ -310,7 +318,6 @@ struct EdgeLocalCircuit : EdgeLocal
 
     void apply_memory(QUERYSIZE Omax, SCORETYPE *&fpval, SCORETYPE **&fpsource, SCORETYPE ***&fpsources, SOURCESIZE *&fps_sz, SHORTSIZE *&fps, DOTTYPE *&fpn, SHORTSIZE ref_sz)
     {
-        DXbits.reset(new uint8_t[(tail->scc_sz-1)*(Omax+1)]);
         std::unique_ptr<SIZETYPE []> Ss(get_Ss(ref_sz));
         extend_ss_ns(1, n, fps, fpn);
         extend_ss_ns(6, Ss.get(), n, fps, fpn);
@@ -395,7 +402,6 @@ struct Graph
     std::unique_ptr<SCORETYPE *[]> sources;
     std::unique_ptr<SCORETYPE **[]> sourcess;
     std::unique_ptr<SOURCESIZE []> s_szs;
-    std::unique_ptr<IDTYPE []> ids;
     std::unique_ptr<SHORTSIZE []> ss;
     std::unique_ptr<DOTTYPE []> ns;
     SIZETYPE trn, tnn, tsn;
