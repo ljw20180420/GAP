@@ -18,7 +18,7 @@ constexpr static const SCORETYPE inf = std::numeric_limits<SCORETYPE>::max() / 2
 
 struct Dot
 {
-    static const DOTTYPE DotQ = -3, DotAbar = -2;
+    static const DOTTYPE DotQ = -2, DotAbar = -1;
 
     DOTTYPE n; // n determines the type of Dot
     SIZETYPE s;
@@ -31,17 +31,17 @@ struct Dot
 
     static DOTTYPE DOTTYPE2NODEIDX(DOTTYPE nidx)
     {
-        return (-nidx - 4) / 2;
+        return (-nidx + DotQ - 1) / 2;
     }
 
     static DOTTYPE NODEIDX2DOTTYPEB(DOTTYPE nidx)
     {
-        return -2 * nidx - 4;
+        return -2 * nidx + DotQ - 1;
     }
 
     static DOTTYPE NODEIDX2DOTTYPEA(DOTTYPE nidx)
     {
-        return -2 * nidx - 5;
+        return -2 * nidx + DotQ - 2;
     }
 };
 

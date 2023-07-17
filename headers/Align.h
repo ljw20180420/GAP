@@ -719,9 +719,9 @@ struct Align : Graph
         else
         {
             if (swn.n % 2)
-                return VALTYPE::NA;
-            else
                 return VALTYPE::NB;
+            else
+                return VALTYPE::NA;
         }
         return VALTYPE::OTHERS;
     }
@@ -824,7 +824,7 @@ struct Align : Graph
                 valuequeue.pop();
                 SWN swn = get_swn(M);
                 Align::VALTYPE type = get_type(M, swn);
-                if (swn.n < Dot::DotQ && swn.n % 2 && swn.s == 0)
+                if (swn.n < Dot::DotQ && !(swn.n % 2) && swn.s == 0)
                     GlobalTrack(edge2tailAvals, Mval, M, swn, type, globalqueue, localqueue, valuequeue, id);
                 else
                 {
