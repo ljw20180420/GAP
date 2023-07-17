@@ -223,18 +223,16 @@ struct Align : Graph
         SCORETYPE **fpsource = sources.get();
         SCORETYPE ***fpsources = sourcess.get();
         SOURCESIZE *fps_sz = s_szs.get();
-        IDTYPE *fpid = ids.get(), *rpid = fpid + tnn;
-        pQid = --rpid;
         SHORTSIZE *fps = ss.get();
         DOTTYPE *fpn = ns.get();
         for (SIZETYPE i=0; i<nodes.size(); ++i)
-            nodes[i].apply_memory(Asos[i], Omax, fpval, fpsource, fpsources, fps_sz, fpid, fps, fpn, rpval, rpid);
+            nodes[i].apply_memory(Asos[i], Omax, fpval, fpsource, fpsources, fps_sz, fps, fpn, rpval);
         for (EdgeLocalCross &edge : local_crosses)
-            edge.apply_memory(Omax, fpval, fpsource, fpsources, fps_sz, fpid, fps, fpn, file2short[edge.name].second);
+            edge.apply_memory(Omax, fpval, fpsource, fpsources, fps_sz, fps, fpn, file2short[edge.name].second);
         for (EdgeLocalCircuit &edge : local_circuits)
-            edge.apply_memory(Omax, fpval, fpsource, fpsources, fps_sz, fpid, fps, fpn, file2short[edge.name].second);
+            edge.apply_memory(Omax, fpval, fpsource, fpsources, fps_sz, fps, fpn, file2short[edge.name].second);
         for (EdgeGlobalCircuit &edge : global_circuits)
-            edge.apply_memory(Omax, fpval, fpid, fps, fpn);
+            edge.apply_memory(Omax, fpval, fps, fpn);
     }
 
     struct SWN
@@ -798,7 +796,7 @@ struct Align : Graph
         std::queue<SIZETYPE> localqueue;
         std::queue<SCORETYPE> valuequeue;
         IDTYPE id = 0;
-        *pQid = id;
+        ids[pQval-vals.get()] = id;
         localqueue.push(pQval - vals.get());
         valuequeue.push(*pQval);
         *pQval = -inf;
