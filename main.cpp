@@ -93,7 +93,7 @@ int main(int argc, char **argv)
             if (file2short.count(file))
                 continue;
             file2short[file].second = std::filesystem::file_size(file);
-            file2short[file].first.reset(new uint8_t[file2short[file].second]);
+            file2short[file].first.reset(new NUCTYPE[file2short[file].second]);
             std::ifstream fin(file);
             fin.read((char*)file2short[file].first.get(), file2short[file].second);
         }

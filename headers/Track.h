@@ -313,8 +313,10 @@ struct Track : Graph
                     SIZETYPE segdiff;
                     if (file2short.count(edges[megasources[extract1[2 * i - 1]].first->n]->name))
                     {
-                        int64_t inter = std::min(megasources[extract1[2 * i - 1]].first->s, megasources[extract2[2 * j - 1]].first->s) - std::max(megasources[extract1[2 * i - 2]].first->s, megasources[extract2[2 * j - 2]].first->s); // inter may be minus, so use signed type int64_t
-                        segdiff = Fd[i - 1] + Ed[j - 1] - 2 * (inter > 0 ? inter : 0);
+                        SIZETYPE right_min = std::min(megasources[extract1[2 * i - 1]].first->s, megasources[extract2[2 * j - 1]].first->s);
+                        SIZETYPE left_max = std::max(megasources[extract1[2 * i - 2]].first->s, megasources[extract2[2 * j - 2]].first->s);
+                        SIZETYPE inter = right_min > left_max ? right_min - left_max : 0;
+                        segdiff = Fd[i - 1] + Ed[j - 1] - 2 * inter;
                     }
                     else
                     {
@@ -329,7 +331,7 @@ struct Track : Graph
 
     SIZETYPE global_dis(std::map<std::string, std::deque<std::pair<SIZETYPE, SIZETYPE>>> &seqranges1, std::map<std::string, std::deque<std::pair<SIZETYPE, SIZETYPE>>> &seqranges2)
     {
-        int64_t max_inter = 0; // max_inter need compare with int64_t inter, thereby being int64_t as well
+        SIZETYPE max_inter = 0;
         for (auto it1 = seqranges1.begin(), it2 = seqranges2.begin(); it1 != seqranges1.end() && it2 != seqranges2.end();)
         {
             int cmp = it1->first.compare(it2->first);
@@ -342,8 +344,8 @@ struct Track : Graph
                 for (std::pair<SIZETYPE, SIZETYPE> &range1 : it1->second)
                     for (std::pair<SIZETYPE, SIZETYPE> &range2 : it2->second)
                     {
-                        int64_t inter = std::min(range1.second, range2.second) - std::max(range1.first, range2.first);
-                        max_inter = std::max(max_inter, inter);
+                        SIZETYPE right_min = std::min(range1.second, range2.second), left_max = std::max(range1.first, range2.first);
+                        max_inter = right_min > left_max ? std::max(max_inter, right_min - left_max) : max_inter;
                     }
                 ++it1;
                 ++it2;
