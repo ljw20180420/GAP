@@ -612,10 +612,26 @@ struct Align : Graph
                     bits[M] += 2;
             }
 
+            M = &G0vals[s][w] - vals.get();
+            bits[M] = 0;
             if (s > 0 && w > 0)
-                source_max(&G0vals[s][w], {&Evals[s][w], &F0vals[s][w], &Gvals[s - 1][w - 1]}, {Evals[s][w], F0vals[s][w], Gvals[s - 1][w - 1] + edge->gamma[ref[s - 1]][O[w - 1]]});
+            {
+                G0vals[s][w] = std::max({Evals[s][w], F0vals[s][w], Gvals[s - 1][w - 1] + edge->gamma[ref[s - 1]][O[w - 1]]});
+                if (G0vals[s][w] == Evals[s][w])
+                    bits[M] += 1;
+                if (G0vals[s][w] == F0vals[s][w])
+                    bits[M] += 2;
+                if (G0vals[s][w] == Gvals[s - 1][w - 1] + edge->gamma[ref[s - 1]][O[w - 1]])
+                    bits[M] += 4;
+            }
             else
-                source_max(&G0vals[s][w], {&Evals[s][w], &F0vals[s][w]}, {Evals[s][w], F0vals[s][w]});
+            {
+                G0vals[s][w] = std::max(Evals[s][w], F0vals[s][w]);
+                if (G0vals[s][w] == Evals[s][w])
+                    bits[M] += 1;
+                if (G0vals[s][w] == F0vals[s][w])
+                    bits[M] += 2;
+            }
             edge->head->updateA0(w, G0vals[s][w], &G0vals[s][w]);
         }
     }
@@ -785,7 +801,7 @@ struct Align : Graph
         SOURCESIZE s_sz;
         switch (type)
         {
-        case VALTYPE::NB: case VALTYPE::SIDX: case VALTYPE::SIE: case VALTYPE::SIF0: case VALTYPE::SIG:
+        case VALTYPE::NB: case VALTYPE::SIDX: case VALTYPE::SIE: case VALTYPE::SIF0: case VALTYPE::SIG0: case VALTYPE::SIG:
             s_sz = std::popcount(bits[M]);
             break;
         case VALTYPE::Q:
@@ -910,6 +926,17 @@ struct Align : Graph
                             arrangesource(valuequeue, &vals[M-Omax-1], localqueue, id);
                         if (bits[M] & 2)
                             arrangesource(valuequeue, &(edge->G0vals[swn.s - 1][swn.w]), localqueue, id);
+                        break;
+                    }
+                    case VALTYPE::SIG0:
+                    {
+                        EdgeLocalCircuit *edge = (EdgeLocalCircuit *)edges[swn.n];
+                        if (bits[M] & uint8_t(1))
+                            arrangesource(valuequeue, &(edge->Evals[swn.s][swn.w]), localqueue, id);
+                        if (bits[M] & uint8_t(2))
+                            arrangesource(valuequeue, &(edge->F0vals[swn.s][swn.w]), localqueue, id);
+                        if (bits[M] & uint8_t(4))
+                            arrangesource(valuequeue, &(edge->Gvals[swn.s - 1][swn.w - 1]), localqueue, id);
                         break;
                     }
                     case VALTYPE::SIG:
