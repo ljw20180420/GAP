@@ -452,26 +452,26 @@ struct Align : Graph
                 SIZETYPE M = &Evals[s][w] - vals.get();
                 bits[M] = 0;
                 if (w == 0)
-                    Evals[s][w] = -inf;
+                    vals[M] = -inf;
                 else
                 {
-                    Evals[s][w] = std::max(Evals[s][w - 1] + edge->ue, Gvals[s][w - 1] + edge->ve);
-                    if (Evals[s][w] == Evals[s][w - 1] + edge->ue)
+                    vals[M] = std::max(Evals[s][w - 1] + edge->ue, Gvals[s][w - 1] + edge->ve);
+                    if (vals[M] == Evals[s][w - 1] + edge->ue)
                         bits[M] += 1;
-                    if (Evals[s][w] == Gvals[s][w - 1] + edge->ve)
+                    if (vals[M] == Gvals[s][w - 1] + edge->ve)
                         bits[M] += 2;
                 }
 
                 M = &Fvals[s][w] - vals.get();
                 bits[M] = 0;
                 if (s == 0)
-                    Fvals[s][w] = -inf;
+                    vals[M] = -inf;
                 else
                 {
-                    Fvals[s][w] = std::max(Fvals[s - 1][w] + edge->uf, Gvals[s - 1][w] + edge->vf);
-                    if (Fvals[s][w] == Fvals[s - 1][w] + edge->uf)
+                    vals[M] = std::max(Fvals[s - 1][w] + edge->uf, Gvals[s - 1][w] + edge->vf);
+                    if (vals[M] == Fvals[s - 1][w] + edge->uf)
                         bits[M] += 1;
-                    if (Fvals[s][w] == Gvals[s - 1][w] + edge->vf)
+                    if (vals[M] == Gvals[s - 1][w] + edge->vf)
                         bits[M] += 2;
                 }
                 
@@ -479,9 +479,9 @@ struct Align : Graph
                 if (s > 0 && w > 0)
                     scores[3] = Gvals[s - 1][w - 1] + edge->gamma[ref[s - 1]][O[w - 1]];
                 M = &Gvals[s][w] - vals.get();
-                vals[M] = -inf;
-                bits[M] = 0;
-                for (SIZETYPE i = 0, bi = 1; i < 4; ++i, bi *= 2)
+                vals[M] = scores[0];
+                bits[M] = 1;
+                for (SIZETYPE i = 1, bi = 2; i < 4; ++i, bi *= 2)
                     if (scores[i] >= vals[M])
                     {
                         if (scores[i] > vals[M])
@@ -600,74 +600,71 @@ struct Align : Graph
         {
             if (w > 0)
             {
-                SIZETYPE M = &(Gvals[s][w - 1]) - vals.get();
-                bits[M] = 0;
+                SCORETYPE scores[3] = {G0vals[s][w - 1], Dvals[w - 1] + edge->gf[s], -inf};
                 if (s > 0)
+                    scores[2] = Avals[w - 1] + edge->gfpT[s];
+                SIZETYPE M = &(Gvals[s][w - 1]) - vals.get();
+                vals[M] = scores[0];
+                bits[M] = 1;
+                for (SIZETYPE i = 1, bi = 2; i < 3; ++i, bi *= 2)
                 {
-                    Gvals[s][w - 1] = std::max({G0vals[s][w - 1], Dvals[w - 1] + edge->gf[s], Avals[w - 1] + edge->gfpT[s]});    
-                    if (Gvals[s][w - 1] == G0vals[s][w - 1])
-                        bits[M] += 1;
-                    if (Gvals[s][w - 1] == Dvals[w - 1] + edge->gf[s])
-                        bits[M] += 2;
-                    if (Gvals[s][w - 1] == Avals[w - 1] + edge->gfpT[s])
-                        bits[M] += 4;
-                }
-                else
-                {
-                    Gvals[s][w - 1] = std::max(G0vals[s][w - 1], Dvals[w - 1]);
-                    if (Gvals[s][w - 1] == G0vals[s][w - 1])
-                        bits[M] += 1;
-                    if (Gvals[s][w - 1] == Dvals[w - 1])
-                        bits[M] += 2;
+                    if (scores[i] >= vals[M])
+                    {
+                        if (scores[i] > vals[M])
+                        {
+                            vals[M] = scores[i];
+                            bits[M] = 0;
+                        }
+                        bits[M] += bi;
+                    }
                 }
             }
 
             SIZETYPE M = &Evals[s][w] - vals.get();
             bits[M] = 0;
             if (w == 0)
-                Evals[s][w] = -inf;
+                vals[M] = -inf;
             else
             {
-                Evals[s][w] = std::max(Evals[s][w - 1] + edge->ue, Gvals[s][w - 1] + edge->ve);
-                if (Evals[s][w] == Evals[s][w - 1] + edge->ue)
+                vals[M] = std::max(Evals[s][w - 1] + edge->ue, Gvals[s][w - 1] + edge->ve);
+                if (vals[M] == Evals[s][w - 1] + edge->ue)
                     bits[M] += 1;
-                if (Evals[s][w] == Gvals[s][w - 1] + edge->ve)
+                if (vals[M] == Gvals[s][w - 1] + edge->ve)
                     bits[M] += 2;
             }
                 
             M = &F0vals[s][w] - vals.get();
             bits[M] = 0;
             if (s == 0)
-                F0vals[s][w] = -inf;
+                vals[M] = -inf;
             else
             {
-                F0vals[s][w] = std::max(F0vals[s - 1][w] + edge->uf, G0vals[s - 1][w] + edge->vf);
-                if (F0vals[s][w] == F0vals[s - 1][w] + edge->uf)
+                vals[M] = std::max(F0vals[s - 1][w] + edge->uf, G0vals[s - 1][w] + edge->vf);
+                if (vals[M] == F0vals[s - 1][w] + edge->uf)
                     bits[M] += 1;
-                if (F0vals[s][w] == G0vals[s - 1][w] + edge->vf)
+                if (vals[M] == G0vals[s - 1][w] + edge->vf)
                     bits[M] += 2;
             }
 
-            M = &G0vals[s][w] - vals.get();
-            bits[M] = 0;
+            SCORETYPE scores[3] = {Evals[s][w], F0vals[s][w], -inf};
             if (s > 0 && w > 0)
+                scores[2] = Gvals[s - 1][w - 1] + edge->gamma[ref[s - 1]][O[w - 1]];
+            M = &G0vals[s][w] - vals.get();
+            vals[M] = scores[0];
+            bits[M] = 1;
+            for (SIZETYPE i = 1, bi = 2; i < 3; ++i, bi *= 2)
             {
-                G0vals[s][w] = std::max({Evals[s][w], F0vals[s][w], Gvals[s - 1][w - 1] + edge->gamma[ref[s - 1]][O[w - 1]]});
-                if (G0vals[s][w] == Evals[s][w])
-                    bits[M] += 1;
-                if (G0vals[s][w] == F0vals[s][w])
-                    bits[M] += 2;
-                if (G0vals[s][w] == Gvals[s - 1][w - 1] + edge->gamma[ref[s - 1]][O[w - 1]])
-                    bits[M] += 4;
+                if (scores[i] >= vals[M])
+                {
+                    if (scores[i] > vals[M])
+                    {
+                        vals[M] = scores[i];
+                        bits[M] = 0;
+                    }
+                    bits[M] += bi;
+                }
             }
-            else
-            {
-                G0vals[s][w] = std::max(Evals[s][w], F0vals[s][w]);
-                if (G0vals[s][w] == Evals[s][w])
-                    bits[M] += 1;
-                if (G0vals[s][w] == F0vals[s][w])
-                    bits[M] += 2;
-            }
+
             edge->head->updateA0(w, G0vals[s][w], &G0vals[s][w]);
         }
     }
