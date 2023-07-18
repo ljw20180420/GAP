@@ -475,30 +475,22 @@ struct Align : Graph
                         bits[M] += 2;
                 }
                 
+                SCORETYPE scores[4] = {Evals[s][w], Fvals[s][w], Avals[w] + edge->gfpT[s], -inf};
+                if (s > 0 && w > 0)
+                    scores[3] = Gvals[s - 1][w - 1] + edge->gamma[ref[s - 1]][O[w - 1]];
                 M = &Gvals[s][w] - vals.get();
+                vals[M] = -inf;
                 bits[M] = 0;
-                if (s == 0 || w == 0)
-                {
-                    Gvals[s][w] = std::max({Evals[s][w], Fvals[s][w], Avals[w] + edge->gfpT[s]});
-                    if (Gvals[s][w] == Evals[s][w])
-                        bits[M] += 1;
-                    if (Gvals[s][w] == Fvals[s][w])
-                        bits[M] += 2;
-                    if (Gvals[s][w] == Avals[w] + edge->gfpT[s])
-                        bits[M] += 4;
-                }
-                else
-                {
-                    Gvals[s][w] = std::max({Evals[s][w], Fvals[s][w], Avals[w] + edge->gfpT[s], Gvals[s - 1][w - 1] + edge->gamma[ref[s - 1]][O[w - 1]]});
-                    if (Gvals[s][w] == Evals[s][w])
-                        bits[M] += 1;
-                    if (Gvals[s][w] == Fvals[s][w])
-                        bits[M] += 2;
-                    if (Gvals[s][w] == Avals[w] + edge->gfpT[s])
-                        bits[M] += 4;
-                    if (Gvals[s][w] == Gvals[s - 1][w - 1] + edge->gamma[ref[s - 1]][O[w - 1]])
-                        bits[M] += 8;
-                }
+                for (SIZETYPE i = 0, bi = 1; i < 4; ++i, bi *= 2)
+                    if (scores[i] >= vals[M])
+                    {
+                        if (scores[i] > vals[M])
+                        {
+                            vals[M] = scores[i];
+                            bits[M] = 0;
+                        }
+                        bits[M] += bi;
+                    }
 
                 edge->head->updateA0(w, Gvals[s][w], &Gvals[s][w]);
             }
