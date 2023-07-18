@@ -207,9 +207,6 @@ struct Align : Graph
             tnn += edge.get_tnn(Omax, ref_sz);
             tsn += edge.get_tsn(Omax, ref_sz);
         }
-        sources.reset(new SCORETYPE *[tsn]);
-        sourcess.reset(new SCORETYPE **[tnn-1-nodes.size()]);
-        s_szs.reset(new SOURCESIZE[tnn-1-nodes.size()]);
         for (EdgeGlobalCircuit &edge : global_circuits)
         {
             trn += edge.get_trn();
@@ -223,17 +220,14 @@ struct Align : Graph
 
         SCORETYPE *fpval = vals.get(), *rpval = fpval + tnn;
         pQval = --rpval;
-        SCORETYPE **fpsource = sources.get();
-        SCORETYPE ***fpsources = sourcess.get();
-        SOURCESIZE *fps_sz = s_szs.get();
         SHORTSIZE *fps = ss.get();
         DOTTYPE *fpn = ns.get();
         for (SIZETYPE i=0; i<nodes.size(); ++i)
-            nodes[i].apply_memory(Asos[i], Omax, fpval, fpsource, fpsources, fps_sz, fps, fpn, rpval);
+            nodes[i].apply_memory(Asos[i], Omax, fpval, fps, fpn, rpval);
         for (EdgeLocalCross &edge : local_crosses)
-            edge.apply_memory(Omax, fpval, fpsource, fpsources, fps_sz, fps, fpn, file2short[edge.name].second);
+            edge.apply_memory(Omax, fpval, fps, fpn, file2short[edge.name].second);
         for (EdgeLocalCircuit &edge : local_circuits)
-            edge.apply_memory(Omax, fpval, fpsource, fpsources, fps_sz, fps, fpn, file2short[edge.name].second);
+            edge.apply_memory(Omax, fpval, fps, fpn, file2short[edge.name].second);
         for (EdgeGlobalCircuit &edge : global_circuits)
             edge.apply_memory(Omax, fpval, fps, fpn);
     }
@@ -855,7 +849,10 @@ struct Align : Graph
             break;
         case VALTYPE::NA:
             if (swn.s == 0)
-                s_sz = s_szs[M];
+            {
+                Node &node = nodes[Dot::DOTTYPE2NODEIDX(swn.n)];
+                s_sz = node.AdeltaGlobal[swn.w].size() + node.AdeltaDot[swn.w].size();
+            }
             else
                 s_sz = std::popcount(bits[M]);
             break;
@@ -1076,10 +1073,6 @@ struct Align : Graph
                             arrangesource(valuequeue, &(nodes[n].Avals[nodes[n].scc_sz - 1][swn.w - 1]), localqueue, id);
                         break;
                     }
-                    default:
-                        for (SIZETYPE i = 0; i < s_szs[M]; ++i)
-                            arrangesource(valuequeue, sourcess[M][i], localqueue, id);
-                        break;
                     }
                 }
             }
@@ -1115,7 +1108,6 @@ struct Align : Graph
     void GlobalTrack(std::map<Edge *, std::unique_ptr<SCORETYPE []>> &edge2tailAvals, SCORETYPE Mval, SIZETYPE M, SWN &swn, Align::VALTYPE type, std::queue<Dot *> &globalqueue, std::queue<SIZETYPE> &localqueue, std::queue<SCORETYPE> &valuequeue, IDTYPE &id)
     {
         Node &node = nodes[Dot::DOTTYPE2NODEIDX(swn.n)];
-        s_szs[M] = node.AdeltaGlobal[swn.w].size() + node.AdeltaDot[swn.w].size();
         outputdot(Mval, M, swn, type);
         for (SCORETYPE *source : node.AdeltaDot[swn.w])
             arrangesource(valuequeue, source, localqueue, id);

@@ -120,10 +120,6 @@ struct Node
 
     std::unique_ptr<SCORETYPE *[]> Avals;
     SCORETYPE *Bvals, *pAbarval;
-    std::unique_ptr<SCORETYPE ***[]> Asourcess;
-    SCORETYPE ***Bsourcess;
-    std::unique_ptr<SOURCESIZE *[]> As_szs;
-    SOURCESIZE *Bs_szs;
 
     std::unique_ptr<std::deque<SCORETYPE *> []> AdeltaDot;
 
@@ -146,31 +142,13 @@ struct Node
         return (2 + Aso * (scc_sz - 1)) * (Omax + 1);
     }
 
-    SIZETYPE *get_SE(QUERYSIZE Omax)
-    {
-        return new SIZETYPE[4]{0, Omax + 1, 2 * (Omax + 1), (1 + scc_sz) * (Omax + 1)};
-    }
-
-    SIZETYPE *get_steps(SIZETYPE Aso)
-    {
-        return new SIZETYPE[3]{2, 0, Aso};
-    }
-
-    void apply_memory(SIZETYPE Aso, QUERYSIZE Omax, SCORETYPE *&fpval, SCORETYPE **&fpsource, SCORETYPE ***&fpsources, SOURCESIZE *&fps_sz, SHORTSIZE *&fps, DOTTYPE *&fpn, SCORETYPE *&rpval)
+    void apply_memory(SIZETYPE Aso, QUERYSIZE Omax, SCORETYPE *&fpval, SHORTSIZE *&fps, DOTTYPE *&fpn, SCORETYPE *&rpval)
     {
         std::unique_ptr<SIZETYPE []> Ss(new SIZETYPE[1]{scc_sz});
         extend_ss_ns(1, Dot::NODEIDX2DOTTYPEB(n), fps, fpn);
         extend_ss_ns(1, Ss.get(), Dot::NODEIDX2DOTTYPEA(n), fps, fpn);
         type_initial(fpval, {&Bvals}, {&Avals}, Ss.get(), Omax);
         pAbarval = --rpval;
-        SCORETYPE ***fpsources_old = fpsources;
-        type_initial(fpsources, {&Bsourcess}, {&Asourcess}, Ss.get(), Omax);
-        std::unique_ptr<SIZETYPE []> SE(get_SE(Omax));
-        std::unique_ptr<SIZETYPE []> steps(get_steps(Aso));
-        for (SIZETYPE i = 0; i < 3; ++i)
-            for (SIZETYPE j = SE[i]; j < SE[i + 1]; ++j, fpsource += steps[i])
-                fpsources_old[j] = fpsource;
-        type_initial(fps_sz, {&Bs_szs}, {&As_szs}, Ss.get(), Omax);
 
         AdeltaDot.reset(new std::deque<SCORETYPE *>[Omax + 1]);
         AdeltaGlobal.reset(new std::deque<Node::GlobalSuffix>[Omax + 1]);
@@ -217,8 +195,6 @@ struct Node
 struct EdgeLocalCross : EdgeLocal
 {
     std::unique_ptr<SCORETYPE *[]> Evals, Fvals, Gvals;
-    std::unique_ptr<SCORETYPE ***[]> Esourcess, Fsourcess, Gsourcess;
-    std::unique_ptr<SOURCESIZE *[]> Es_szs, Fs_szs, Gs_szs;
 
     EdgeLocalCross(EdgeLocal &edge)
         : EdgeLocal(edge)
@@ -245,30 +221,11 @@ struct EdgeLocalCross : EdgeLocal
         return new SIZETYPE[3]{ref_sz+1, ref_sz+1, ref_sz+1};
     }
 
-    SIZETYPE *get_SE(QUERYSIZE Omax, SHORTSIZE ref_sz)
-    {
-        SIZETYPE mid = SIZETYPE(Omax + 1) * 2 * (ref_sz + 1);
-        return new SIZETYPE[3]{0, mid, get_tnn(Omax, ref_sz)};
-    }
-
-    SIZETYPE *get_steps()
-    {
-        return new SIZETYPE[2]{2, 4};
-    }
-
-    void apply_memory(QUERYSIZE Omax, SCORETYPE *&fpval, SCORETYPE **&fpsource, SCORETYPE ***&fpsources, SOURCESIZE *&fps_sz, SHORTSIZE *&fps, DOTTYPE *&fpn, SHORTSIZE ref_sz)
+    void apply_memory(QUERYSIZE Omax, SCORETYPE *&fpval, SHORTSIZE *&fps, DOTTYPE *&fpn, SHORTSIZE ref_sz)
     {
         std::unique_ptr<SIZETYPE []> Ss(get_Ss(ref_sz));
         extend_ss_ns(3, Ss.get(), n, fps, fpn);
         type_initial(fpval, {}, {&Evals, &Fvals, &Gvals}, Ss.get(), Omax);
-        SCORETYPE ***fpsources_old = fpsources;
-        type_initial(fpsources, {}, {&Esourcess, &Fsourcess, &Gsourcess}, Ss.get(), Omax);
-        std::unique_ptr<SIZETYPE []> SE(get_SE(Omax, ref_sz));
-        std::unique_ptr<SIZETYPE []> steps(get_steps());
-        for (SIZETYPE i = 0; i < 2; ++i)
-            for (SIZETYPE j = SE[i]; j < SE[i + 1]; ++j, fpsource += steps[i])
-                fpsources_old[j] = fpsource;
-        type_initial(fps_sz, {}, {&Es_szs, &Fs_szs, &Gs_szs}, Ss.get(), Omax);
     }
 };
 
@@ -276,10 +233,6 @@ struct EdgeLocalCircuit : EdgeLocal
 {
     std::unique_ptr<SCORETYPE *[]> Evals, F0vals, G0vals, Gvals, D0vals, DXvals;
     SCORETYPE *Dvals;
-    std::unique_ptr<SCORETYPE ***[]> Esourcess, F0sourcess, G0sourcess, Gsourcess;
-    SCORETYPE ***Dsourcess;
-    std::unique_ptr<SOURCESIZE *[]> Es_szs, F0s_szs, G0s_szs, Gs_szs;
-    SOURCESIZE *Ds_szs;
 
     EdgeLocalCircuit(EdgeLocal &edge)
         : EdgeLocal(edge)
@@ -306,32 +259,12 @@ struct EdgeLocalCircuit : EdgeLocal
         return new SIZETYPE[6]{ref_sz+1, ref_sz+1, ref_sz+1, ref_sz+1, tail->scc_sz-1, tail->scc_sz-1};
     }
 
-    SIZETYPE *get_SE(QUERYSIZE Omax, SHORTSIZE ref_sz)
-    {
-        return new SIZETYPE[6]{0, Omax + 1, SIZETYPE(Omax + 1) * (1 + 2 * (ref_sz + 1)), SIZETYPE(Omax + 1) * (1 + 4 * (ref_sz + 1))};
-    }
-
-    SIZETYPE *get_steps()
-    {
-        return new SIZETYPE[5]{1, 2, 3, 1, 2};
-    }
-
-    void apply_memory(QUERYSIZE Omax, SCORETYPE *&fpval, SCORETYPE **&fpsource, SCORETYPE ***&fpsources, SOURCESIZE *&fps_sz, SHORTSIZE *&fps, DOTTYPE *&fpn, SHORTSIZE ref_sz)
+    void apply_memory(QUERYSIZE Omax, SCORETYPE *&fpval, SHORTSIZE *&fps, DOTTYPE *&fpn, SHORTSIZE ref_sz)
     {
         std::unique_ptr<SIZETYPE []> Ss(get_Ss(ref_sz));
         extend_ss_ns(1, n, fps, fpn);
         extend_ss_ns(6, Ss.get(), n, fps, fpn);
         type_initial(fpval, {&Dvals}, {&Evals, &F0vals, &G0vals, &Gvals, &D0vals, &DXvals}, Ss.get(), Omax);
-        SCORETYPE ***fpsources_old = fpsources;
-        type_initial(fpsources, {&Dsourcess}, {&Esourcess, &F0sourcess, &G0sourcess, &Gsourcess}, Ss.get(), Omax);
-        fpsources += (tail->scc_sz - 1) * 2 * (Omax + 1);
-        std::unique_ptr<SIZETYPE []> SE(get_SE(Omax, ref_sz));
-        std::unique_ptr<SIZETYPE []> steps(get_steps());
-        for (SIZETYPE i = 0; i < 3; ++i)
-            for (SIZETYPE j = SE[i]; j < SE[i + 1]; ++j, fpsource += steps[i])
-                fpsources_old[j] = fpsource;
-        type_initial(fps_sz, {&Ds_szs}, {&Es_szs, &F0s_szs, &G0s_szs, &Gs_szs}, Ss.get(), Omax);
-        fps_sz += (tail->scc_sz - 1) * 2 * (Omax + 1);
     }
 };
 
@@ -399,16 +332,11 @@ struct Graph
     std::deque<Edge *> edges;
 
     std::unique_ptr<SCORETYPE []> vals;
-    std::unique_ptr<SCORETYPE *[]> sources;
-    std::unique_ptr<SCORETYPE **[]> sourcess;
-    std::unique_ptr<SOURCESIZE []> s_szs;
     std::unique_ptr<SHORTSIZE []> ss;
     std::unique_ptr<DOTTYPE []> ns;
     SIZETYPE trn, tnn, tsn;
 
     SCORETYPE *pQval;
-    SCORETYPE ***pQsources;
-    SOURCESIZE *pQs_sz;
 
     boost::program_options::variables_map &vm;
     std::map<std::string, std::pair<std::unique_ptr<NUCTYPE []>, SHORTSIZE>> &file2short;
