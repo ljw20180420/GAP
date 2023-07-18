@@ -135,9 +135,9 @@ int main(int argc, char **argv)
     // Align align(mtx, fin, vm, file2short, file2rankvec, "mg", Omax); // debug
     // align.run(); // debug
 
-    // // std::deque<std::string> mg_files; // debug
-    // // for (SIZETYPE i = 0; i < vm["threads_sz"].as<SIZETYPE>(); ++i) // debug
-    // //     mg_files.emplace_back("mg" + std::to_string(i)); // debug
+    // std::deque<std::string> mg_files; // debug
+    // for (SIZETYPE i = 0; i < vm["threads_sz"].as<SIZETYPE>(); ++i) // debug
+    //     mg_files.emplace_back("mg" + std::to_string(i)); // debug
 
     Track track(vm, file2short, file2rankvec); 
     track.ReadTrack(mg_files);

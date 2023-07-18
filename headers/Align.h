@@ -366,9 +366,9 @@ struct Align : Graph
                         EdgeLocalCircuit *circuit = (EdgeLocalCircuit *)edge;
                         SHORTSIZE ref_sz = file2short[circuit->name].second;
                         circuit->D0vals[l - 1][w] = circuit->tail->Avals[l - 1][w] + circuit->T;
-                        circuit->DXvals[l - 1][w] = std::max(circuit->tail->Avals[l - 1][w] + circuit->gfpT[ref_sz], circuit->D0vals[l - 1][w] + circuit->gf[ref_sz]);
                         SIZETYPE M = &(circuit->DXvals[l - 1][w]) - vals.get();
                         bits[M] = 0;
+                        circuit->DXvals[l - 1][w] = std::max(circuit->tail->Avals[l - 1][w] + circuit->gfpT[ref_sz], circuit->D0vals[l - 1][w] + circuit->gf[ref_sz]);
                         if (circuit->DXvals[l - 1][w] == circuit->tail->Avals[l - 1][w] + circuit->gfpT[ref_sz])
                             bits[M] += 1;
                         if (circuit->DXvals[l - 1][w] == circuit->D0vals[l - 1][w] + circuit->gf[ref_sz])
@@ -379,42 +379,40 @@ struct Align : Graph
                         if (node.scc_id != scc_id)
                             continue;
                         
+                        SIZETYPE M = &node.Avals[l][w] - vals.get();
                         node.Avals[l][w] = node.Avals[0][w];
+                        bits[M] = 1;
+                        SIZETYPE ei = 1;
                         for (Edge *edge : edges)
                         {
-                            if (edge->head != &node || edge->tail->scc_id != scc_id || !file2short.count(edge->name))
+                            if (edge->head != &node || edge->tail->scc_id != scc_id)
                                 continue;
-                            EdgeLocalCircuit *circuit = (EdgeLocalCircuit *)edge;
-                            node.Avals[l][w] = std::max({node.Avals[l][w], circuit->D0vals[l - 1][w] + circuit->gfm, circuit->DXvals[l - 1][w]});
-                        }
-                        for (Edge *edge : edges)
-                        {
-                            if (edge->head != &node || edge->tail->scc_id != scc_id || !file2long.count(edge->name))
-                                continue;
-                            EdgeGlobalCircuit *circuit = (EdgeGlobalCircuit *)edge;
-                            node.Avals[l][w] = std::max(node.Avals[l][w], circuit->D0vals[l - 1][w]);
-                        }
-                        SIZETYPE idx = &node.Avals[l][w] - vals.get();
-                        s_szs[idx] = 0;
-                        if (node.Avals[0][w] == node.Avals[l][w])
-                            sourcess[idx][s_szs[idx]++] = &node.Avals[0][w];
-                        for (Edge *edge : edges)
-                        {
-                            if (edge->head != &node || edge->tail->scc_id != scc_id || !file2short.count(edge->name))
-                                continue;
-                            EdgeLocalCircuit *circuit = (EdgeLocalCircuit *)edge;
-                            if (circuit->D0vals[l - 1][w] + circuit->gfm == node.Avals[l][w])
-                                sourcess[idx][s_szs[idx]++] = &circuit->D0vals[l - 1][w];
-                            if (circuit->DXvals[l - 1][w] == node.Avals[l][w])
-                                sourcess[idx][s_szs[idx]++] = &circuit->DXvals[l - 1][w];
-                        }
-                        for (Edge *edge : edges)
-                        {
-                            if (edge->head != &node || edge->tail->scc_id !=scc_id || !file2long.count(edge->name))
-                                continue;
-                            EdgeGlobalCircuit *circuit = (EdgeGlobalCircuit *)edge;
-                            if (circuit->D0vals[l - 1][w] == node.Avals[l][w])
-                                sourcess[idx][s_szs[idx]++] = &circuit->D0vals[l - 1][w];
+                            ei *= 2;
+                            if (ei > std::numeric_limits<BITSTYPE>::max())
+                            {
+                                std::cerr << "the upper limits of BITSTYPE reached by node" << node.n << ", A[" << l << "][" << w << "]\n";
+                                break;
+                            }
+                            SCORETYPE Dscore;
+                            if (file2short.count(edge->name))
+                            {
+                                EdgeLocalCircuit *circuit = (EdgeLocalCircuit *)edge;
+                                Dscore = std::max(circuit->D0vals[l - 1][w] + circuit->gfm, circuit->DXvals[l - 1][w]);
+                            }
+                            else
+                            {
+                                EdgeGlobalCircuit *circuit = (EdgeGlobalCircuit *)edge;
+                                Dscore = circuit->D0vals[l - 1][w];
+                            }
+                            if (Dscore >= node.Avals[l][w])
+                            {
+                                if (Dscore > node.Avals[l][w])
+                                {
+                                    node.Avals[l][w] = Dscore;
+                                    bits[M] = 0;
+                                }
+                                bits[M] += ei;
+                            }
                         }
                     }
                 }
@@ -855,8 +853,11 @@ struct Align : Graph
         case VALTYPE::LID0: case VALTYPE::SID0: case VALTYPE::SID:
             s_sz = 1;
             break;
-        default:
-            s_sz = s_szs[M];
+        case VALTYPE::NA:
+            if (swn.s == 0)
+                s_sz = s_szs[M];
+            else
+                s_sz = std::popcount(bits[M]);
             break;
         }
         fout.write((char *)&s_sz, sizeof(Dot::s_sz));
@@ -929,7 +930,7 @@ struct Align : Graph
                 valuequeue.pop();
                 SWN swn = get_swn(M);
                 Align::VALTYPE type = get_type(M, swn);
-                if (swn.n < Dot::DotQ && !(swn.n % 2) && swn.s == 0)
+                if (type == VALTYPE::NA && swn.s == 0)
                     GlobalTrack(edge2tailAvals, Mval, M, swn, type, globalqueue, localqueue, valuequeue, id);
                 else
                 {
@@ -1030,6 +1031,40 @@ struct Align : Graph
                             arrangesource(valuequeue, &(edge->tail->Avals[swn.s][swn.w]), localqueue, id);
                         if (bits[M] & uint8_t(2))
                             arrangesource(valuequeue, &(edge->D0vals[swn.s][swn.w]), localqueue, id);
+                        break;
+                    }
+                    case VALTYPE::NA:
+                    {
+                        Node &node = nodes[Dot::DOTTYPE2NODEIDX(swn.n)];
+                        if (bits[M] & int8_t(1))
+                            arrangesource(valuequeue, &node.Avals[0][swn.w], localqueue, id);
+                        SIZETYPE ei = 1;
+                        for (Edge *edge : edges)
+                        {
+                            if (edge->head != &node || edge->tail->scc_id != node.scc_id)
+                                continue;
+                            ei *= 2;
+                            if (ei > std::numeric_limits<BITSTYPE>::max())
+                                break;
+                            if (bits[M] & int8_t(ei))
+                            {
+                                SCORETYPE *source;
+                                if (file2short.count(edge->name))
+                                {
+                                    EdgeLocalCircuit *circuit = (EdgeLocalCircuit *)edge;
+                                    if (Mval == circuit->D0vals[swn.s - 1][swn.w] + circuit->gfm) // this works because D0/DX[l-1] are only tracked by A[l]
+                                        source = &(circuit->D0vals[swn.s - 1][swn.w]);
+                                    else
+                                        source = &(circuit->DXvals[swn.s - 1][swn.w]);
+                                }
+                                else
+                                {
+                                    EdgeGlobalCircuit *circuit = (EdgeGlobalCircuit *)edge;
+                                    source = &(circuit->D0vals[swn.s - 1][swn.w]);
+                                }
+                                arrangesource(valuequeue, source, localqueue, id);
+                            }
+                        }
                         break;
                     }
                     case VALTYPE::NB:
@@ -1187,22 +1222,6 @@ struct Align : Graph
                 }
             }
             arrangesource(valuequeue, &dots[tracktree.shiftG + swn.w], globalqueue, id);
-        }
-    }
-
-    void source_max(SCORETYPE *val, std::initializer_list<SCORETYPE *> sources, std::initializer_list<SCORETYPE> source_vals)
-    {
-        SIZETYPE idx = val - vals.get();
-        s_szs[idx] = 0;
-        if (source_vals.begin() == source_vals.end())
-            *val = -inf;
-        else
-        {
-            *val = std::max(source_vals);
-            std::initializer_list<SCORETYPE *>::iterator sources_it = sources.begin();
-            for (auto source_vals_it = source_vals.begin(); source_vals_it != source_vals.end(); ++source_vals_it, ++sources_it)
-                if (*source_vals_it == *val)
-                    sourcess[idx][s_szs[idx]++] = *sources_it;
         }
     }
 
