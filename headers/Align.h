@@ -165,7 +165,6 @@ struct Align : Graph
     std::ofstream fout;
     IDTYPE max_id = 0;
     QUERYSIZE Omax;
-    std::vector<bool> Qbools;
     std::unique_ptr<IDTYPE []> ids;
     std::unique_ptr<BITSTYPE []> bits;
 
@@ -264,11 +263,6 @@ struct Align : Graph
     Align(std::mutex &mtx_, std::ifstream &fin_, boost::program_options::variables_map &vm, std::map<std::string, std::pair<std::unique_ptr<NUCTYPE []>, SHORTSIZE>> &file2short, std::map<std::string, RankVec> &file2rankvec, std::string mgfile, QUERYSIZE Omax_)
         : mtx(mtx_), fin(fin_), Graph(vm, file2short, file2rankvec), fout(mgfile, std::ifstream::binary), Omax(Omax_)
     {
-        for (Node &node : nodes)
-            if (node.is_target)
-                Qbools.push_back(false);
-        
-
         apply_memory();
 
         crossglobaldata.E0.reset(new CrossGlobalData::Do[Omax + 1]);
@@ -418,13 +412,32 @@ struct Align : Graph
                 if (edge->tail->scc_id == scc_id && edge->head->scc_id != scc_id && file2long.count(edge->name))
                     CrossIterationGlobal(edge);
         }
+
+        SIZETYPE M = pQval - vals.get();
+        bits[M] = 0;
         *pQval = -inf;
+        SIZETYPE ei = 1;
         for (Node &node : nodes)
-            if (node.is_target)
-                *pQval = std::max(*pQval, node.Avals[node.scc_sz - 1][O.size()]);
-        for (SIZETYPE i = 0, j = 0; i < nodes.size(); ++i)
-            if (nodes[i].is_target && nodes[i].Avals[nodes[i].scc_sz - 1][O.size()] == *pQval)
-                Qbools[j++] = true;
+        {
+            if (!node.is_target)
+                continue;
+            if (ei > std::numeric_limits<BITSTYPE>::max())
+            {
+                std::cerr << "the upper limits of BITSTYPE reached by Q (the graph has too many targets)\n";
+                break;
+            }
+            SCORETYPE score = node.Avals[node.scc_sz - 1][O.size()];
+            if (score >= *pQval)
+            {
+                if (score > *pQval)
+                {
+                    *pQval = score;
+                    bits[M] = 0;
+                }
+                bits[M] += ei;
+            }
+            ei *= 2;
+        }
     }
 
     void CrossIteration(EdgeLocalCross *edge)
@@ -832,14 +845,8 @@ struct Align : Graph
         SOURCESIZE s_sz;
         switch (type)
         {
-        case VALTYPE::NB: case VALTYPE::SOE: case VALTYPE::SOF: case VALTYPE::SOG: case VALTYPE::SIDX: case VALTYPE::SIE: case VALTYPE::SIF0: case VALTYPE::SIG0: case VALTYPE::SIG:
+        case VALTYPE::NB: case VALTYPE::SOE: case VALTYPE::SOF: case VALTYPE::SOG: case VALTYPE::SIDX: case VALTYPE::SIE: case VALTYPE::SIF0: case VALTYPE::SIG0: case VALTYPE::SIG: case VALTYPE::Q:
             s_sz = std::popcount(bits[M]);
-            break;
-        case VALTYPE::Q:
-            s_sz = 0;
-            for (SIZETYPE i = 0; i < Qbools.size(); ++i)
-                if (Qbools[i])
-                    ++s_sz;
             break;
         case VALTYPE::ABAR:
             s_sz = 0;
@@ -935,13 +942,20 @@ struct Align : Graph
                     switch (type)
                     {
                     case VALTYPE::Q:
-                        for (SIZETYPE i = 0, j = 0; i < nodes.size(); ++i)
-                            if (nodes[i].is_target && Qbools[j])
-                            {
-                                arrangesource(valuequeue, &(nodes[i].Avals[nodes[i].scc_sz - 1][O.size()]), localqueue, id);
-                                Qbools[j++] = false;
-                            }
+                    {
+                        SIZETYPE ei = 1;
+                        for (Node &node : nodes)
+                        {
+                            if (!node.is_target)
+                                continue;
+                            if (ei > std::numeric_limits<BITSTYPE>::max())
+                                break;
+                            if (bits[M] & ei)
+                                arrangesource(valuequeue, &node.Avals[node.scc_sz - 1][O.size()], localqueue, id);
+                            ei *= 2;
+                        }
                         break;
+                    }
                     case VALTYPE::ABAR:
                         break;
                     case VALTYPE::SOE:
