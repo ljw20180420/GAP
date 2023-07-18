@@ -8,6 +8,7 @@
 #include <cmath>
 #include <set>
 #include <typeinfo>
+#include <bit>
 #include "Graph.h"
 
 struct TrackTree
@@ -563,10 +564,26 @@ struct Align : Graph
         {
             if (w > 0)
             {
+                SIZETYPE M = &(Gvals[s][w - 1]) - vals.get();
+                bits[M] = 0;
                 if (s > 0)
-                    source_max(&Gvals[s][w - 1], {&G0vals[s][w - 1], &Dvals[w - 1], &Avals[w - 1]}, {G0vals[s][w - 1], Dvals[w - 1] + edge->gf[s], Avals[w - 1] + edge->gfpT[s]});
+                {
+                    Gvals[s][w - 1] = std::max({G0vals[s][w - 1], Dvals[w - 1] + edge->gf[s], Avals[w - 1] + edge->gfpT[s]});    
+                    if (Gvals[s][w - 1] == G0vals[s][w - 1])
+                        bits[M] += 1;
+                    if (Gvals[s][w - 1] == Dvals[w - 1] + edge->gf[s])
+                        bits[M] += 2;
+                    if (Gvals[s][w - 1] == Avals[w - 1] + edge->gfpT[s])
+                        bits[M] += 4;
+                }
                 else
-                    source_max(&Gvals[s][w - 1], {&G0vals[s][w - 1], &Dvals[w - 1]}, {G0vals[s][w - 1], Dvals[w - 1]});
+                {
+                    Gvals[s][w - 1] = std::max(G0vals[s][w - 1], Dvals[w - 1]);
+                    if (Gvals[s][w - 1] == G0vals[s][w - 1])
+                        bits[M] += 1;
+                    if (Gvals[s][w - 1] == Dvals[w - 1])
+                        bits[M] += 2;
+                }
             }
             if (w == 0)
                 source_max(&Evals[s][w], {}, {});
@@ -749,6 +766,9 @@ struct Align : Graph
         SOURCESIZE s_sz;
         switch (type)
         {
+        case VALTYPE::NB: case VALTYPE::SIDX: case VALTYPE::SIG: 
+            s_sz = std::popcount(bits[M]);
+            break;
         case VALTYPE::Q:
             s_sz = 0;
             for (SIZETYPE i = 0; i < Qbools.size(); ++i)
@@ -757,9 +777,6 @@ struct Align : Graph
             break;
         case VALTYPE::ABAR:
             s_sz = 0;
-            break;
-        case VALTYPE::NB: case VALTYPE::SIDX:
-            s_sz = (bits[M] + 1) / 2; // 0, 1, 3 -> 0, 1, 2
             break;
         case VALTYPE::LID0: case VALTYPE::SID0: case VALTYPE::SID:
             s_sz = 1;
@@ -858,6 +875,17 @@ struct Align : Graph
                     case VALTYPE::SID:
                         arrangesource(valuequeue, &(edges[swn.n]->tail->Avals[edges[swn.n]->tail->scc_sz - 1][swn.w]), localqueue, id);
                         break;
+                    case VALTYPE::SIG:
+                    {
+                        EdgeLocalCircuit *edge = (EdgeLocalCircuit *)edges[swn.n];
+                        if (bits[M] & uint8_t(1))
+                            arrangesource(valuequeue, &(edge->G0vals[swn.s][swn.w]), localqueue, id);
+                        if (bits[M] & uint8_t(2))
+                            arrangesource(valuequeue, &(edge->Dvals[swn.w]), localqueue, id);
+                        if (bits[M] & uint8_t(4))
+                            arrangesource(valuequeue, &(edge->tail->Avals[edge->tail->scc_sz - 1][swn.w]), localqueue, id);
+                        break;
+                    }
                     case VALTYPE::LID0: case VALTYPE::SID0:
                         arrangesource(valuequeue, &(edges[swn.n]->tail->Avals[swn.s][swn.w]), localqueue, id);
                         break;
