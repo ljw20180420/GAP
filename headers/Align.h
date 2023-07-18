@@ -585,10 +585,20 @@ struct Align : Graph
                         bits[M] += 2;
                 }
             }
+
+            SIZETYPE M = &Evals[s][w] - vals.get();
+            bits[M] = 0;
             if (w == 0)
-                source_max(&Evals[s][w], {}, {});
+                Evals[s][w] = -inf;
             else
-                source_max(&Evals[s][w], {&Evals[s][w - 1], &Gvals[s][w - 1]}, {Evals[s][w - 1] + edge->ue, Gvals[s][w - 1] + edge->ve});
+            {
+                Evals[s][w] = std::max(Evals[s][w - 1] + edge->ue, Gvals[s][w - 1] + edge->ve);
+                if (Evals[s][w] == Evals[s][w - 1] + edge->ue)
+                    bits[M] += 1;
+                if (Evals[s][w] == Gvals[s][w - 1] + edge->ve)
+                    bits[M] += 2;
+            }
+                
             if (s == 0)
                 source_max(&F0vals[s][w], {}, {});
             else
@@ -766,7 +776,7 @@ struct Align : Graph
         SOURCESIZE s_sz;
         switch (type)
         {
-        case VALTYPE::NB: case VALTYPE::SIDX: case VALTYPE::SIG: 
+        case VALTYPE::NB: case VALTYPE::SIDX: case VALTYPE::SIG: case VALTYPE::SIE:
             s_sz = std::popcount(bits[M]);
             break;
         case VALTYPE::Q:
@@ -875,6 +885,15 @@ struct Align : Graph
                     case VALTYPE::SID:
                         arrangesource(valuequeue, &(edges[swn.n]->tail->Avals[edges[swn.n]->tail->scc_sz - 1][swn.w]), localqueue, id);
                         break;
+                    case VALTYPE::SIE:
+                    {
+                        EdgeLocalCircuit *edge = (EdgeLocalCircuit *)edges[swn.n];
+                        if (bits[M] & 1)
+                            arrangesource(valuequeue, &vals[M-1], localqueue, id);
+                        if (bits[M] & 2)
+                            arrangesource(valuequeue, &(edge->Gvals[swn.s][swn.w-1]), localqueue, id);
+                        break;
+                    }
                     case VALTYPE::SIG:
                     {
                         EdgeLocalCircuit *edge = (EdgeLocalCircuit *)edges[swn.n];
@@ -902,7 +921,7 @@ struct Align : Graph
                     {
                         DOTTYPE n = Dot::DOTTYPE2NODEIDX(swn.n);
                         if (bits[M] & uint8_t(1))
-                            arrangesource(valuequeue, &(nodes[n].Bvals[swn.w - 1]), localqueue, id);
+                            arrangesource(valuequeue, &vals[M-1], localqueue, id);
                         if (bits[M] & uint8_t(2))
                             arrangesource(valuequeue, &(nodes[n].Avals[nodes[n].scc_sz - 1][swn.w - 1]), localqueue, id);
                         break;
