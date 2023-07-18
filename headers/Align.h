@@ -456,10 +456,20 @@ struct Align : Graph
                     if (Evals[s][w] == Gvals[s][w - 1] + edge->ve)
                         bits[M] += 2;
                 }
+
+                M = &Fvals[s][w] - vals.get();
+                bits[M] = 0;
                 if (s == 0)
-                    source_max(&Fvals[s][w], {}, {});
+                    Fvals[s][w] = -inf;
                 else
-                    source_max(&Fvals[s][w], {&Fvals[s - 1][w], &Gvals[s - 1][w]}, {Fvals[s - 1][w] + edge->uf, Gvals[s - 1][w] + edge->vf});
+                {
+                    Fvals[s][w] = std::max(Fvals[s - 1][w] + edge->uf, Gvals[s - 1][w] + edge->vf);
+                    if (Fvals[s][w] == Fvals[s - 1][w] + edge->uf)
+                        bits[M] += 1;
+                    if (Fvals[s][w] == Gvals[s - 1][w] + edge->vf)
+                        bits[M] += 2;
+                }
+                
                 if (s == 0 || w == 0)
                     source_max(&Gvals[s][w], {&Fvals[s][w], &Evals[s][w], &Avals[w]}, {Fvals[s][w], Evals[s][w], Avals[w] + edge->gfpT[s]});
                 else
@@ -809,7 +819,7 @@ struct Align : Graph
         SOURCESIZE s_sz;
         switch (type)
         {
-        case VALTYPE::NB: case VALTYPE::SOE: case VALTYPE::SIDX: case VALTYPE::SIE: case VALTYPE::SIF0: case VALTYPE::SIG0: case VALTYPE::SIG:
+        case VALTYPE::NB: case VALTYPE::SOE: case VALTYPE::SOF: case VALTYPE::SIDX: case VALTYPE::SIE: case VALTYPE::SIF0: case VALTYPE::SIG0: case VALTYPE::SIG:
             s_sz = std::popcount(bits[M]);
             break;
         case VALTYPE::Q:
@@ -922,6 +932,15 @@ struct Align : Graph
                             arrangesource(valuequeue, &vals[M-1], localqueue, id);
                         if (bits[M] & 2)
                             arrangesource(valuequeue, &(edge->Gvals[swn.s][swn.w - 1]), localqueue, id);
+                        break;
+                    }
+                    case VALTYPE::SOF:
+                    {
+                        EdgeLocalCross *edge = (EdgeLocalCross *)edges[swn.n];
+                        if (bits[M] & 1)
+                            arrangesource(valuequeue, &vals[M-Omax-1], localqueue, id);
+                        if (bits[M] & 2)
+                            arrangesource(valuequeue, &(edge->Gvals[swn.s - 1][swn.w]), localqueue, id);
                         break;
                     }
                     case VALTYPE::SID:
