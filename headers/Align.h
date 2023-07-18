@@ -470,10 +470,31 @@ struct Align : Graph
                         bits[M] += 2;
                 }
                 
+                M = &Gvals[s][w] - vals.get();
+                bits[M] = 0;
                 if (s == 0 || w == 0)
-                    source_max(&Gvals[s][w], {&Fvals[s][w], &Evals[s][w], &Avals[w]}, {Fvals[s][w], Evals[s][w], Avals[w] + edge->gfpT[s]});
+                {
+                    Gvals[s][w] = std::max({Evals[s][w], Fvals[s][w], Avals[w] + edge->gfpT[s]});
+                    if (Gvals[s][w] == Evals[s][w])
+                        bits[M] += 1;
+                    if (Gvals[s][w] == Fvals[s][w])
+                        bits[M] += 2;
+                    if (Gvals[s][w] == Avals[w] + edge->gfpT[s])
+                        bits[M] += 4;
+                }
                 else
-                    source_max(&Gvals[s][w], {&Fvals[s][w], &Evals[s][w], &Gvals[s - 1][w - 1], &Avals[w]}, {Fvals[s][w], Evals[s][w], Gvals[s - 1][w - 1] + edge->gamma[ref[s - 1]][O[w - 1]], Avals[w] + edge->gfpT[s]});
+                {
+                    Gvals[s][w] = std::max({Evals[s][w], Fvals[s][w], Avals[w] + edge->gfpT[s], Gvals[s - 1][w - 1] + edge->gamma[ref[s - 1]][O[w - 1]]});
+                    if (Gvals[s][w] == Evals[s][w])
+                        bits[M] += 1;
+                    if (Gvals[s][w] == Fvals[s][w])
+                        bits[M] += 2;
+                    if (Gvals[s][w] == Avals[w] + edge->gfpT[s])
+                        bits[M] += 4;
+                    if (Gvals[s][w] == Gvals[s - 1][w - 1] + edge->gamma[ref[s - 1]][O[w - 1]])
+                        bits[M] += 8;
+                }
+
                 edge->head->updateA0(w, Gvals[s][w], &Gvals[s][w]);
             }
     }
@@ -819,7 +840,7 @@ struct Align : Graph
         SOURCESIZE s_sz;
         switch (type)
         {
-        case VALTYPE::NB: case VALTYPE::SOE: case VALTYPE::SOF: case VALTYPE::SIDX: case VALTYPE::SIE: case VALTYPE::SIF0: case VALTYPE::SIG0: case VALTYPE::SIG:
+        case VALTYPE::NB: case VALTYPE::SOE: case VALTYPE::SOF: case VALTYPE::SOG: case VALTYPE::SIDX: case VALTYPE::SIE: case VALTYPE::SIF0: case VALTYPE::SIG0: case VALTYPE::SIG:
             s_sz = std::popcount(bits[M]);
             break;
         case VALTYPE::Q:
@@ -941,6 +962,19 @@ struct Align : Graph
                             arrangesource(valuequeue, &vals[M-Omax-1], localqueue, id);
                         if (bits[M] & 2)
                             arrangesource(valuequeue, &(edge->Gvals[swn.s - 1][swn.w]), localqueue, id);
+                        break;
+                    }
+                    case VALTYPE::SOG:
+                    {
+                        EdgeLocalCross *edge = (EdgeLocalCross *)edges[swn.n];
+                        if (bits[M] & 1)
+                            arrangesource(valuequeue, &(edge->Evals[swn.s][swn.w]), localqueue, id);
+                        if (bits[M] & 2)
+                            arrangesource(valuequeue, &(edge->Fvals[swn.s][swn.w]), localqueue, id);
+                        if (bits[M] & 4)
+                            arrangesource(valuequeue, &(edge->tail->Avals[edge->tail->scc_sz - 1][swn.w]), localqueue, id);
+                        if (bits[M] & 8)
+                            arrangesource(valuequeue, &vals[M-Omax-2], localqueue, id);
                         break;
                     }
                     case VALTYPE::SID:
