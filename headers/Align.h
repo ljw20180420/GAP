@@ -11,71 +11,7 @@
 #include <bit>
 #include "Graph.h"
 
-struct TrackTree
-{
-    enum enumEFG
-    {
-        enumE,
-        enumF,
-        enumG
-    };
 
-    QUERYSIZE W;
-    std::deque<Dot> dots;
-    int64_t idx, pidx;
-    SIZETYPE shiftE, shiftF, shiftG, shiftPE, shiftPF, shiftPG;
-
-    void setidx(int64_t idx_)
-    {
-        if (idx_ == 0)
-            pidx = -1;
-        else
-        {
-            pidx = idx;
-            shiftPE = shiftE;
-            shiftPF = shiftF;
-            shiftPG = shiftG;
-        }
-        idx = idx_;
-        shiftE = 3 * idx * (W + 1);
-        shiftF = shiftE + (W + 1);
-        shiftG = shiftF + (W + 1);
-    }
-    struct TrackNode
-    {
-        int64_t cidxs[5];
-        QUERYSIZE tau = 0;
-
-        TrackNode(int64_t cidx_)
-        {
-            for (SIZETYPE i = 0; i < 5; ++i)
-                cidxs[i] = cidx_;
-        }
-    };
-
-    std::deque<TrackNode> tracknodes;
-
-    void emplace_back(int64_t cidx_, DOTTYPE n_, SIZETYPE s_, QUERYSIZE lambda_)
-    {
-        tracknodes.emplace_back(cidx_);
-        dots.resize(tracknodes.size() * (enumEFG::enumG + 1) * (W + 1));
-        SIZETYPE k = (tracknodes.size() - 1) * (enumEFG::enumG + 1) * (W + 1);
-        for (enumEFG t : {enumEFG::enumE, enumEFG::enumF, enumEFG::enumG})
-            for (SIZETYPE w = 0; w <= W; ++w, ++k)
-            {
-                dots[k].n = n_;
-                dots[k].s = s_;
-                dots[k].w = w;
-                dots[k].lambda = lambda_;
-            }
-    }
-
-    void clear()
-    {
-        dots.clear();
-        tracknodes.clear();
-    }
-};
 
 template <typename T>
 struct MonoDeque
@@ -105,8 +41,6 @@ struct MonoDeque
 
 struct Align : Graph
 {
-    std::map<Edge *, TrackTree> long2tracktree;
-
     struct CrossGlobalData
     {
         struct Doo
@@ -169,8 +103,6 @@ struct Align : Graph
     std::unique_ptr<BITSTYPE []> bits;
 
     CrossGlobalData crossglobaldata;
-
-    MonoDeque<Dot *> dot_sources;
 
     void apply_memory()
     {
@@ -892,11 +824,94 @@ struct Align : Graph
         fout.write((char *)&source->id, sizeof(Dot::id));
     }
 
+    struct TrackTree
+    {
+        DOTTYPE n;
+        QUERYSIZE W, lambda = 0;
+        std::deque<Dot> dots;
+        int64_t idx, pidx;
+
+        struct TrackNode
+        {
+            int64_t cidxs[5] = {-1, -1, -1, -1, -1};
+            QUERYSIZE tau = 0;
+        };
+
+        std::deque<TrackNode> tracknodes;
+
+        TrackTree(DOTTYPE n_, QUERYSIZE W_) : n(n_), W(W_)
+        {
+            emplace_back(0);
+        }
+
+        void emplace_back(SIZETYPE s)
+        {
+            tracknodes.emplace_back();
+            dots.resize(tracknodes.size() * 3 * (W + 1));
+            SIZETYPE k = (tracknodes.size() - 1) * 3 * (W + 1);
+            for (SIZETYPE i = 0; i < 3; ++i)
+                for (SIZETYPE w = 0; w <= W; ++w, ++k)
+                {
+                    dots[k].n = n;
+                    dots[k].s = s;
+                    dots[k].w = w;
+                    dots[k].lambda = lambda;
+                }
+        }
+
+        void goto_child(NUCTYPE c, SIZETYPE s)
+        {
+            ++lambda;
+            pidx = idx;
+            if (tracknodes[pidx].cidxs[c - 2] < 0)
+            {
+                idx = tracknodes.size();
+                tracknodes[pidx].cidxs[c - 2] = idx;
+                emplace_back(s);
+            }
+            else
+                idx = tracknodes[pidx].cidxs[c - 2];
+        }
+
+        Dot & dotE(SIZETYPE w)
+        {
+            return dots[3 * idx * (W + 1) + w];
+        }
+
+        Dot & dotF(SIZETYPE w)
+        {
+            return dots[(3 * idx + 1) * (W + 1) + w];
+        }
+
+        Dot & dotG(SIZETYPE w)
+        {
+            return dots[(3 * idx + 2) * (W + 1) + w];
+        }
+
+        Dot & dotPE(SIZETYPE w)
+        {
+            return dots[3 * pidx * (W + 1) + w];
+        }
+
+        Dot & dotPF(SIZETYPE w)
+        {
+            return dots[(3 * pidx + 1) * (W + 1) + w];
+        }
+
+        Dot & dotPG(SIZETYPE w)
+        {
+            return dots[(3 * pidx + 2) * (W + 1) + w];
+        }
+    };
+
     void GetMinimalGraph()
     {
+        std::map<Edge *, TrackTree> long2tracktree;
         std::map<Edge *, std::unique_ptr<SCORETYPE []>> edge2tailAvals;
         for (Edge *edge : edges)
         {
+            if (file2long.count(edge->name))
+                long2tracktree.try_emplace(edge, edge->n, O.size());
             edge2tailAvals[edge].reset(new SCORETYPE[O.size()+1]);
             for (SIZETYPE i=0; i<=O.size(); ++i)
                 edge2tailAvals[edge].get()[i] = edge->tail->Avals[edge->tail->scc_sz - 1][i];
@@ -913,6 +928,7 @@ struct Align : Graph
         localqueue.push(pQval - vals.get());
         valuequeue.push(*pQval);
         *pQval = -inf;
+        std::deque<Dot *> dot_sources;
         while (!globalqueue.empty() || !localqueue.empty())
         {
             if (globalqueue.empty() || !localqueue.empty() && ids[localqueue.front()] < globalqueue.front()->id)
@@ -924,7 +940,7 @@ struct Align : Graph
                 SWN swn = get_swn(M);
                 Align::VALTYPE type = get_type(M, swn);
                 if (type == VALTYPE::NA && swn.s == 0)
-                    GlobalTrack(edge2tailAvals, Mval, M, swn, type, globalqueue, localqueue, valuequeue, id);
+                    GlobalTrack(edge2tailAvals, Mval, M, swn, type, globalqueue, localqueue, valuequeue, id, dot_sources, long2tracktree);
                 else
                 {
                     outputdot(Mval, M, swn, type);
@@ -1101,14 +1117,11 @@ struct Align : Graph
         if (id > max_id)
             max_id = id;
 
-        for (std::map<Edge *, TrackTree>::iterator it = long2tracktree.begin(); it != long2tracktree.end(); ++it)
-            it->second.clear();
         for (Node &node : nodes)
             node.clearAdelta(O.size());
-        dot_sources.clear();
     }
 
-    void GlobalTrack(std::map<Edge *, std::unique_ptr<SCORETYPE []>> &edge2tailAvals, SCORETYPE Mval, SIZETYPE M, SWN &swn, Align::VALTYPE type, std::queue<Dot *> &globalqueue, std::queue<SIZETYPE> &localqueue, std::queue<SCORETYPE> &valuequeue, IDTYPE &id)
+    void GlobalTrack(std::map<Edge *, std::unique_ptr<SCORETYPE []>> &edge2tailAvals, SCORETYPE Mval, SIZETYPE M, SWN &swn, Align::VALTYPE type, std::queue<Dot *> &globalqueue, std::queue<SIZETYPE> &localqueue, std::queue<SCORETYPE> &valuequeue, IDTYPE &id, std::deque<Dot *> &dot_sources, std::map<Edge *, TrackTree> &long2tracktree)
     {
         Node &node = nodes[Dot::DOTTYPE2NODEIDX(swn.n)];
         outputdot(Mval, M, swn, type);
@@ -1119,9 +1132,8 @@ struct Align : Graph
         {
             Edge *edge = globalsuffix.edge;
             SCORETYPE *Avals = edge2tailAvals[edge].get();
-            TrackTree &tracktree = long2tracktree[edge];
+            TrackTree &tracktree = long2tracktree.at(edge);
             std::deque<TrackTree::TrackNode> &tracknodes = tracktree.tracknodes;
-            std::deque<Dot> &dots = tracktree.dots;
             RankVec &rankvec = file2rankvec[edge->name];
             std::ifstream &SAfin = file2SA[edge->name];
             SIZETYPE start;
@@ -1132,45 +1144,52 @@ struct Align : Graph
             REVREFfin.seekg(start);
             REVREFfin.read((char*)revref.get(), globalsuffix.lambda);
 
-            if (tracktree.tracknodes.empty())
-            {
-                tracktree.W = O.size();
-                tracktree.emplace_back(-1, edge->n, rankvec.bwt_sz - 1 - start - globalsuffix.lambda, 0); // minus
-            }
-            tracktree.setidx(0);
+            tracktree.pidx = -1;
+            tracktree.idx = 0;
+            tracktree.lambda = 0;
             if (edge->head->scc_id != edge->tail->scc_id)
             {
                 for (SIZETYPE w = tracknodes[tracktree.idx].tau; w <= swn.w; ++w)
                 {
                     if (w == 0)
-                        source_max(dots[tracktree.shiftE + w], {}, {});
+                    {
+                        tracktree.dotE(w).val = -inf;
+                        tracktree.dotE(w).s_sz = 0;
+                    }
                     else
-                        source_max(dots[tracktree.shiftE + w], {&dots[tracktree.shiftE + w - 1], &dots[tracktree.shiftG + w - 1]}, {dots[tracktree.shiftE + w - 1].val + edge->ue, dots[tracktree.shiftG + w - 1].val + edge->ve});
-                    source_max(dots[tracktree.shiftF + w], {}, {});
-                    source_max(dots[tracktree.shiftG + w], {&dots[tracktree.shiftE + w], &dots[tracktree.shiftF + w], NULL}, {dots[tracktree.shiftE + w].val, dots[tracktree.shiftF + w].val, Avals[w] + edge->T});
+                    {
+                        SCORETYPE scores[2] = {tracktree.dotE(w - 1).val + edge->ue, tracktree.dotG(w - 1).val + edge->ve};
+                        tracktree.dotE(w).val = std::max(scores[0], scores[1]);
+                        tracktree.dotE(w).fs = dot_sources.size();
+                        if (tracktree.dotE(w).val == scores[0])
+                            dot_sources.push_back(&tracktree.dotE(w - 1));
+                        if (tracktree.dotE(w).val == scores[1])
+                            dot_sources.push_back(&tracktree.dotG(w - 1));
+                        tracktree.dotE(w).s_sz = dot_sources.size() - tracktree.dotE(w).fs;
+                    }
+                    source_max(tracktree.dotF(w), {}, {}, dot_sources);
+                    source_max(tracktree.dotG(w), {&tracktree.dotE(w), &tracktree.dotF(w), NULL}, {tracktree.dotE(w).val, tracktree.dotF(w).val, Avals[w] + edge->T}, dot_sources);
                 }
                 tracknodes[tracktree.idx].tau = std::max(tracknodes[tracktree.idx].tau, swn.w + 1);
                 for (SIZETYPE i = globalsuffix.lambda; i > 0;)
                 {
                     --i;
                     NUCTYPE c = revref[i];
-                    if (tracknodes[tracktree.idx].cidxs[c - 2] < 0)
-                    {
-                        tracktree.emplace_back(-1, edge->n, rankvec.bwt_sz - 1 - start - i, dots[tracktree.shiftE].lambda + 1);
-                        tracknodes[tracktree.idx].cidxs[c - 2] = tracknodes.size() - 1;
-                    }
-                    tracktree.setidx(tracknodes[tracktree.idx].cidxs[c - 2]);
+                    tracktree.goto_child(c, rankvec.bwt_sz - 1 - start - i);
                     for (SIZETYPE w = tracknodes[tracktree.idx].tau; w <= swn.w; ++w)
                     {
                         if (w == 0)
-                            source_max(dots[tracktree.shiftE + w], {}, {});
+                        {
+                            tracktree.dotE(w).val = -inf;
+                            tracktree.dotE(w).s_sz = 0;
+                        }
                         else
-                            source_max(dots[tracktree.shiftE + w], {&dots[tracktree.shiftE + w - 1], &dots[tracktree.shiftG + w - 1]}, {dots[tracktree.shiftE + w - 1].val + edge->ue, dots[tracktree.shiftG + w - 1].val + edge->ve});
-                        source_max(dots[tracktree.shiftF + w], {&dots[tracktree.shiftPF + w], &dots[tracktree.shiftPG + w]}, {dots[tracktree.shiftPF + w].val + edge->uf, dots[tracktree.shiftPG + w].val + edge->vf});
+                            source_max(tracktree.dotE(w), {&tracktree.dotE(w - 1), &tracktree.dotG(w - 1)}, {tracktree.dotE(w - 1).val + edge->ue, tracktree.dotG(w - 1).val + edge->ve}, dot_sources);
+                        source_max(tracktree.dotF(w), {&tracktree.dotPF(w), &tracktree.dotPG(w)}, {tracktree.dotPF(w).val + edge->uf, tracktree.dotPG(w).val + edge->vf}, dot_sources);
                         if (w == 0)
-                            source_max(dots[tracktree.shiftG + w], {&dots[tracktree.shiftE + w], &dots[tracktree.shiftF + w]}, {dots[tracktree.shiftE + w].val, dots[tracktree.shiftF + w].val});
+                            source_max(tracktree.dotG(w), {&tracktree.dotE(w), &tracktree.dotF(w)}, {tracktree.dotE(w).val, tracktree.dotF(w).val}, dot_sources);
                         else
-                            source_max(dots[tracktree.shiftG + w], {&dots[tracktree.shiftE + w], &dots[tracktree.shiftF + w], &dots[tracktree.shiftPG + w - 1]}, {dots[tracktree.shiftE + w].val, dots[tracktree.shiftF + w].val, dots[tracktree.shiftPG + w - 1].val + edge->gamma[c][O[w - 1]]});
+                            source_max(tracktree.dotG(w), {&tracktree.dotE(w), &tracktree.dotF(w), &tracktree.dotPG(w - 1)}, {tracktree.dotE(w).val, tracktree.dotF(w).val, tracktree.dotPG(w - 1).val + edge->gamma[c][O[w - 1]]}, dot_sources);
                     }
                     tracknodes[tracktree.idx].tau = std::max(tracknodes[tracktree.idx].tau, swn.w + 1);
                 }
@@ -1180,63 +1199,53 @@ struct Align : Graph
                 for (SIZETYPE w = tracknodes[tracktree.idx].tau; w <= swn.w; ++w)
                 {
                     if (w > 0)
-                        source_max(dots[tracktree.shiftG + w - 1], {&dots[tracktree.shiftE + w - 1], NULL}, {dots[tracktree.shiftE + w - 1].val, Avals[w - 1] + edge->T});
+                        source_max(tracktree.dotG(w - 1), {&tracktree.dotE(w - 1), NULL}, {tracktree.dotE(w - 1).val, Avals[w - 1] + edge->T}, dot_sources);
                     if (w == 0)
-                        source_max(dots[tracktree.shiftE + w], {}, {});
+                        source_max(tracktree.dotE(w), {}, {}, dot_sources);
                     else
-                        source_max(dots[tracktree.shiftE + w], {&dots[tracktree.shiftE + w - 1], &dots[tracktree.shiftG + w - 1]}, {dots[tracktree.shiftE + w - 1].val + edge->ue, dots[tracktree.shiftG + w - 1].val + edge->ve});
-                    source_max(dots[tracktree.shiftF + w], {}, {});
+                        source_max(tracktree.dotE(w), {&tracktree.dotE(w - 1), &tracktree.dotG(w - 1)}, {tracktree.dotE(w - 1).val + edge->ue, tracktree.dotG(w - 1).val + edge->ve}, dot_sources);
+                    source_max(tracktree.dotF(w), {}, {}, dot_sources);
                 }
                 tracknodes[tracktree.idx].tau = std::max(tracknodes[tracktree.idx].tau, swn.w + 1);
                 for (SIZETYPE i = globalsuffix.lambda; i > 0; )
                 {
                     --i;
                     NUCTYPE c = revref[i];
-                    if (tracknodes[tracktree.idx].cidxs[c - 2] < 0)
-                    {
-                        tracktree.emplace_back(-1, edge->n, rankvec.bwt_sz - 1 - start - i, dots[tracktree.shiftE].lambda + 1); // minus
-                        tracknodes[tracktree.idx].cidxs[c - 2] = tracknodes.size() - 1;
-                    }
-                    tracktree.setidx(tracknodes[tracktree.idx].cidxs[c - 2]);
+                    tracktree.goto_child(c, rankvec.bwt_sz - 1 - start - i);
                     for (SIZETYPE w = tracknodes[tracktree.idx].tau; w <= swn.w; ++w)
                     {
                         if (w == 0)
-                            source_max(dots[tracktree.shiftE + w], {}, {});
+                            source_max(tracktree.dotE(w), {}, {}, dot_sources);
                         else
-                            source_max(dots[tracktree.shiftE + w], {&dots[tracktree.shiftE + w - 1], &dots[tracktree.shiftG + w - 1]}, {dots[tracktree.shiftE + w - 1].val + edge->ue, dots[tracktree.shiftG + w - 1].val + edge->ve});
+                            source_max(tracktree.dotE(w), {&tracktree.dotE(w - 1), &tracktree.dotG(w - 1)}, {tracktree.dotE(w - 1).val + edge->ue, tracktree.dotG(w - 1).val + edge->ve}, dot_sources);
                         if (tracktree.pidx == 0)
-                            source_max(dots[tracktree.shiftF + w], {&dots[tracktree.shiftPF + w], &dots[tracktree.shiftPE + w]}, {dots[tracktree.shiftPF + w].val + edge->uf, dots[tracktree.shiftPE + w].val + edge->vf});
+                            source_max(tracktree.dotF(w), {&tracktree.dotPF(w), &tracktree.dotPE(w)}, {tracktree.dotPF(w).val + edge->uf, tracktree.dotPE(w).val + edge->vf}, dot_sources);
                         else
-                            source_max(dots[tracktree.shiftF + w], {&dots[tracktree.shiftPF + w], &dots[tracktree.shiftPG + w]}, {dots[tracktree.shiftPF + w].val + edge->uf, dots[tracktree.shiftPG + w].val + edge->vf});
+                            source_max(tracktree.dotF(w), {&tracktree.dotPF(w), &tracktree.dotPG(w)}, {tracktree.dotPF(w).val + edge->uf, tracktree.dotPG(w).val + edge->vf}, dot_sources);
                         if (w == 0)
-                            source_max(dots[tracktree.shiftG + w], {&dots[tracktree.shiftE + w], &dots[tracktree.shiftF + w]}, {dots[tracktree.shiftE + w].val, dots[tracktree.shiftF + w].val});
+                            source_max(tracktree.dotG(w), {&tracktree.dotE(w), &tracktree.dotF(w)}, {tracktree.dotE(w).val, tracktree.dotF(w).val}, dot_sources);
                         else
-                            source_max(dots[tracktree.shiftG + w], {&dots[tracktree.shiftE + w], &dots[tracktree.shiftF + w], &dots[tracktree.shiftPG + w - 1]}, {dots[tracktree.shiftE + w].val, dots[tracktree.shiftF + w].val, dots[tracktree.shiftPG + w - 1].val + edge->gamma[c][O[w - 1]]});
+                            source_max(tracktree.dotG(w), {&tracktree.dotE(w), &tracktree.dotF(w), &tracktree.dotPG(w - 1)}, {tracktree.dotE(w).val, tracktree.dotF(w).val, tracktree.dotPG(w - 1).val + edge->gamma[c][O[w - 1]]}, dot_sources);
                     }
                     tracknodes[tracktree.idx].tau = std::max(tracknodes[tracktree.idx].tau, swn.w + 1);
                 }
             }
-            arrangesource(valuequeue, &dots[tracktree.shiftG + swn.w], globalqueue, id);
+            arrangesource(valuequeue, &tracktree.dotG(swn.w), globalqueue, id);
         }
     }
 
-    void source_max(Dot &dot, std::initializer_list<Dot *> adrs, std::initializer_list<SCORETYPE> vals)
-    {
-        source_max(dot, adrs.begin(), vals.begin(), vals.end());
-    }
-
-    template <typename Ita, typename Itv>
-    void source_max(Dot &dot, Ita ita_b, Itv itv_b, Itv itv_e)
+    void source_max(Dot &dot, std::initializer_list<Dot *> adrs, std::initializer_list<SCORETYPE> vals, std::deque<Dot *> &dot_sources)
     {
         dot.val = -inf;
-        for (Itv itv = itv_b; itv != itv_e; ++itv)
+        for (std::initializer_list<SCORETYPE>::iterator itv = vals.begin(); itv != vals.end(); ++itv)
             if (*itv > dot.val)
                 dot.val = *itv;
-        dot.fs = dot_sources.offset;
-        for (Itv itv = itv_b; itv != itv_e; ++itv, ++ita_b)
+        dot.fs = dot_sources.size();
+        std::initializer_list<Dot *>::iterator ita = adrs.begin();
+        for (std::initializer_list<SCORETYPE>::iterator itv = vals.begin(); itv != vals.end(); ++itv, ++ita)
             if (*itv == dot.val)
-                dot_sources.emplace_back(*ita_b);
-        dot.s_sz = dot_sources.offset - dot.fs;
+                dot_sources.emplace_back(*ita);
+        dot.s_sz = dot_sources.size() - dot.fs;
     }
 };
 
