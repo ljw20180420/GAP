@@ -13,7 +13,6 @@ struct Track : Graph
 
     std::ofstream fout_align, fout_extract, fout_fail, fout_death;
     std::vector<Dot> dots;
-    MonoDeque<Dot *> sources;
     std::map<Dot *, MegaRange> megadots_head;
     std::map<Dot *, MegaRange> megadots_tail;
     std::deque<std::pair<Dot *, std::deque<Dot *>>> megasources;
@@ -66,6 +65,7 @@ struct Track : Graph
             {
                 if (Onames[f] == name)
                 {
+                    std::deque<Dot *> sources;
                     for (IDTYPE id = 0, uid = 0; id <= uid; ++id)
                     {
                         fins[f].read((char *)&dots[id].n, sizeof(Dot::n));
@@ -74,7 +74,7 @@ struct Track : Graph
                         fins[f].read((char *)&dots[id].val, sizeof(Dot::val));
                         fins[f].read((char *)&dots[id].s_sz, sizeof(Dot::s_sz));
                         fins[f].read((char *)&dots[id].lambda, sizeof(Dot::lambda));
-                        dots[id].fs = sources.offset;
+                        dots[id].fs = sources.size();
                         for (SIZETYPE i = 0; i < dots[id].s_sz; ++i)
                         {
                             IDTYPE idd;
@@ -84,8 +84,7 @@ struct Track : Graph
                         }
                     }
 
-                    BackTrack(&dots[0], name, read);
-                    sources.clear();
+                    BackTrack(&dots[0], name, read, sources);
 
                     if (fzs[f]-fins[f].tellg()>sizeof(IDTYPE))
                     {
@@ -101,7 +100,7 @@ struct Track : Graph
         }
     }
 
-    void BackTrack(Dot *pQ, std::string &Oname, std::string &O)
+    void BackTrack(Dot *pQ, std::string &Oname, std::string &O, std::deque<Dot *> &sources)
     {
         megasources.clear();
         megadots_head.clear();
@@ -109,7 +108,7 @@ struct Track : Graph
         megasources.emplace_back(pQ, std::deque<Dot *>());
 
         for (SIZETYPE i = 0; i < megasources.size(); ++i)
-            source_until(i);
+            source_until(i, sources);
         MegaRange Qrange = megadots_tail[pQ];
 
         MegaRange *pmegarange;
@@ -167,7 +166,7 @@ struct Track : Graph
         }
     }
 
-    void source_until(SIZETYPE i)
+    void source_until(SIZETYPE i, std::deque<Dot *> &sources)
     {
         std::pair<Dot *, std::deque<Dot *>> &megasource = megasources[i];
         bool to_tail = i > 0 && megasource.second.empty();
@@ -198,11 +197,11 @@ struct Track : Graph
             else if (path[0]->n >= 0 && path[0] != megasource.first)
                 megasources.emplace_back(path[0], std::deque<Dot *>());
 
-        } while (next_dot(path, visited, to_tail));
+        } while (next_dot(path, visited, to_tail, sources));
         insertpair.first->second.s_sz = megasources.size() - insertpair.first->second.fs;
     }
 
-    bool next_dot(std::deque<Dot *> &path, std::set<Dot *> &visited, bool to_tail)
+    bool next_dot(std::deque<Dot *> &path, std::set<Dot *> &visited, bool to_tail, std::deque<Dot *> &sources)
     {
         SIZETYPE is = 0;
         while (!path.empty())

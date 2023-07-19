@@ -11,34 +11,6 @@
 #include <bit>
 #include "Graph.h"
 
-
-
-template <typename T>
-struct MonoDeque
-{
-    std::deque<T> data;
-    SIZETYPE offset = 0;
-
-    void emplace_back(T t)
-    {
-        if (offset < data.size())
-            data[offset] = t;
-        else
-            data.emplace_back(t);
-        ++offset;
-    }
-
-    T &operator[](SIZETYPE idx)
-    {
-        return data[idx];
-    }
-
-    void clear()
-    {
-        offset = 0;
-    }
-};
-
 struct Align : Graph
 {
     struct CrossGlobalData
