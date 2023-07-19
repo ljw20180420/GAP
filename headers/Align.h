@@ -1129,17 +1129,9 @@ struct Align : Graph
                         tracktree.dotE(w).s_sz = 0;
                     }
                     else
-                    {
-                        SCORETYPE scores[2] = {tracktree.dotE(w - 1).val + edge->ue, tracktree.dotG(w - 1).val + edge->ve};
-                        tracktree.dotE(w).val = std::max(scores[0], scores[1]);
-                        tracktree.dotE(w).fs = dot_sources.size();
-                        if (tracktree.dotE(w).val == scores[0])
-                            dot_sources.push_back(&tracktree.dotE(w - 1));
-                        if (tracktree.dotE(w).val == scores[1])
-                            dot_sources.push_back(&tracktree.dotG(w - 1));
-                        tracktree.dotE(w).s_sz = dot_sources.size() - tracktree.dotE(w).fs;
-                    }
-                    source_max(tracktree.dotF(w), {}, {}, dot_sources);
+                        source_max(tracktree.dotE(w), {&tracktree.dotE(w - 1), &tracktree.dotG(w - 1)}, {tracktree.dotE(w - 1).val + edge->ue, tracktree.dotG(w - 1).val + edge->ve}, dot_sources);
+                    tracktree.dotF(w).val = -inf;
+                    tracktree.dotF(w).s_sz = 0;
                     source_max(tracktree.dotG(w), {&tracktree.dotE(w), &tracktree.dotF(w), NULL}, {tracktree.dotE(w).val, tracktree.dotF(w).val, Avals[w] + edge->T}, dot_sources);
                 }
                 tracknodes[tracktree.idx].tau = std::max(tracknodes[tracktree.idx].tau, swn.w + 1);
@@ -1173,10 +1165,14 @@ struct Align : Graph
                     if (w > 0)
                         source_max(tracktree.dotG(w - 1), {&tracktree.dotE(w - 1), NULL}, {tracktree.dotE(w - 1).val, Avals[w - 1] + edge->T}, dot_sources);
                     if (w == 0)
-                        source_max(tracktree.dotE(w), {}, {}, dot_sources);
+                    {
+                        tracktree.dotE(w).val = -inf;
+                        tracktree.dotE(w).s_sz = 0;
+                    }
                     else
                         source_max(tracktree.dotE(w), {&tracktree.dotE(w - 1), &tracktree.dotG(w - 1)}, {tracktree.dotE(w - 1).val + edge->ue, tracktree.dotG(w - 1).val + edge->ve}, dot_sources);
-                    source_max(tracktree.dotF(w), {}, {}, dot_sources);
+                    tracktree.dotF(w).val = -inf;
+                    tracktree.dotF(w).s_sz = 0;
                 }
                 tracknodes[tracktree.idx].tau = std::max(tracknodes[tracktree.idx].tau, swn.w + 1);
                 for (SIZETYPE i = globalsuffix.lambda; i > 0; )
@@ -1187,7 +1183,10 @@ struct Align : Graph
                     for (SIZETYPE w = tracknodes[tracktree.idx].tau; w <= swn.w; ++w)
                     {
                         if (w == 0)
-                            source_max(tracktree.dotE(w), {}, {}, dot_sources);
+                        {
+                            tracktree.dotE(w).val = -inf;
+                            tracktree.dotE(w).s_sz = 0;
+                        }
                         else
                             source_max(tracktree.dotE(w), {&tracktree.dotE(w - 1), &tracktree.dotG(w - 1)}, {tracktree.dotE(w - 1).val + edge->ue, tracktree.dotG(w - 1).val + edge->ve}, dot_sources);
                         if (tracktree.pidx == 0)
