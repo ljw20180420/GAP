@@ -49,8 +49,13 @@ struct Node;
 
 struct Edge
 {
+    // basic information
     DOTTYPE n;
     std::string name;
+    Node *tail;
+    Node *head;
+
+    // basic score
     SCORETYPE gamma[RankVec::sigma][RankVec::sigma] = {
         {-inf, -inf, -inf, -inf, -inf, -inf, -inf},
         {-inf, -inf, -inf, -inf, -inf, -inf, -inf},
@@ -60,12 +65,8 @@ struct Edge
         {-inf, -inf, -3, -3, -3, 1, -3},
         {-inf, -inf, -3, -3, -3, -3, 1}};
     SCORETYPE ve, ue, vf, uf, T, min_score;
-    Node *tail;
-    Node *head;
-};
-
-struct EdgeLocal : Edge
-{
+    
+    // short specific score
     SCORETYPE vfp, ufp, vfm, ufm, gfm;
     std::vector<SCORETYPE> gf, gfpT;
 };
@@ -192,12 +193,12 @@ struct Node
     }
 };
 
-struct EdgeLocalCross : EdgeLocal
+struct EdgeLocalCross : Edge
 {
     std::unique_ptr<SCORETYPE *[]> Evals, Fvals, Gvals;
 
-    EdgeLocalCross(EdgeLocal &edge)
-        : EdgeLocal(edge)
+    EdgeLocalCross(Edge &edge)
+        : Edge(edge)
     {
     }
 
@@ -229,13 +230,13 @@ struct EdgeLocalCross : EdgeLocal
     }
 };
 
-struct EdgeLocalCircuit : EdgeLocal
+struct EdgeLocalCircuit : Edge
 {
     std::unique_ptr<SCORETYPE *[]> Evals, F0vals, G0vals, Gvals, D0vals, DXvals;
     SCORETYPE *Dvals;
 
-    EdgeLocalCircuit(EdgeLocal &edge)
-        : EdgeLocal(edge)
+    EdgeLocalCircuit(Edge &edge)
+        : Edge(edge)
     {
     }
 
@@ -382,7 +383,7 @@ struct Graph
             nodes.push_back(std::move(node));
         }
 
-        std::list<EdgeLocal> locals;
+        std::list<Edge> locals;
         if (vm.count("shorts"))
             for (std::string shortinfo : vm["shorts"].as<std::vector<std::string>>())
             {
@@ -390,7 +391,7 @@ struct Graph
                 std::string name, tail, head, match, mismatch, v, u, vb, ub, T, min_score;
                 std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(ss, name, ','), tail, ','), head, ','), match, ','), mismatch, ','), v, ','), u, ','), T, ','), min_score, ','), vb, ','), ub, ',');
 
-                EdgeLocal local;
+                Edge local;
                 local.n = locals.size();
                 for (NUCTYPE a = 2; a < RankVec::sigma; ++a)
                     for (NUCTYPE b = 2; b < RankVec::sigma; ++b)
@@ -468,7 +469,7 @@ struct Graph
                 node->scc_sz = sccs[i].size();
             }
         edges.resize(locals.size() + globals.size());
-        for (EdgeLocal &edge : locals)
+        for (Edge &edge : locals)
             if (edge.tail->scc_id != edge.head->scc_id)
             {
                 local_crosses.emplace_back(edge);
@@ -492,9 +493,9 @@ struct Graph
             }
     }
 
-    void DeepFirstLine(Node *node, bool reverse, std::vector<bool> &visit, std::list<EdgeLocal> &locals, std::list<Edge> &globals)
+    void DeepFirstLine(Node *node, bool reverse, std::vector<bool> &visit, std::list<Edge> &locals, std::list<Edge> &globals)
     {
-        for (EdgeLocal &edge : locals)
+        for (Edge &edge : locals)
             if (reverse ? edge.head == node : edge.tail == node)
                 if (!visit[edge.n])
                 {
@@ -510,16 +511,16 @@ struct Graph
                 }
     }
 
-    void RemoveEdge(std::deque<Node> &nodes, bool reverse, std::vector<bool> &visit, std::list<EdgeLocal> &locals, std::list<Edge> &globals)
+    void RemoveEdge(std::deque<Node> &nodes, bool reverse, std::vector<bool> &visit, std::list<Edge> &locals, std::list<Edge> &globals)
     {
-        for (EdgeLocal &edge : locals)
+        for (Edge &edge : locals)
             visit[edge.n] = false;
         for (Edge &edge : globals)
             visit[edge.n] = false;
         for (Node &node : nodes)
             if ((!reverse && node.is_root) || (reverse && node.is_target))
                 DeepFirstLine(&node, reverse, visit, locals, globals);
-        for (std::list<EdgeLocal>::iterator iter = locals.begin(); iter != locals.end();)
+        for (std::list<Edge>::iterator iter = locals.begin(); iter != locals.end();)
             if (!visit[iter->n])
                 iter = locals.erase(iter);
             else
@@ -531,7 +532,7 @@ struct Graph
                 ++iter;
     }
 
-    void DeepFirst(Node *node, std::stack<Node *> &stack, SIZETYPE &id, std::vector<bool> &visit, std::vector<bool> &in_stack, std::vector<SIZETYPE> &disc, std::vector<SIZETYPE> &low, std::list<EdgeLocal> &locals, std::list<Edge> &globals, std::deque<std::deque<Node *>> &sccs)
+    void DeepFirst(Node *node, std::stack<Node *> &stack, SIZETYPE &id, std::vector<bool> &visit, std::vector<bool> &in_stack, std::vector<SIZETYPE> &disc, std::vector<SIZETYPE> &low, std::list<Edge> &locals, std::list<Edge> &globals, std::deque<std::deque<Node *>> &sccs)
     {
         DOTTYPE n = node->n;
         visit[n] = true;
@@ -540,7 +541,7 @@ struct Graph
         ++id;
         stack.push(node);
         in_stack[n] = true;
-        for (EdgeLocal &edge : locals)
+        for (Edge &edge : locals)
             if (edge.tail == node)
             {
                 if (!visit[edge.head->n])
@@ -576,7 +577,7 @@ struct Graph
         }
     }
 
-    std::deque<std::deque<Node *>> SCCTS(std::list<EdgeLocal> &locals, std::list<Edge> &globals)
+    std::deque<std::deque<Node *>> SCCTS(std::list<Edge> &locals, std::list<Edge> &globals)
     {
         std::vector<bool> visit(nodes.size()), in_stack(nodes.size());
         std::vector<SIZETYPE> disc(nodes.size()), low(nodes.size());
