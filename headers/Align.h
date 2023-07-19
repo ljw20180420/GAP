@@ -79,36 +79,24 @@ struct Align : Graph
     void apply_memory()
     {
         trn = 0;
-        tnn = 1 + nodes.size();
-        tsn = 0;
+        tnn = 1 + nodes.size(); // Q and Abars
 
-        std::vector<SIZETYPE> Asos;
         for (Node &node : nodes)
         {
             trn += node.scc_sz + 1;
             tnn += (Omax + 1) * (node.scc_sz + 1);
-            Asos.push_back(1);
-            for (EdgeLocalCircuit &local_circuit : local_circuits)
-                if (local_circuit.head==&node)
-                    Asos.back() += 2;
-            for (EdgeGlobalCircuit &global_circuit : global_circuits)
-                if (global_circuit.head==&node)
-                    Asos.back() += 1;   
-            tsn += node.get_tsn(Asos.back(), Omax);
         }
         for (EdgeLocalCross &edge : local_crosses)
         {
             SHORTSIZE ref_sz = file2short[edge.name].second;
             trn += edge.get_trn(ref_sz);
             tnn += edge.get_tnn(Omax, ref_sz);
-            tsn += edge.get_tsn(Omax, ref_sz);
         }
         for (EdgeLocalCircuit &edge : local_circuits)
         {
             SHORTSIZE ref_sz = file2short[edge.name].second;
             trn += edge.get_trn(ref_sz);
             tnn += edge.get_tnn(Omax, ref_sz);
-            tsn += edge.get_tsn(Omax, ref_sz);
         }
         for (EdgeGlobalCircuit &edge : global_circuits)
         {
@@ -126,7 +114,7 @@ struct Align : Graph
         SHORTSIZE *fps = ss.get();
         DOTTYPE *fpn = ns.get();
         for (SIZETYPE i=0; i<nodes.size(); ++i)
-            nodes[i].apply_memory(Asos[i], Omax, fpval, fps, fpn, rpval);
+            nodes[i].apply_memory(Omax, fpval, fps, fpn, rpval);
         for (EdgeLocalCross &edge : local_crosses)
             edge.apply_memory(Omax, fpval, fps, fpn, file2short[edge.name].second);
         for (EdgeLocalCircuit &edge : local_circuits)
