@@ -150,34 +150,6 @@ struct Node
         AdeltaGlobal.reset(new std::deque<Node::GlobalSuffix>[Omax + 1]);
     }
 
-    void updateA0(QUERYSIZE w, SCORETYPE source_val, SCORETYPE *source)
-    {
-        if (source_val >= Avals[0][w])
-        {
-            if (source_val > Avals[0][w])
-            {
-                Avals[0][w] = source_val;
-                AdeltaDot[w].clear();
-                AdeltaGlobal[w].clear();
-            }
-            AdeltaDot[w].emplace_back(source);
-        }
-    }
-
-    void updateA0(QUERYSIZE w, SCORETYPE source_val, Edge *edge_, SIZETYPE start_, QUERYSIZE lambda_)
-    {
-        if (source_val >= Avals[0][w])
-        {
-            if (source_val > Avals[0][w])
-            {
-                Avals[0][w] = source_val;
-                AdeltaDot[w].clear();
-                AdeltaGlobal[w].clear();
-            }
-            AdeltaGlobal[w].emplace_back(edge_, start_, lambda_);
-        }
-    }
-
     void clearAdelta(QUERYSIZE W)
     {
         for (SIZETYPE w = 0; w <= W; ++w)

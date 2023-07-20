@@ -187,14 +187,16 @@ struct Align : Graph
 
     void Mix()
     {
-        for (SIZETYPE i = 0; i < nodes.size(); ++i)
+        for (Node &node : nodes)
         {
             for (SIZETYPE w = 0; w <= O.size(); ++w)
-                nodes[i].Avals[0][w] = -inf;
-            if (nodes[i].is_root)
-                *nodes[i].pAbarval = 0;
-            else
-                *nodes[i].pAbarval = -inf;
+                node.Avals[0][w] = -inf;
+            if (node.is_root)
+            {
+                *node.pAbarval = 0;
+                node.Avals[0][0] = 0;
+                node.AdeltaDot[0].emplace_back(node.pAbarval);
+            }
         }
         for (SIZETYPE scc_id = 0, scc_sz = 0, cum_scc_sz = 0; cum_scc_sz < nodes.size(); ++scc_id, cum_scc_sz += scc_sz, scc_sz = 0)
         {
@@ -219,12 +221,18 @@ struct Align : Graph
                         if (node.Bvals[w] == node.Bvals[w - 1] + node.ue)
                             bits[M] += 1;
                         if (node.Bvals[w] == node.Avals[node.scc_sz - 1][w - 1] + node.ve)
-                            bits[M] += 2;
+                            bits[M] += 2;                    
                     }
-
-                    node.updateA0(w, node.Bvals[w], &node.Bvals[w]);
-                    if (w == 0)
-                        node.updateA0(w, node.pAbarval[0], node.pAbarval);
+                    if (node.Bvals[w] >= node.Avals[0][w])
+                    {
+                        if (node.Bvals[w] > node.Avals[0][w])
+                        {
+                            node.Avals[0][w] = node.Bvals[w];
+                            node.AdeltaDot[w].clear();
+                            node.AdeltaGlobal[w].clear();
+                        }
+                        node.AdeltaDot[w].emplace_back(&node.Bvals[w]);
+                    }    
                 }
                 for (Edge *edge : edges)
                     if (edge->head->scc_id == scc_id && edge->tail->scc_id == scc_id && file2short.count(edge->name))
@@ -384,7 +392,17 @@ struct Align : Graph
                         bits[M] += bi;
                     }
 
-                edge->head->updateA0(w, Gvals[s][w], &Gvals[s][w]);
+
+                if (Gvals[s][w] >= edge->head->Avals[0][w])
+                {
+                    if (Gvals[s][w] > edge->head->Avals[0][w])
+                    {
+                        edge->head->Avals[0][w] = Gvals[s][w];
+                        edge->head->AdeltaDot[w].clear();
+                        edge->head->AdeltaGlobal[w].clear();
+                    }
+                    edge->head->AdeltaDot[w].emplace_back(&Gvals[s][w]);
+                }
             }
     }
 
@@ -412,7 +430,17 @@ struct Align : Graph
                 E0[w].E = -inf;
             FG.emplace_back(w, -inf, std::max(E0[w].E, Avals[w] + edge->T));
             Ethres[w] = std::max(E0[w].E, FG[w].G + std::min({SCORETYPE(0), edge->tail->ve - edge->ue, SCORETYPE(tgw - (O.size() - w) * edge->ue)}));
-            edge->head->updateA0(w, FG[w].G, edge, simnodes[0].sr1, 0);
+
+            if (FG[w].G >= edge->head->Avals[0][w])
+            {
+                if (FG[w].G > edge->head->Avals[0][w])
+                {
+                    edge->head->Avals[0][w] = FG[w].G;
+                    edge->head->AdeltaDot[w].clear();
+                    edge->head->AdeltaGlobal[w].clear();
+                }
+                edge->head->AdeltaGlobal[w].emplace_back(edge, simnodes[0].sr1, 0);
+            }
         }
 
         while (true)
@@ -463,7 +491,17 @@ struct Align : Graph
                 if (G_val >= FG[w].G)
                 {
                     FG.emplace_back(w, F_val, G_val);
-                    edge->head->updateA0(w, G_val, edge, simnodes.back().sr1, simnodes.size() - 1);
+
+                    if (G_val >= edge->head->Avals[0][w])
+                    {
+                        if (G_val > edge->head->Avals[0][w])
+                        {
+                            edge->head->Avals[0][w] = G_val;
+                            edge->head->AdeltaDot[w].clear();
+                            edge->head->AdeltaGlobal[w].clear();
+                        }
+                        edge->head->AdeltaGlobal[w].emplace_back(edge, simnodes.back().sr1, simnodes.size() - 1);
+                    }
                 }
                 if (idx < simnodes.back().shiftFG && FG[idx].w <= w)
                     ++idx;
@@ -557,7 +595,16 @@ struct Align : Graph
                 }
             }
 
-            edge->head->updateA0(w, G0vals[s][w], &G0vals[s][w]);
+            if (G0vals[s][w] >= edge->head->Avals[0][w])
+            {
+                if (G0vals[s][w] > edge->head->Avals[0][w])
+                {
+                    edge->head->Avals[0][w] = G0vals[s][w];
+                    edge->head->AdeltaDot[w].clear();
+                    edge->head->AdeltaGlobal[w].clear();
+                }
+                edge->head->AdeltaDot[w].emplace_back(&G0vals[s][w]);
+            }
         }
     }
 
@@ -609,7 +656,17 @@ struct Align : Graph
             tgws[i] = (O.size() > w ? (O.size() - w - 1) * circuits[i]->tail->ue + circuits[i]->tail->ve : 0);
             circuits[i]->sncs.front().F0 = -inf;
             circuits[i]->sncs.front().G0 = circuits[i]->sncs.front().E;
-            circuits[i]->head->updateA0(w, circuits[i]->sncs.front().G0, circuits[i], circuits[i]->sncs.front().sr1, circuits[i]->sncs.front().lambda);
+
+            if (circuits[i]->sncs.front().G0 >= circuits[i]->head->Avals[0][w])
+            {
+                if (circuits[i]->sncs.front().G0 > circuits[i]->head->Avals[0][w])
+                {
+                    circuits[i]->head->Avals[0][w] = circuits[i]->sncs.front().G0;
+                    circuits[i]->head->AdeltaDot[w].clear();
+                    circuits[i]->head->AdeltaGlobal[w].clear();
+                }
+                circuits[i]->head->AdeltaGlobal[w].emplace_back(circuits[i], circuits[i]->sncs.front().sr1, circuits[i]->sncs.front().lambda);
+            }
 
             jumps[i] = circuits[i]->sncs.front().jump;
         }
@@ -633,7 +690,19 @@ struct Align : Graph
                         jumps[i]->G0 = -inf;
                     }
                     else
-                        circuits[i]->head->updateA0(w, jumps[i]->G0, circuits[i], jumps[i]->sr1, jumps[i]->lambda);
+                    {
+                        if (jumps[i]->G0 >= circuits[i]->head->Avals[0][w])
+                        {
+                            if (jumps[i]->G0 > circuits[i]->head->Avals[0][w])
+                            {
+                                circuits[i]->head->Avals[0][w] = jumps[i]->G0;
+                                circuits[i]->head->AdeltaDot[w].clear();
+                                circuits[i]->head->AdeltaGlobal[w].clear();
+                            }
+                            circuits[i]->head->AdeltaGlobal[w].emplace_back(circuits[i], jumps[i]->sr1, jumps[i]->lambda);
+                        }
+                    }
+                        
                     if (jumps[i]->G0 != -inf && jumps[i]->hatG == -inf)
                     {
                         if (jumps[i]->cid == 0)
