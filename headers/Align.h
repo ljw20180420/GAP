@@ -56,14 +56,10 @@ struct Align : Graph
         NUCTYPE c;
         SIZETYPE sr1, sr2;
         SIZETYPE shiftFG;
-
-        SimNode(NUCTYPE c_, SIZETYPE sr1_, SIZETYPE sr2_, SIZETYPE shiftFG_)
-            : c(c_), sr1(sr1_), sr2(sr2_), shiftFG(shiftFG_)
-        {
-        }
     };
 
-    std::deque<SimNode> simnodes;
+    std::unique_ptr<SimNode []> simnodes;
+    SIZETYPE sim_fs = 0;
 
     std::unique_ptr<SCORETYPE []> croS;
     SCORETYPE *Ethres, *croE;
@@ -184,6 +180,8 @@ struct Align : Graph
         }
 
         crossglobaldata.E.reset(new CrossGlobalData::Do[Omax + 1]);
+
+        simnodes.reset(new SimNode[2 * Omax]);
 
         // croS.reset(new SCORETYPE[(2 + 4 * Omax) * (Omax + 1)]);
         croS.reset(new SCORETYPE[2 * (Omax + 1)]);
@@ -455,7 +453,11 @@ struct Align : Graph
         RankVec &rankvec = file2rankvec[edge->name]; 
 
         SIZETYPE sr1 = 0, sr2 = rankvec.bwt_sz;
-        simnodes.emplace_back(0, sr1, sr2, FG.size()); // the root SimNode has no base, we simply set it to 0, which does not mean that it has base #(0) 
+        simnodes[0].c = 0; // simnodes[0] has no base, we simply set it to 0, which does not mean that it has base #(0) 
+        simnodes[0].sr1 = sr1;
+        simnodes[0].sr2 = sr2;
+        simnodes[0].shiftFG = FG.size();
+        ++sim_fs; // sim_fs becomes 1 here 
         for (SIZETYPE w = 0; w <= O.size(); ++w)
         {
             if (w > 0)
@@ -483,47 +485,44 @@ struct Align : Graph
             while (true)
             {
                 NUCTYPE c;
-                if (simnodes.back().shiftFG < FG.size())
+                if (simnodes[sim_fs - 1].shiftFG < FG.size())
                     c = 1;
                 else
                 {
-                    do
-                    {
-                        c = simnodes.back().c;
-                        if (FG.size() > simnodes.back().shiftFG)
-                            FG.erase(FG.begin() + simnodes.back().shiftFG, FG.end());
-                        simnodes.pop_back();
-                    } while (c == 6 && !simnodes.empty());
-                    if (simnodes.empty())
-                        break;
+                    for (c = 6; sim_fs > 0 && c == 6; --sim_fs)
+                        c = simnodes[sim_fs - 1].c;
+                    FG.erase(FG.begin() + simnodes[sim_fs].shiftFG, FG.end());
+                    if (sim_fs == 0)
+                        return;
                 }
                 do
                 {
                     ++c;
-                    sr1 = rankvec.C[c] + rankvec.rank(c, simnodes.back().sr1);
-                    sr2 = rankvec.C[c] + rankvec.rank(c, simnodes.back().sr2);
+                    sr1 = rankvec.C[c] + rankvec.rank(c, simnodes[sim_fs - 1].sr1);
+                    sr2 = rankvec.C[c] + rankvec.rank(c, simnodes[sim_fs - 1].sr2);
                 } while (sr1 >= sr2 && c < 6);
                 if (sr1 < sr2)
                 {
-                    simnodes.emplace_back(c, sr1, sr2, FG.size());
+                    simnodes[sim_fs].c = c;
+                    simnodes[sim_fs].sr1 = sr1;
+                    simnodes[sim_fs].sr2 = sr2;
+                    simnodes[sim_fs].shiftFG = FG.size();
+                    ++sim_fs;
                     break;
                 }
-                else if (FG.size() > simnodes.back().shiftFG)
-                    FG.erase(FG.begin() + simnodes.back().shiftFG, FG.end());
+                else 
+                    FG.erase(FG.begin() + simnodes[sim_fs - 1].shiftFG, FG.end());
             }
-            if (simnodes.empty())
-                break;
 
-            SIZETYPE idx = simnodes[simnodes.size() - 2].shiftFG;
-            for (SIZETYPE e = 0, w = FG[idx].w;; ++e)
+            for (SIZETYPE e = 0, idx = simnodes[sim_fs - 2].shiftFG, w = FG[idx].w;; ++e)
             {
                 E[e].w = w;
-                E[e].E = std::max((e > 0 && E[e - 1].w == w - 1) ? E[e - 1].E + edge->ue : -inf, (simnodes.back().shiftFG < FG.size() && FG.back().w == w - 1) ? FG.back().G + edge->ve : -inf);
+                E[e].E = std::max((e > 0 && E[e - 1].w == w - 1) ? E[e - 1].E + edge->ue : -inf, (simnodes[sim_fs - 1].shiftFG < FG.size() && FG.back().w == w - 1) ? FG.back().G + edge->ve : -inf);
                 if (E[e].E < Ethres[w])
                     E[e].E = -inf;
 
-                SCORETYPE F_val = idx < simnodes.back().shiftFG && FG[idx].w == w ? std::max(FG[idx].F + edge->uf, FG[idx].G + edge->vf) : -inf;
-                SCORETYPE G_val = idx > simnodes[simnodes.size() - 2].shiftFG && FG[idx - 1].w == w - 1 ? FG[idx - 1].G + edge->gamma[simnodes.back().c][O[w - 1]] : -inf;
+                SCORETYPE F_val = idx < simnodes[sim_fs - 1].shiftFG && FG[idx].w == w ? std::max(FG[idx].F + edge->uf, FG[idx].G + edge->vf) : -inf;
+                SCORETYPE G_val = idx > simnodes[sim_fs - 2].shiftFG && FG[idx - 1].w == w - 1 ? FG[idx - 1].G + edge->gamma[simnodes[sim_fs - 1].c][O[w - 1]] : -inf;
                 G_val = std::max({G_val, E[e].E, F_val});
                 if (G_val >= FG[w].G)
                 {
@@ -537,14 +536,14 @@ struct Align : Graph
                             edge->head->AdeltaDot[w].clear();
                             edge->head->AdeltaGlobal[w].clear();
                         }
-                        edge->head->AdeltaGlobal[w].emplace_back(edge, simnodes.back().sr1, simnodes.size() - 1);
+                        edge->head->AdeltaGlobal[w].emplace_back(edge, simnodes[sim_fs - 1].sr1, sim_fs - 1);
                     }
                 }
-                if (idx < simnodes.back().shiftFG && FG[idx].w <= w)
+                if (idx < simnodes[sim_fs - 1].shiftFG && FG[idx].w <= w)
                     ++idx;
-                if (w < O.size() && (FG[idx - 1].w == w || (simnodes.back().shiftFG < FG.size() && FG.back().w == w) || E[e].E > -inf))
+                if (w < O.size() && (FG[idx - 1].w == w || (simnodes[sim_fs - 1].shiftFG < FG.size() && FG.back().w == w) || E[e].E > -inf))
                     ++w;
-                else if (idx < simnodes.back().shiftFG)
+                else if (idx < simnodes[sim_fs - 1].shiftFG)
                     w = FG[idx].w;
                 else
                     break;
