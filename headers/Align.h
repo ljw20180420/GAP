@@ -77,7 +77,9 @@ struct Align : Graph
     CrossGlobalData crossglobaldata;
 
     SIZETYPE trn, tnn;
-    void apply_memory()
+
+    Align(std::mutex &mtx_, std::ifstream &fin_, boost::program_options::variables_map &vm, std::map<std::string, std::pair<std::unique_ptr<NUCTYPE []>, SHORTSIZE>> &file2short, std::map<std::string, RankVec> &file2rankvec, std::string mgfile, QUERYSIZE Omax_)
+        : mtx(mtx_), fin(fin_), Graph(vm, file2short, file2rankvec), fout(mgfile, std::ifstream::binary), Omax(Omax_)
     {
         trn = 0;
         tnn = 1 + nodes.size(); // Q and Abars
@@ -175,13 +177,16 @@ struct Align : Graph
         }
 
         for (EdgeGlobalCircuit &edge : global_circuits)
-            edge.apply_memory(Omax, fpval, fps, fpn);
-    }
-
-    Align(std::mutex &mtx_, std::ifstream &fin_, boost::program_options::variables_map &vm, std::map<std::string, std::pair<std::unique_ptr<NUCTYPE []>, SHORTSIZE>> &file2short, std::map<std::string, RankVec> &file2rankvec, std::string mgfile, QUERYSIZE Omax_)
-        : mtx(mtx_), fin(fin_), Graph(vm, file2short, file2rankvec), fout(mgfile, std::ifstream::binary), Omax(Omax_)
-    {
-        apply_memory();
+        {
+            for (SIZETYPE j = 0; j < edge.tail->scc_sz-1; ++j, ++fps, ++fpn)
+            {
+                *fps = j;
+                *fpn = edge.n;
+            }
+            edge.D0vals.reset(new SCORETYPE *[edge.tail->scc_sz-1]);
+            for (SIZETYPE s = 0; s < edge.tail->scc_sz-1; ++s, fpval += Omax + 1)
+                edge.D0vals[s] = fpval;
+        }
 
         crossglobaldata.E0.reset(new CrossGlobalData::Do[Omax + 1]);
         crossglobaldata.E.reset(new CrossGlobalData::Do[Omax + 1]);

@@ -71,41 +71,6 @@ struct Edge
     std::vector<SCORETYPE> gf, gfpT;
 };
 
-void type_initial(SCORETYPE *&fpval, std::initializer_list<SCORETYPE **> pXvalss, std::initializer_list<std::unique_ptr<SCORETYPE *[]> *> pYvalsss, SIZETYPE *Ss, QUERYSIZE Omax)
-{
-    for (SCORETYPE **pXvals : pXvalss)
-    {
-        *pXvals = fpval;
-        fpval += Omax + 1;
-    }
-    SIZETYPE si = 0;
-    for (typename std::initializer_list<std::unique_ptr<SCORETYPE *[]> *>::iterator it = pYvalsss.begin(); it != pYvalsss.end(); ++it, ++si)
-    {
-        (*it)->reset(new SCORETYPE *[Ss[si]]);
-        for (SIZETYPE s = 0; s < Ss[si]; ++s, fpval += Omax + 1)
-            (**it)[s] = fpval;
-    }
-}
-
-void extend_ss_ns(SIZETYPE pTss_sz, DOTTYPE n, SHORTSIZE *&fps, DOTTYPE *&fpn)
-{
-    for (SIZETYPE i = 0; i < pTss_sz; ++i, ++fps, ++fpn)
-    {
-        *fps = 0;
-        *fpn = n;
-    }
-}
-
-void extend_ss_ns(SIZETYPE pTsss_sz, SIZETYPE *Ss, DOTTYPE n, SHORTSIZE *&fps, DOTTYPE *&fpn)
-{
-    for (SIZETYPE i = 0; i < pTsss_sz; ++i)
-        for (SIZETYPE j = 0; j < Ss[i]; ++j, ++fps, ++fpn)
-        {
-            *fps = j;
-            *fpn = n;
-        }
-}
-
 struct EdgeLocalCross;
 struct EdgeLocalCircuit;
 struct EdgeGlobalCircuit;
@@ -188,18 +153,6 @@ struct EdgeGlobalCircuit : Edge
     EdgeGlobalCircuit(Edge &edge)
         : Edge(edge)
     {
-    }
-
-    SIZETYPE *get_Ss()
-    {
-        return new SIZETYPE[1]{tail->scc_sz-1};
-    }
-
-    void apply_memory(SHORTSIZE Omax, SCORETYPE *&fpval, SHORTSIZE *&fps, DOTTYPE *&fpn)
-    {
-        std::unique_ptr<SIZETYPE []> Ss(get_Ss());
-        extend_ss_ns(1, Ss.get(), n, fps, fpn);
-        type_initial(fpval, {}, {&D0vals}, Ss.get(), Omax);
     }
 };
 
