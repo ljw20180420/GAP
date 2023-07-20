@@ -28,31 +28,7 @@ struct Align : Graph
 
         std::deque<Doo> FG;
 
-        struct SimNode
-        {
-            NUCTYPE c;
-            SIZETYPE sr1, sr2;
-            SIZETYPE shiftFG;
-
-            SimNode(NUCTYPE c_, SIZETYPE sr1_, SIZETYPE sr2_, SIZETYPE shiftFG_)
-                : c(c_), sr1(sr1_), sr2(sr2_), shiftFG(shiftFG_)
-            {
-            }
-        };
-
-        std::deque<SimNode> simnodes;
-
-        void emplace_back(NUCTYPE c_, SIZETYPE sr1_, SIZETYPE sr2_)
-        {
-            simnodes.emplace_back(c_, sr1_, sr2_, FG.size());
-        }
-
-        void pop_back()
-        {
-            if (FG.size() > simnodes.back().shiftFG)
-                FG.erase(FG.begin() + simnodes.back().shiftFG, FG.end());
-            simnodes.pop_back();
-        }
+        
 
         struct Do
         {
@@ -74,6 +50,20 @@ struct Align : Graph
     std::unique_ptr<BITSTYPE []> bits;
 
     CrossGlobalData crossglobaldata;
+
+    struct SimNode
+    {
+        NUCTYPE c;
+        SIZETYPE sr1, sr2;
+        SIZETYPE shiftFG;
+
+        SimNode(NUCTYPE c_, SIZETYPE sr1_, SIZETYPE sr2_, SIZETYPE shiftFG_)
+            : c(c_), sr1(sr1_), sr2(sr2_), shiftFG(shiftFG_)
+        {
+        }
+    };
+
+    std::deque<SimNode> simnodes;
 
     std::unique_ptr<SCORETYPE []> croS;
     SCORETYPE *Ethres, *croE;
@@ -460,13 +450,12 @@ struct Align : Graph
     void CrossIterationGlobal(Edge *edge)
     {
         SCORETYPE *Avals = edge->tail->Avals[edge->tail->scc_sz - 1];
-        std::deque<CrossGlobalData::SimNode> &simnodes = crossglobaldata.simnodes;
         std::unique_ptr<CrossGlobalData::Do[]> &E = crossglobaldata.E;
         std::deque<CrossGlobalData::Doo> &FG = crossglobaldata.FG;
         RankVec &rankvec = file2rankvec[edge->name]; 
 
         SIZETYPE sr1 = 0, sr2 = rankvec.bwt_sz;
-        crossglobaldata.emplace_back(0, sr1, sr2); // the root SimNode has no base, we simply set it to 0, which does not mean that it has base #(0) 
+        simnodes.emplace_back(0, sr1, sr2, FG.size()); // the root SimNode has no base, we simply set it to 0, which does not mean that it has base #(0) 
         for (SIZETYPE w = 0; w <= O.size(); ++w)
         {
             if (w > 0)
@@ -491,7 +480,7 @@ struct Align : Graph
 
         while (true)
         {
-            do
+            while (true)
             {
                 NUCTYPE c;
                 if (simnodes.back().shiftFG < FG.size())
@@ -501,7 +490,9 @@ struct Align : Graph
                     do
                     {
                         c = simnodes.back().c;
-                        crossglobaldata.pop_back();
+                        if (FG.size() > simnodes.back().shiftFG)
+                            FG.erase(FG.begin() + simnodes.back().shiftFG, FG.end());
+                        simnodes.pop_back();
                     } while (c == 6 && !simnodes.empty());
                     if (simnodes.empty())
                         break;
@@ -514,12 +505,12 @@ struct Align : Graph
                 } while (sr1 >= sr2 && c < 6);
                 if (sr1 < sr2)
                 {
-                    crossglobaldata.emplace_back(c, sr1, sr2);
+                    simnodes.emplace_back(c, sr1, sr2, FG.size());
                     break;
                 }
                 else if (FG.size() > simnodes.back().shiftFG)
                     FG.erase(FG.begin() + simnodes.back().shiftFG, FG.end());
-            } while (true);
+            }
             if (simnodes.empty())
                 break;
 
