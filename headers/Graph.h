@@ -157,19 +157,6 @@ struct EdgeLocalCircuit : Edge
         : Edge(edge)
     {
     }
-
-    SIZETYPE *get_Ss(SHORTSIZE ref_sz)
-    {
-        return new SIZETYPE[6]{ref_sz+1, ref_sz+1, ref_sz+1, ref_sz+1, tail->scc_sz-1, tail->scc_sz-1};
-    }
-
-    void apply_memory(QUERYSIZE Omax, SCORETYPE *&fpval, SHORTSIZE *&fps, DOTTYPE *&fpn, SHORTSIZE ref_sz)
-    {
-        std::unique_ptr<SIZETYPE []> Ss(get_Ss(ref_sz));
-        extend_ss_ns(1, n, fps, fpn);
-        extend_ss_ns(6, Ss.get(), n, fps, fpn);
-        type_initial(fpval, {&Dvals}, {&Evals, &F0vals, &G0vals, &Gvals, &D0vals, &DXvals}, Ss.get(), Omax);
-    }
 };
 
 struct SNC

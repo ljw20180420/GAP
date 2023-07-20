@@ -151,7 +151,28 @@ struct Align : Graph
         }
 
         for (EdgeLocalCircuit &edge : local_circuits)
-            edge.apply_memory(Omax, fpval, fps, fpn, file2short[edge.name].second);
+        {
+            SHORTSIZE ref_sz = file2short[edge.name].second;
+            *(fps++) = 0;
+            *(fpn++) = edge.n;
+            SIZETYPE Ss[6] = {ref_sz+1, ref_sz+1, ref_sz+1, ref_sz+1, edge.tail->scc_sz-1, edge.tail->scc_sz-1};
+            for (SIZETYPE i = 0; i < 6; ++i)
+                for (SIZETYPE j = 0; j < Ss[i]; ++j, ++fps, ++fpn)
+                {
+                    *fps = j;
+                    *fpn = edge.n;
+                }
+            edge.Dvals = fpval;
+            fpval += Omax + 1;
+            SIZETYPE si = 0;
+            for (std::unique_ptr<SCORETYPE *[]> *pYvalss : {&edge.Evals, &edge.F0vals, &edge.G0vals, &edge.Gvals, &edge.D0vals, &edge.DXvals})
+            {
+                pYvalss->reset(new SCORETYPE *[Ss[si]]);
+                for (SIZETYPE s = 0; s < Ss[si]; ++s, fpval += Omax + 1)
+                    (*pYvalss)[s] = fpval;
+                ++si;
+            }
+        }
 
         for (EdgeGlobalCircuit &edge : global_circuits)
             edge.apply_memory(Omax, fpval, fps, fpn);
