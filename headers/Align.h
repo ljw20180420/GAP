@@ -60,8 +60,7 @@ struct Align : Graph
             SCORETYPE E;
         };
 
-        std::unique_ptr<Do []> E0, E;
-        std::unique_ptr<SCORETYPE []> Ethres;
+        std::unique_ptr<Do []> E;
     };
 
     std::mutex &mtx;
@@ -75,6 +74,12 @@ struct Align : Graph
     std::unique_ptr<BITSTYPE []> bits;
 
     CrossGlobalData crossglobaldata;
+
+    std::unique_ptr<SCORETYPE []> croS;
+    SCORETYPE *Ethres, *croE;
+    // std::unique_ptr<SCORETYPE *[]> croF, croG;
+    // std::unique_ptr<QUERYSIZE []> croQ;
+    // std::unique_ptr<QUERYSIZE *[]> crop;
 
     SIZETYPE trn, tnn;
 
@@ -188,9 +193,24 @@ struct Align : Graph
                 edge.D0vals[s] = fpval;
         }
 
-        crossglobaldata.E0.reset(new CrossGlobalData::Do[Omax + 1]);
         crossglobaldata.E.reset(new CrossGlobalData::Do[Omax + 1]);
-        crossglobaldata.Ethres.reset(new SCORETYPE[Omax + 1]);
+
+        // croS.reset(new SCORETYPE[(2 + 4 * Omax) * (Omax + 1)]);
+        croS.reset(new SCORETYPE[2 * (Omax + 1)]);
+        Ethres = croS.get();
+        croE = Ethres + Omax + 1;
+        // SCORETYPE *ptr = croE + Omax + 1;
+        // for (std::unique_ptr<SCORETYPE *[]> *pcroX : {&croF, &croG})
+        // {
+        //     pcroX->reset(new SCORETYPE *[2 * Omax]);
+        //     for(SIZETYPE i = 0; i < 2 * Omax; ++i, ptr += Omax + 1)
+        //         (*pcroX)[i] = ptr;
+        // }
+        // croQ.reset(new QUERYSIZE[2 * Omax * (Omax + 2)]);
+        // ptr = croQ.get();
+        // crop.reset(new QUERYSIZE *[2 * Omax]);
+        // for(SIZETYPE i = 0; i < 2 * Omax; ++i, ptr += Omax + 2)
+        //     crop[i] = ptr;
     }
 
     void run()
@@ -441,8 +461,7 @@ struct Align : Graph
     {
         SCORETYPE *Avals = edge->tail->Avals[edge->tail->scc_sz - 1];
         std::deque<CrossGlobalData::SimNode> &simnodes = crossglobaldata.simnodes;
-        std::unique_ptr<CrossGlobalData::Do[]> &E0 = crossglobaldata.E0, &E = crossglobaldata.E;
-        std::unique_ptr<SCORETYPE []> &Ethres = crossglobaldata.Ethres;
+        std::unique_ptr<CrossGlobalData::Do[]> &E = crossglobaldata.E;
         std::deque<CrossGlobalData::Doo> &FG = crossglobaldata.FG;
         RankVec &rankvec = file2rankvec[edge->name]; 
 
@@ -450,17 +469,13 @@ struct Align : Graph
         crossglobaldata.emplace_back(0, sr1, sr2); // the root SimNode has no base, we simply set it to 0, which does not mean that it has base #(0) 
         for (SIZETYPE w = 0; w <= O.size(); ++w)
         {
-            SCORETYPE tgw = (O.size() > w ? (O.size() - w - 1) * edge->tail->ue + edge->tail->ve : 0);
-            E0[w].w = w;
             if (w > 0)
-                E0[w].E = std::max(E0[w - 1].E + edge->ue, FG[w - 1].G + edge->ve);
+                croE[w] = std::max(croE[w - 1] + edge->ue, FG[w - 1].G + edge->ve);
             else
-                E0[w].E = -inf;
-            SCORETYPE tmp = std::max(E0[w].E, Avals[w] + edge->T);
-            if (E0[w].E + edge->ue < tmp + edge->tail->ve && E0[w].E + (O.size() - w) * edge->ue < tmp + tgw)
-                E0[w].E = -inf;
-            FG.emplace_back(w, -inf, std::max(E0[w].E, Avals[w] + edge->T));
-            Ethres[w] = std::max(E0[w].E, FG[w].G + std::min({SCORETYPE(0), edge->tail->ve - edge->ue, SCORETYPE(tgw - (O.size() - w) * edge->ue)}));
+                croE[w] = -inf;
+            SCORETYPE tgw = (O.size() > w ? (O.size() - w - 1) * edge->tail->ue + edge->tail->ve : 0);
+            FG.emplace_back(w, -inf, std::max(croE[w], Avals[w] + edge->T));
+            Ethres[w] = std::max(croE[w], FG[w].G + std::min({SCORETYPE(0), edge->tail->ve - edge->ue, SCORETYPE(tgw - (O.size() - w) * edge->ue)}));
 
             if (FG[w].G >= edge->head->Avals[0][w])
             {
