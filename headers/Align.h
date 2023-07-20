@@ -114,7 +114,24 @@ struct Align : Graph
         SHORTSIZE *fps = ss.get();
         DOTTYPE *fpn = ns.get();
         for (SIZETYPE i=0; i<nodes.size(); ++i)
-            nodes[i].apply_memory(Omax, fpval, fps, fpn, rpval);
+        {
+            nodes[i].pAbarval = --rpval;
+            *(fps++) = 0;
+            *(fpn++) = Dot::NODEIDX2DOTTYPEB(nodes[i].n);
+            for (SIZETYPE j = 0; j < nodes[i].scc_sz; ++j, ++fps, ++fpn)
+            {
+                *fps = j;
+                *fpn = Dot::NODEIDX2DOTTYPEA(nodes[i].n);
+            }
+            nodes[i].Bvals = fpval;
+            fpval += Omax + 1;
+            nodes[i].Avals.reset(new SCORETYPE *[nodes[i].scc_sz]);
+            for (SIZETYPE s = 0; s < nodes[i].scc_sz; ++s, fpval += Omax + 1)
+                nodes[i].Avals[s] = fpval;
+            nodes[i].AdeltaDot.reset(new std::deque<SCORETYPE *>[Omax + 1]);
+            nodes[i].AdeltaGlobal.reset(new std::deque<Node::GlobalSuffix>[Omax + 1]);
+        }
+            
         for (EdgeLocalCross &edge : local_crosses)
             edge.apply_memory(Omax, fpval, fps, fpn, file2short[edge.name].second);
         for (EdgeLocalCircuit &edge : local_circuits)
@@ -1147,7 +1164,11 @@ struct Align : Graph
             max_id = id;
 
         for (Node &node : nodes)
-            node.clearAdelta(O.size());
+            for (SIZETYPE w = 0; w <= O.size(); ++w)
+            {
+                node.AdeltaDot[w].clear();
+                node.AdeltaGlobal[w].clear();
+            }
     }
 
     void GlobalTrack(std::map<Edge *, std::unique_ptr<SCORETYPE []>> &edge2tailAvals, SCORETYPE Mval, SIZETYPE M, SWN &swn, Align::VALTYPE type, std::queue<Dot *> &globalqueue, std::queue<SIZETYPE> &localqueue, std::queue<SCORETYPE> &valuequeue, IDTYPE &id, std::deque<Dot *> &dot_sources, std::map<Edge *, TrackTree> &long2tracktree)

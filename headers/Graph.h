@@ -71,20 +71,19 @@ struct Edge
     std::vector<SCORETYPE> gf, gfpT;
 };
 
-template <typename T>
-void type_initial(T *&Ts, std::initializer_list<T **> pTss, std::initializer_list<std::unique_ptr<T *[]> *> pTsss, SIZETYPE *Ss, QUERYSIZE Omax)
+void type_initial(SCORETYPE *&fpval, std::initializer_list<SCORETYPE **> pXvalss, std::initializer_list<std::unique_ptr<SCORETYPE *[]> *> pYvalsss, SIZETYPE *Ss, QUERYSIZE Omax)
 {
-    for (T **pTs : pTss)
+    for (SCORETYPE **pXvals : pXvalss)
     {
-        *pTs = Ts;
-        Ts += Omax + 1;
+        *pXvals = fpval;
+        fpval += Omax + 1;
     }
     SIZETYPE si = 0;
-    for (typename std::initializer_list<std::unique_ptr<T *[]> *>::iterator it = pTsss.begin(); it != pTsss.end(); ++it, ++si)
+    for (typename std::initializer_list<std::unique_ptr<SCORETYPE *[]> *>::iterator it = pYvalsss.begin(); it != pYvalsss.end(); ++it, ++si)
     {
-        (*it)->reset(new T *[Ss[si]]);
-        for (SIZETYPE s = 0; s < Ss[si]; ++s, Ts += Omax + 1)
-            (**it)[s] = Ts;
+        (*it)->reset(new SCORETYPE *[Ss[si]]);
+        for (SIZETYPE s = 0; s < Ss[si]; ++s, fpval += Omax + 1)
+            (**it)[s] = fpval;
     }
 }
 
@@ -148,15 +147,6 @@ struct Node
 
         AdeltaDot.reset(new std::deque<SCORETYPE *>[Omax + 1]);
         AdeltaGlobal.reset(new std::deque<Node::GlobalSuffix>[Omax + 1]);
-    }
-
-    void clearAdelta(QUERYSIZE W)
-    {
-        for (SIZETYPE w = 0; w <= W; ++w)
-        {
-            AdeltaDot[w].clear();
-            AdeltaGlobal[w].clear();
-        }
     }
 };
 
