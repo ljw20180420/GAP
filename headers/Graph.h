@@ -136,18 +136,6 @@ struct Node
     };
 
     std::unique_ptr<std::deque<GlobalSuffix> []> AdeltaGlobal;
-
-    void apply_memory(QUERYSIZE Omax, SCORETYPE *&fpval, SHORTSIZE *&fps, DOTTYPE *&fpn, SCORETYPE *&rpval)
-    {
-        std::unique_ptr<SIZETYPE []> Ss(new SIZETYPE[1]{scc_sz});
-        extend_ss_ns(1, Dot::NODEIDX2DOTTYPEB(n), fps, fpn);
-        extend_ss_ns(1, Ss.get(), Dot::NODEIDX2DOTTYPEA(n), fps, fpn);
-        type_initial(fpval, {&Bvals}, {&Avals}, Ss.get(), Omax);
-        pAbarval = --rpval;
-
-        AdeltaDot.reset(new std::deque<SCORETYPE *>[Omax + 1]);
-        AdeltaGlobal.reset(new std::deque<Node::GlobalSuffix>[Omax + 1]);
-    }
 };
 
 struct EdgeLocalCross : Edge
@@ -157,16 +145,6 @@ struct EdgeLocalCross : Edge
     EdgeLocalCross(Edge &edge)
         : Edge(edge)
     {
-    }
-
-    SIZETYPE get_trn(SHORTSIZE ref_sz)
-    {
-        return 3 * (ref_sz + 1);
-    }
-
-    SIZETYPE get_tnn(QUERYSIZE Omax, SHORTSIZE ref_sz)
-    {
-        return (Omax + 1) * get_trn(ref_sz);
     }
 
     SIZETYPE *get_Ss(SHORTSIZE ref_sz)
@@ -190,16 +168,6 @@ struct EdgeLocalCircuit : Edge
     EdgeLocalCircuit(Edge &edge)
         : Edge(edge)
     {
-    }
-
-    SIZETYPE get_trn(SHORTSIZE ref_sz)
-    {
-        return 1 + 4 * (ref_sz + 1) + 2 * (tail->scc_sz - 1);
-    }
-
-    SIZETYPE get_tnn(QUERYSIZE Omax, SHORTSIZE ref_sz)
-    {
-        return (Omax + 1) * get_trn(ref_sz);
     }
 
     SIZETYPE *get_Ss(SHORTSIZE ref_sz)
@@ -247,16 +215,6 @@ struct EdgeGlobalCircuit : Edge
     {
     }
 
-    SIZETYPE get_trn()
-    {
-        return tail->scc_sz - 1;
-    }
-
-    SIZETYPE get_tnn(QUERYSIZE Omax)
-    {
-        return (Omax + 1) * get_trn();
-    }
-
     SIZETYPE *get_Ss()
     {
         return new SIZETYPE[1]{tail->scc_sz-1};
@@ -282,7 +240,6 @@ struct Graph
     std::unique_ptr<SCORETYPE []> vals;
     std::unique_ptr<SHORTSIZE []> ss;
     std::unique_ptr<DOTTYPE []> ns;
-    SIZETYPE trn, tnn;
 
     SCORETYPE *pQval;
 

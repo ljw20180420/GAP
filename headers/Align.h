@@ -76,11 +76,11 @@ struct Align : Graph
 
     CrossGlobalData crossglobaldata;
 
+    SIZETYPE trn, tnn;
     void apply_memory()
     {
         trn = 0;
         tnn = 1 + nodes.size(); // Q and Abars
-
         for (Node &node : nodes)
         {
             trn += node.scc_sz + 1;
@@ -89,19 +89,19 @@ struct Align : Graph
         for (EdgeLocalCross &edge : local_crosses)
         {
             SHORTSIZE ref_sz = file2short[edge.name].second;
-            trn += edge.get_trn(ref_sz);
-            tnn += edge.get_tnn(Omax, ref_sz);
+            trn += 3 * (ref_sz + 1);
+            tnn += (Omax + 1) * 3 * (ref_sz + 1);
         }
         for (EdgeLocalCircuit &edge : local_circuits)
         {
             SHORTSIZE ref_sz = file2short[edge.name].second;
-            trn += edge.get_trn(ref_sz);
-            tnn += edge.get_tnn(Omax, ref_sz);
+            trn += 1 + 4 * (ref_sz + 1) + 2 * (edge.tail->scc_sz - 1);
+            tnn += (Omax + 1) * (1 + 4 * (ref_sz + 1) + 2 * (edge.tail->scc_sz - 1));
         }
         for (EdgeGlobalCircuit &edge : global_circuits)
         {
-            trn += edge.get_trn();
-            tnn += edge.get_tnn(Omax);
+            trn += edge.tail->scc_sz - 1;
+            tnn += (Omax + 1) * (edge.tail->scc_sz - 1);
         }
         vals.reset(new SCORETYPE[tnn]);
         ids.reset(new IDTYPE[tnn]);
@@ -138,35 +138,6 @@ struct Align : Graph
             edge.apply_memory(Omax, fpval, fps, fpn, file2short[edge.name].second);
         for (EdgeGlobalCircuit &edge : global_circuits)
             edge.apply_memory(Omax, fpval, fps, fpn);
-    }
-
-    struct SWN
-    {
-        SIZETYPE s;
-        QUERYSIZE w;
-        DOTTYPE n;
-    };
-
-    SWN get_swn(SIZETYPE idx)
-    {
-        SWN swn;
-        swn.s = idx / (Omax + 1);
-        if (swn.s < trn)
-        {
-            swn.n = ns[swn.s];
-            swn.s = ss[swn.s];
-            swn.w = idx % (Omax + 1);
-        }
-        else
-        {
-            swn.s = 0;
-            swn.w = 0;
-            if (idx == tnn - 1)
-                swn.n = Dot::DotQ;
-            else
-                swn.n = Dot::DotAbar;
-        }
-        return swn;
     }
 
     Align(std::mutex &mtx_, std::ifstream &fin_, boost::program_options::variables_map &vm, std::map<std::string, std::pair<std::unique_ptr<NUCTYPE []>, SHORTSIZE>> &file2short, std::map<std::string, RankVec> &file2rankvec, std::string mgfile, QUERYSIZE Omax_)
@@ -756,6 +727,35 @@ struct Align : Graph
                     jumps.erase(jumps.begin() + i);
                 }
             }
+    }
+
+    struct SWN
+    {
+        SIZETYPE s;
+        QUERYSIZE w;
+        DOTTYPE n;
+    };
+
+    SWN get_swn(SIZETYPE idx)
+    {
+        SWN swn;
+        swn.s = idx / (Omax + 1);
+        if (swn.s < trn)
+        {
+            swn.n = ns[swn.s];
+            swn.s = ss[swn.s];
+            swn.w = idx % (Omax + 1);
+        }
+        else
+        {
+            swn.s = 0;
+            swn.w = 0;
+            if (idx == tnn - 1)
+                swn.n = Dot::DotQ;
+            else
+                swn.n = Dot::DotAbar;
+        }
+        return swn;
     }
 
     enum VALTYPE{NA, NB, SOE, SOF, SOG, SID, SIE, SIF0, SIG0, SIG, SID0, SIDX, LID0, ABAR, Q};
