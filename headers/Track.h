@@ -372,7 +372,7 @@ struct Track : Graph
                 bool islocal = file2short.count(edges[path[0]->n]->name);
                 NUCTYPE *ref;
                 SIZETYPE ref_sz;
-                std::unique_ptr<NUCTYPE []> revref(new NUCTYPE[path.back()->lambda]);
+                NUCTYPE revref[path.back()->lambda];
                 if (islocal)
                 {
                     std::pair<std::unique_ptr<NUCTYPE []>, SHORTSIZE> &pair = file2short[edges[path[0]->n]->name];
@@ -383,7 +383,7 @@ struct Track : Graph
                 {
                     std::ifstream &REVREFfin = file2long[edges[path[0]->n]->name];
                     REVREFfin.seekg(file2rankvec[edges[path[0]->n]->name].bwt_sz - 1 - path.back()->s);
-                    REVREFfin.read((char*)revref.get(), path.back()->lambda);
+                    REVREFfin.read((char*)revref, path.back()->lambda);
                 }
 
                 if (islocal)
@@ -475,9 +475,9 @@ struct Track : Graph
         std::vector<std::pair<std::string, SIZETYPE>> &cumlen = file2cumlen[edges[pdot->n]->name];
         RankVec &rankvec = file2rankvec[edges[pdot->n]->name];
         std::ifstream &REVREFfin = file2long[edges[pdot->n]->name];
-        std::unique_ptr<NUCTYPE []> revref(new NUCTYPE[pdot->lambda]);
+        NUCTYPE revref[pdot->lambda];
         REVREFfin.seekg(rankvec.bwt_sz - pdot->s - 1);
-        REVREFfin.read((char*)revref.get(), pdot->lambda);
+        REVREFfin.read((char*)revref, pdot->lambda);
 
         SIZETYPE sr1 = 0, sr2 = rankvec.bwt_sz;
         for (SIZETYPE s = 1; s <= pdot->lambda; ++s)

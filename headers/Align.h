@@ -1233,9 +1233,9 @@ struct Align : Graph
             SAfin.seekg(globalsuffix.start * sizeof(SIZETYPE));
             SAfin.read((char*)&start, sizeof(SIZETYPE));
             std::ifstream &REVREFfin = file2long[edge->name];
-            std::unique_ptr<NUCTYPE []> revref(new NUCTYPE[globalsuffix.lambda]);
+            NUCTYPE revref[globalsuffix.lambda];
             REVREFfin.seekg(start);
-            REVREFfin.read((char*)revref.get(), globalsuffix.lambda);
+            REVREFfin.read((char*)revref, globalsuffix.lambda);
 
             tracktree.pidx = -1;
             tracktree.idx = 0;
