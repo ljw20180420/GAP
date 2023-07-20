@@ -131,11 +131,28 @@ struct Align : Graph
             nodes[i].AdeltaDot.reset(new std::deque<SCORETYPE *>[Omax + 1]);
             nodes[i].AdeltaGlobal.reset(new std::deque<Node::GlobalSuffix>[Omax + 1]);
         }
-            
+
         for (EdgeLocalCross &edge : local_crosses)
-            edge.apply_memory(Omax, fpval, fps, fpn, file2short[edge.name].second);
+        {
+            SHORTSIZE ref_sz = file2short[edge.name].second;
+            for (SIZETYPE i = 0; i < 3; ++i)
+                for (SIZETYPE j = 0; j <= ref_sz; ++j, ++fps, ++fpn)
+                {
+                    *fps = j;
+                    *fpn = edge.n;
+                }
+            SIZETYPE si = 0;
+            for (std::unique_ptr<SCORETYPE *[]> *pYvalss : {&edge.Evals, &edge.Fvals, &edge.Gvals})
+            {
+                pYvalss->reset(new SCORETYPE *[ref_sz + 1]);
+                for (SIZETYPE s = 0; s <= ref_sz; ++s, fpval += Omax + 1)
+                    (*pYvalss)[s] = fpval;
+            }
+        }
+
         for (EdgeLocalCircuit &edge : local_circuits)
             edge.apply_memory(Omax, fpval, fps, fpn, file2short[edge.name].second);
+
         for (EdgeGlobalCircuit &edge : global_circuits)
             edge.apply_memory(Omax, fpval, fps, fpn);
     }
