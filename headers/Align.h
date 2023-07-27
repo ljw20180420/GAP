@@ -13,31 +13,6 @@
 
 struct Align : Graph
 {
-    struct CrossGlobalData
-    {
-        struct Doo
-        {
-            QUERYSIZE w;
-            SCORETYPE F, G;
-
-            Doo(QUERYSIZE w_, SCORETYPE F_, SCORETYPE G_)
-                : w(w_), F(F_), G(G_)
-            {
-            }
-        };
-
-        std::deque<Doo> FG;
-
-        
-
-        struct Do
-        {
-            QUERYSIZE w;
-            SCORETYPE E;
-        };
-
-        std::unique_ptr<Do []> E;
-    };
 
     std::mutex &mtx;
     std::ifstream &fin;
@@ -49,17 +24,33 @@ struct Align : Graph
     std::unique_ptr<IDTYPE []> ids;
     std::unique_ptr<BITSTYPE []> bits;
 
-    CrossGlobalData crossglobaldata;
-
     struct SimNode
     {
         NUCTYPE c;
         SIZETYPE sr1, sr2;
         SIZETYPE shiftFG;
     };
-
     std::unique_ptr<SimNode []> simnodes;
     SIZETYPE sim_fs = 0;
+
+    struct Doo
+    {
+        QUERYSIZE w;
+        SCORETYPE F, G;
+
+        Doo(QUERYSIZE w_, SCORETYPE F_, SCORETYPE G_)
+            : w(w_), F(F_), G(G_)
+        {
+        }
+    };
+    std::deque<Doo> FG;
+
+    struct Do
+    {
+        QUERYSIZE w;
+        SCORETYPE E;
+    };
+    std::unique_ptr<Do []> E;
 
     std::unique_ptr<SCORETYPE []> croS;
     SCORETYPE *Ethres, *croE;
@@ -179,7 +170,7 @@ struct Align : Graph
                 edge.D0vals[s] = fpval;
         }
 
-        crossglobaldata.E.reset(new CrossGlobalData::Do[Omax + 1]);
+        E.reset(new Do[Omax + 1]);
 
         simnodes.reset(new SimNode[2 * Omax]);
 
@@ -448,8 +439,6 @@ struct Align : Graph
     void CrossIterationGlobal(Edge *edge)
     {
         SCORETYPE *Avals = edge->tail->Avals[edge->tail->scc_sz - 1];
-        std::unique_ptr<CrossGlobalData::Do[]> &E = crossglobaldata.E;
-        std::deque<CrossGlobalData::Doo> &FG = crossglobaldata.FG;
         RankVec &rankvec = file2rankvec[edge->name]; 
 
         SIZETYPE sr1 = 0, sr2 = rankvec.bwt_sz;
