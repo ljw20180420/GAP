@@ -38,13 +38,6 @@ struct Align : Graph
     };
     std::deque<Doo> FG;
 
-    struct Do
-    {
-        QUERYSIZE w;
-        SCORETYPE E;
-    };
-    std::unique_ptr<Do []> E;
-
     struct SimNode
     {
         NUCTYPE c;
@@ -171,8 +164,6 @@ struct Align : Graph
             for (SIZETYPE s = 0; s < edge.tail->scc_sz-1; ++s, fpval += Omax + 1)
                 edge.D0vals[s] = fpval;
         }
-
-        E.reset(new Do[Omax + 1]);
 
         simnodes.reset(new SimNode[2 * Omax]);
 
@@ -460,6 +451,7 @@ struct Align : Graph
             EO = EN;
         }
 
+
         while (true)
         {
             while (true)
@@ -494,39 +486,57 @@ struct Align : Graph
                     FG.erase(FG.begin() + simnodes[sim_fs - 1].shiftFG, FG.end());
             }
 
-            for (SIZETYPE e = 0, idx = simnodes[sim_fs - 2].shiftFG, w = FG[idx].w;; ++e)
+            for (SIZETYPE idx = simnodes[sim_fs - 2].shiftFG, w; idx < simnodes[sim_fs - 1].shiftFG; ++idx)
             {
-                E[e].w = w;
-                E[e].E = std::max((e > 0 && E[e - 1].w == w - 1) ? E[e - 1].E + edge->ue : -inf, (simnodes[sim_fs - 1].shiftFG < FG.size() && FG.back().w == w - 1) ? FG.back().G + edge->ve : -inf);
-                if (E[e].E < Ethres[w])
-                    E[e].E = -inf;
-
-                SCORETYPE F_val = idx < simnodes[sim_fs - 1].shiftFG && FG[idx].w == w ? std::max(FG[idx].F + edge->uf, FG[idx].G + edge->vf) : -inf;
-                SCORETYPE G_val = idx > simnodes[sim_fs - 2].shiftFG && FG[idx - 1].w == w - 1 ? FG[idx - 1].G + edge->gamma[simnodes[sim_fs - 1].c][O[w - 1]] : -inf;
-                G_val = std::max({G_val, E[e].E, F_val});
-                if (G_val >= FG[w].G)
-                {
-                    FG.emplace_back(w, F_val, G_val);
-
-                    if (G_val >= edge->head->Avals[0][w])
-                    {
-                        if (G_val > edge->head->Avals[0][w])
-                        {
-                            edge->head->Avals[0][w] = G_val;
-                            edge->head->AdeltaDot[w].clear();
-                            edge->head->AdeltaGlobal[w].clear();
-                        }
-                        edge->head->AdeltaGlobal[w].emplace_back(edge, simnodes[sim_fs - 1].sr1, sim_fs - 1);
-                    }
-                }
-                if (idx < simnodes[sim_fs - 1].shiftFG && FG[idx].w <= w)
-                    ++idx;
-                if (w < O.size() && (FG[idx - 1].w == w || (simnodes[sim_fs - 1].shiftFG < FG.size() && FG.back().w == w) || E[e].E > -inf))
-                    ++w;
-                else if (idx < simnodes[sim_fs - 1].shiftFG)
-                    w = FG[idx].w;
+                if (idx == simnodes[sim_fs - 2].shiftFG || w < FG[idx].w - 1) // if w exit loop not by break, then w = FG[idx].w
+                    EO = -inf;
                 else
-                    break;
+                    EO = EN;
+                QUERYSIZE W;
+                if (idx < simnodes[sim_fs - 1].shiftFG - 1)
+                    W = FG[idx + 1].w;
+                else
+                    W = O.size() + 1;
+                for (w = FG[idx].w; w < W; ++w)
+                {
+                    if (w == 0)
+                        EN = -inf;
+                    else
+                        EN = std::max(EO + edge->ue, (simnodes[sim_fs - 1].shiftFG < FG.size() && FG.back().w == w - 1) ? FG.back().G + edge->ve : -inf);
+                    if (EN < Ethres[w])
+                        EN = -inf;
+                    SCORETYPE F_val;
+                    if (w == FG[idx].w)
+                        F_val = std::max(FG[idx].F + edge->uf, FG[idx].G + edge->vf);
+                    else
+                        F_val = -inf;
+                    SCORETYPE G_val;
+                    if (w == FG[idx].w && idx > simnodes[sim_fs - 2].shiftFG && FG[idx - 1].w == w - 1)
+                        G_val = FG[idx - 1].G + edge->gamma[simnodes[sim_fs - 1].c][O[w - 1]];
+                    else if (w == FG[idx].w + 1)
+                        G_val = FG[idx].G + edge->gamma[simnodes[sim_fs - 1].c][O[w - 1]];
+                    else
+                        G_val = -inf;
+                    G_val = std::max({G_val, EN, F_val});
+                    if (G_val >= FG[w].G)
+                    {
+                        FG.emplace_back(w, F_val, G_val);
+
+                        if (G_val >= edge->head->Avals[0][w])
+                        {
+                            if (G_val > edge->head->Avals[0][w])
+                            {
+                                edge->head->Avals[0][w] = G_val;
+                                edge->head->AdeltaDot[w].clear();
+                                edge->head->AdeltaGlobal[w].clear();
+                            }
+                            edge->head->AdeltaGlobal[w].emplace_back(edge, simnodes[sim_fs - 1].sr1, sim_fs - 1);
+                        }
+                    }
+                    else if (w > FG[idx].w + 1 && EN == -inf)
+                        break;
+                    EO = EN;
+                }
             }
         }
     }
