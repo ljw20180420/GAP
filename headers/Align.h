@@ -24,14 +24,7 @@ struct Align : Graph
     std::unique_ptr<IDTYPE []> ids;
     std::unique_ptr<BITSTYPE []> bits;
 
-    struct SimNode
-    {
-        NUCTYPE c;
-        SIZETYPE sr1, sr2;
-        SIZETYPE shiftFG;
-    };
-    std::unique_ptr<SimNode []> simnodes;
-    SIZETYPE sim_fs = 0;
+    
 
     struct Doo
     {
@@ -52,8 +45,17 @@ struct Align : Graph
     };
     std::unique_ptr<Do []> E;
 
+    struct SimNode
+    {
+        NUCTYPE c;
+        SIZETYPE sr1, sr2;
+        SIZETYPE shiftFG;
+    };
+    std::unique_ptr<SimNode []> simnodes;
+    SIZETYPE sim_fs = 0;
+
     std::unique_ptr<SCORETYPE []> croS;
-    SCORETYPE *Ethres, *croE;
+    SCORETYPE *Ethres;
     // std::unique_ptr<SCORETYPE *[]> croF, croG;
     // std::unique_ptr<QUERYSIZE []> croQ;
     // std::unique_ptr<QUERYSIZE *[]> crop;
@@ -174,22 +176,8 @@ struct Align : Graph
 
         simnodes.reset(new SimNode[2 * Omax]);
 
-        // croS.reset(new SCORETYPE[(2 + 4 * Omax) * (Omax + 1)]);
-        croS.reset(new SCORETYPE[2 * (Omax + 1)]);
+        croS.reset(new SCORETYPE[Omax + 1]);
         Ethres = croS.get();
-        croE = Ethres + Omax + 1;
-        // SCORETYPE *ptr = croE + Omax + 1;
-        // for (std::unique_ptr<SCORETYPE *[]> *pcroX : {&croF, &croG})
-        // {
-        //     pcroX->reset(new SCORETYPE *[2 * Omax]);
-        //     for(SIZETYPE i = 0; i < 2 * Omax; ++i, ptr += Omax + 1)
-        //         (*pcroX)[i] = ptr;
-        // }
-        // croQ.reset(new QUERYSIZE[2 * Omax * (Omax + 2)]);
-        // ptr = croQ.get();
-        // crop.reset(new QUERYSIZE *[2 * Omax]);
-        // for(SIZETYPE i = 0; i < 2 * Omax; ++i, ptr += Omax + 2)
-        //     crop[i] = ptr;
     }
 
     void run()
@@ -447,15 +435,16 @@ struct Align : Graph
         simnodes[0].sr2 = sr2;
         simnodes[0].shiftFG = FG.size();
         ++sim_fs; // sim_fs becomes 1 here 
+        SCORETYPE EO, EN;
         for (SIZETYPE w = 0; w <= O.size(); ++w)
         {
             if (w > 0)
-                croE[w] = std::max(croE[w - 1] + edge->ue, FG[w - 1].G + edge->ve);
+                EN = std::max(EO + edge->ue, FG[w - 1].G + edge->ve);
             else
-                croE[w] = -inf;
+                EN = -inf;
             SCORETYPE tgw = (O.size() > w ? (O.size() - w - 1) * edge->tail->ue + edge->tail->ve : 0);
-            FG.emplace_back(w, -inf, std::max(croE[w], Avals[w] + edge->T));
-            Ethres[w] = std::max(croE[w], FG[w].G + std::min({SCORETYPE(0), edge->tail->ve - edge->ue, SCORETYPE(tgw - (O.size() - w) * edge->ue)}));
+            FG.emplace_back(w, -inf, std::max(EN, Avals[w] + edge->T));
+            Ethres[w] = std::max(EN, FG[w].G + std::min({SCORETYPE(0), edge->tail->ve - edge->ue, SCORETYPE(tgw - (O.size() - w) * edge->ue)}));
 
             if (FG[w].G >= edge->head->Avals[0][w])
             {
@@ -467,6 +456,8 @@ struct Align : Graph
                 }
                 edge->head->AdeltaGlobal[w].emplace_back(edge, simnodes[0].sr1, 0);
             }
+
+            EO = EN;
         }
 
         while (true)

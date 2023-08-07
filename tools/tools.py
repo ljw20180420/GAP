@@ -39,13 +39,13 @@ def is_next(record1, record2):
     if not flag1 % 2 or not flag2 % 2:
         return False
     # check both records mapped
-    if (flag1 / 4) % 2 or (flag2 / 4) % 2:
+    if (flag1 // 4) % 2 or (flag2 // 4) % 2:
         return False
     # the next of record1 should map
-    if (flag1 / 8) % 2:
+    if (flag1 // 8) % 2:
         return False
     # record1 is the last record if and only if record2 is the first record
-    if (flag1 / 128) % 2 != (flag2 / 64) % 2:
+    if (flag1 // 128) % 2 != (flag2 // 64) % 2:
         return False
 
     ### check YT tag if exists
@@ -67,7 +67,7 @@ def is_next(record1, record2):
         return False
     
     ### check strand
-    if (flag1 / 32) % 2 != (flag2 / 16) % 2:
+    if (flag1 // 32) % 2 != (flag2 // 16) % 2:
         return False
     
     ### check HI tag
@@ -89,40 +89,40 @@ def group_records(records, software):
     ### group records into chimeric alignments denoted by HI tag
     software = software.lower()
     if software in ["star", "hisat2"]:
-        NH = int(re.search("\sNH:i:(\d+)\s", records[0]).group(1))
-        HI = 0
-        HIpat = re.compile("\sHI:i:(\d+)\s")
-    i = 0
+        NH = int(re.search("\sNH:i:(\d+)\s", records[0]).group(1))  
+    i, HI = 0, 0
     while i < len(records):
         firstfound = False
         while not firstfound:
-            if software in ["star", "hisat2"]:
-                HI += 1
+            HI += 1
             for j in range(i, len(records)):
-                flag = int(records[j].split('\t', 2)[1])
-                if (flag / 64) % 2:
-                    if software in ["star", "hisat2"]:
-                        HIR = int(re.search("\sNH:i:(\d+)\s", records[j]).group(1))
-                    if software not in ["star", "hisat2"] or HIR == HI:
-                        firstfound = True
-                        records[i], records[j] = records[j], records[i]
-                        break
+                if software in ["star", "hisat2"]:
+                    HIR = int(re.search("\sNH:i:(\d+)\s", records[j]).group(1))
+                if software not in ["star", "hisat2"] or HIR == HI:
+                    firstfound = True
+                    records[i], records[j] = records[j], records[i]
+                    break
             if software not in ["star", "hisat2"] or HI == NH:
                 break
         if not firstfound:
             raise Exception("the first record cannot be found")
         j = i
-        flag = int(records[j].split('\t', 2)[1])
-        while j + 1 < len(records) and not (flag / 128) % 2:
+        foundnext = True
+        while j + 1 < len(records) and foundnext:
+            foundnext = False
             for k in range(j + 1, len(records)):
                 if is_next(records[j], records[k]):
-                    j += 1
                     records[j], records[k] = records[k], records[j]
+                    j += 1
+                    foundnext = True
                     break
-            flag = int(records[j].split('\t', 2)[1])
         # alignment with single record generally does not set the first and last record, so j > i is necessary
         if (j > i and not is_next(records[j], records[i])):
             raise Exception("the next of the last record is not the first record")
+        for k in range(i, j + 1):
+            flag = int(records[k].split('\t', 2)[1])
+            if (flag // 64) % 2:
+                records[i:j+1] = records[k:j+1] + records[i:k]
         if software not in ["star", "hisat2"]:
             for k in range(i, j + 1):
                 records[k] = records[k][:-1] + f"\tHI:i:{HI}\n"          
@@ -130,231 +130,161 @@ def group_records(records, software):
     
     return records
 
-def R1R2_unique(records, genome, aligner, extend):
-    # check each read in pair is uniquely mapped, if one is uniquely mapped and the other is non-uniquely mapped, remap the other
-    breakpoint()
-    chroms1, poses1, strands1, chroms2, poses2, strands2 = set(), set(), set(), set(), set(), set()
-    record1, record2 = "", ""
+def get_blocks(records, software, bf):
+    chroms, starts, ends, scores, strands = [], [], [], [], []
     for record in records:
-        _, flag, chrom, pos, _ = record.split('\t', 4)
+        _, flag, chrom, start, _, cigar, _ = record.split('\t', 6)
+        score = int(re.search("\sAS:i:(-?\d+)\s", record).group(1))
         flag = int(flag)
-        if (flag / 16) % 2:
-            strand = '-'
-        else:
-            strand = "+"
-        if (flag / 64) % 2:
-            chroms1.add(chrom)
-            poses1.add(pos)
-            strands1.add(strand)
-            if not record1:
-                record1 = record
-        if (flag / 128) % 2:
-            chroms2.add(chrom)
-            poses2.add(pos)
-            strands2.add(strand)
-            if not record2:
-                record2 = record
-    R1unique = False
-    if not chroms1:
-        R1mapped = False
-    else:
-        R1mapped = True
-        if len(chroms1) == 1 and len(poses1) == 1 and len(strands1) == 1:
-            R1unique = True
-    R2unique = False
-    if not chroms2:
-        R2mapped = False
-    else:
-        R2mapped = True
-        if len(chroms2) == 1 and len(poses2) == 1 and len(strands2) == 1:
-            R2unique = True
+        # R2 of paired reads sequencing the reverse complement of the DNA. Softwares record the strand of R2 directly. So the true strand of R2 needs a reverse.
+        strand = '+' if (flag // 16) % 2 == (flag // 128) % 2 else '-'
+        cigars = cigar.split('N')
+        skips = []
+        for i in range(len(cigars)-1):
+            skips.append(int(re.search('\d+$', cigars[i]).group(0)))
+            cigars[i] = cigars[i].rstrip(string.digits)
+        tread = pysam.libcalignedsegment.AlignedSegment()
+        startsR, endsR = [int(start)], []
+        for i in range(len(cigars)):
+            tread.cigarstring = cigars[i]
+            endsR.append(startsR[i] + tread.reference_length)
+            if i < len(skips):
+                startsR.append(endsR[i]+skips[i])
+        if strand == '-':
+            startsR, endsR = startsR[::-1], endsR[::-1]
+        chroms.extend([chrom] * len(cigars))
+        starts.extend(startsR)
+        ends.extend(endsR)
+        scores.extend([score] + [0] * (len(cigars) - 1))
+        strands.extend([strand] * len(cigars))
+    if software.lower() == "bowtie2":
+        YTtag = re.search("\sYT:Z:([CDUP]{2})\s", record)
+        if YTtag and YTtag.group(1) == "CP":
+            chroms, starts, ends, scores, strands = chroms[0:1], [min(starts)], [max(ends)], [sum(scores)], strands[0:1]
+    qname = record.split('\t', 1)[0]
+    HI = int(re.search("\sHI:i:(\d+)\s", record).group(1))
+    for chrom, start, end, score, strand, BI in zip(chroms, starts, ends, scores, strands, range(1, len(chroms) + 1)):
+        bf.write(f"{chrom}\t{start}\t{end}\t{qname}\t{score}\t{strand}\t{HI}\t{BI}\n")
 
-    remap = False
-    if R1unique and R2mapped and not R2unique:
-        remap = True
-        recordU, recordR = record1, record2
-    elif R2unique and R1mapped and not R1unique:
-        remap = True
-        recordU, recordR = record2, record1
-    if remap:
-        recordRsp = recordR.split('\t', 10)
-        flagR, seq, qual = recordRsp[1], recordRsp[9], recordRsp[10]
-        if (flagR / 16) % 2:
-            seq = Bio.Seq.Seq(seq).reverse_complement().__str__()
-            qual = qual[::-1]
-        qname, flagU, chrom, posU, _, CIGARU = recordU.split('\t', 6)
-        score_min = -0.6 - 0.6 * len(seq)
-        if not (flagU / 16) % 2:    
-            refstart = posU - 1
-        else:
-            tread = pysam.libcalignedsegment.AlignedSegment()
-            tread.cigarstring = CIGARU
-            refstart = posU - 1 + tread.reference_length - extend
-        ref = genome[chrom].ff.fetch(chrom)[refstart:refstart+extend]
-        if not (flagU / 16) % 2:
-            seq = Bio.Seq.Seq(seq).reverse_complement().__str__()
-            qual = qual[::-1]
-        alignments = aligner.align(ref, seq)
-        if alignments.score >= score_min:
-            qname, flagU, chrom, posU, _, CIGARU, _, _, _, leftU = recordU.split('\t', 9)
-            if not (flagU / 2) % 2:
-                flagU += 2
-            if (flagU / 8) % 2:
-                flagU -= 8
-            if (flagU / 16) % 2 and (flagU / 32) % 2:
-                flagU -= 32
-            if not (flagU / 16) % 2 and not (flagU / 16) % 2:
-                flagU += 32
-            if (flagU / 256) % 2:
-                flagU -= 256
-            leftU = re.sub("(?<=\s)YT:Z:[CDPU]{2}(?=\s)", "YT:Z:CP", leftU)
-            leftU = re.sub("(?<=\s)YS:i:-?\d+(?=\s)", f"YS:i:{int(alignments.score)}", leftU)
-
-            flagR = 1 + 2
-            if (flagU / 16) % 2:
-                flagR += 32
-            else:
-                flagR += 16
-            if (flagU / 64) % 2:
-                flagR += 128
-            else:
-                flagR += 64
-            for i in range(len(alignments[0].aligned[0])):
-                Trange = alignments[0].aligned[0][i]
-                Qrange = alignments[0].aligned[1][i]
-                if i == 0 and Qrange[0] > 0:
-                    posR = refstart + Trange[0] + 1
-                    CIGARR = f"{Qrange[0]}I"
-                CIGARR += f"{Qrange[1] - Qrange[0]}M"
-                if i < len(alignments[0].aligned[0]) - 1:
-                    TrangeN = alignments[0].aligned[0][i + 1]
-                    QrangeN = alignments[0].aligned[1][i + 1]
-                    if TrangeN[0] > Trange[1]:
-                        CIGARR += f"{TrangeN[0] - Trange[1]}D"
-                    if QrangeN[0] > Qrange[1]:
-                        CIGARR += f"{QrangeN[0] - Qrange[1]}I"
-                else:
-                    if len(seq) > Qrange[1]:
-                        CIGARR += f"{len(seq) - Qrange[1]}I"
-            tread.cigarstring = CIGARU
-            endU = posU + tread.reference_length
-            tread.cigarstring = CIGARR
-            endR = posR + tread.reference_length
-            TLEN = max(endU, endR) - min(posU, posR)
-            if (flagU / 64) % 2:
-                TLENU, TLENR = TLEN, -TLEN
-            else:
-                TLENR, TLENU = TLEN, -TLEN
-            ASU = int(re.search("\sAS:i:(-?\d+)\s", leftU).group(1))
-            recordU = f"{qname}\t{flagU}\t{chrom}\t{posU}\t255\t{CIGARU}\t{chrom}\t{posR}\t{TLENU}\t{leftU}"
-            recordR = f"{qname}\t{flagR}\t{chrom}\t{posR}\t255\t{CIGARR}\t{chrom}\t{posU}\t{TLENR}\t{seq}\t{qual}\tAS:i:{int(alignments.score)}\tYS:i:{ASU}\tYT:Z:CP\n"
-            if (flagU / 64) % 2:
-                record1, record2 = recordU, recordR
-            else:
-                record1, record2 = recordR, recordU
-            record1 = record1[:-1] + "\tHI:i:1\tRI:i:1\n"
-            record2 = record2[:-1] + "\tHI:i:1\tRI:i:2\n"
-            return record1, record2
-
-    return None, None
-
-def concordant_correction(samfile, outfile, oldfile, newfile):
-    genome = bioframe.load_fasta("/home/ljw/hg19_with_bowtie2_index/hg19.fa")
-    aligner = Bio.Align.PairwiseAligner()
-    aligner.target_internal_open_gap_score = -5
-    aligner.target_internal_extend_gap_score = -3
-    aligner.target_left_open_gap_score = 0
-    aligner.target_left_extend_gap_score = 0
-    aligner.target_right_open_gap_score = 0
-    aligner.target_right_extend_gap_score = 0
-    aligner.query_internal_open_gap_score = -5
-    aligner.query_internal_extend_gap_score = -3
-    aligner.query_left_open_gap_score = -5
-    aligner.query_left_extend_gap_score = -3
-    aligner.query_right_open_gap_score = -5
-    aligner.query_right_extend_gap_score = -3
-    aligner.match_score = 0
-    aligner.mismatch_score = -6
-    with open(samfile, "r") as sf, open(outfile, "w") as of, open(oldfile, "w") as old, open(newfile, "w") as new:
-        for record in sf:
-            of.write(record)
-            if (record.startswith("@HD")):
-                break
-        if record.find("SO:queryname") == -1:
-            raise Exception("samfile must be sorted by queryname")
+def SAM2BED(samfile, bedfile):
+    # qname is query name, which may have multiple alignments
+    # sam records with the same 1-based HI belong to the same chimeric alignment
+    # each record may have several linear map blocks (small indels are not relevant), block orders are indicated by 1-based BI
+    with open(samfile, "r") as sf, open(bedfile, "w") as bf:
+        getmapped = False
         for record in sf:
             if not record.startswith("@"):
-                break
-            else:
-                of.write(record)
-        qnameG = record.split('\t', 1)[0]
-        records = [record]
-        for record in sf:
+                flag = int(record.split('\t', 2)[1])
+                if not (flag // 4) % 2:
+                    getmapped = True
+                    break
+            if record.startswith("@HD") and record.find("SO:queryname") == -1:
+                raise Exception("samfile must be sorted by queryname")
+            if record.startswith("@PG"):
+                software = re.search("(bowtie2|hisat2|STAR)", record).group(0).lower()        
+        bf.write("chrom\tstart\tend\tqname\tscore\tstrand\tHI\tBI\n")
+        while getmapped:
             qname = record.split('\t', 1)[0]
-            if qname == qnameG:
+            records = [record]
+            getmapped = False
+            for record in sf:
+                qnameR, flag, _ = record.split('\t', 2)
+                flag = int(flag)
+                if (flag // 4) % 2:
+                    continue
+                if qnameR != qname:
+                    getmapped = True
+                    qname = qnameR
+                    break
                 records.append(record)
-            else:
-                record1, record2 = R1R2_unique(records, genome, aligner, 500)
-                if not record1:
-                    # for reco in group_records(records):
-                    #     of.write(reco)
-                    pass
-                else:
-                    of.write(record1)
-                    of.write(record2)
-                    for reco in group_records(records):
-                        old.write(reco)
-                    new.write(record1)
-                    new.write(record2)
-                qnameG = qname
-                records = [record]
-        record1, record2 = R1R2_unique(records, genome, aligner, 500)
-        if not record1:
-            # for reco in group_records(records):
-            #     of.write(reco)
-            pass
-        else:
-            of.write(record1)
-            of.write(record2)
-            for reco in group_records(records):
-                old.write(reco)
-            new.write(record1)
-            new.write(record2)
-
-concordant_correction("tools/tests/Z0-rep1_L3_710D01.bowtie2.sam", "tools/tests/Z0-rep1_L3_710D01.bowtie2.concordant.sam", "tools/tests/Z0-rep1_L3_710D01.bowtie2.old.sam", "tools/tests/Z0-rep1_L3_710D01.bowtie2.new.sam")
+            records = group_records(records, software)
+            i, HI = 0, int(re.search("\sHI:i:(\d+)\s", records[0]).group(1))
+            for j in range(1, len(records)):
+                HIN = int(re.search("\sHI:i:(\d+)\s", records[j]).group(1))
+                if HIN != HI:
+                    get_blocks(records[i:j], software, bf)
+                    i, HI = j, HIN
+            get_blocks(records[i:], software, bf)
+            
+def bed2mergedweightedbed(bedfile, mergefile):
+    os.makedirs(f"{os.path.dirname(bedfile)}/tmp", exist_ok=True)
+    tmpfile = f"{os.path.dirname(bedfile)}/tmp/{os.path.basename(bedfile)}"
+    subprocess.check_output(f"tail -n+2 {bedfile} | sort -k4,4 -k7,7n -k1,1 -k2,3n  > {tmpfile}", shell=True)
+    with open(tmpfile, 'r') as tf, open(mergefile, 'w') as mf:
+        mf.write("chrom\tstart\tend\tname\tscore\tstrand\n")
+        linesN = tf.readline()
+        while linesN:
+            chrom, start, end, qname, _, _, HI, _ = linesN.split('\t')
+            startss, endss, chroms = [[int(start)]], [[int(end)]], [chrom]
+            HIC = 1
+            linesN = ""
+            for line in tf:
+                chroml, start, end, qnamel, _, _, HIl, _ = line.split('\t')
+                if qnamel != qname:
+                    linesN = line
+                    break
+                if HIl != HI or chroml != chroms[-1]:
+                    chroms.append(chroml)
+                    startss.append([])
+                    endss.append([])
+                startss[-1].append(int(start))
+                endss[-1].append(int(end))
+                if HIl != HI:
+                    HIC += 1
+                    HI = HIl
+            weight = 1 / HIC
+            for chrom, starts, ends in zip(chroms, startss, endss):
+                mstarts, mends = [starts[0]], [ends[0]]
+                for start, end in zip(starts[1:], ends[1:]):
+                    if start > mends[-1]:
+                        mstarts.append(start)
+                        mends.append(end)
+                    else:
+                        mends[-1] = end
+                for mstart, mend in zip(mstarts, mends):
+                    mf.write(f"{chrom}\t{mstart}\t{mend}\t{qname}\t{weight}\t.\n")
 
 def sortedbed2bedgraph(bedfile, bedgraphfile, binwidth):
+    ### get the coverage of a bedfile according to its scores, bedfile is assumed sorted
     chromsizes = {'chr1' : 249250621, 'chr2' : 243199373, 'chr3' : 198022430, 'chr4' : 191154276, 'chr5' : 180915260, 'chr6' : 171115067, 'chr7' : 159138663, 'chr8' : 146364022, 'chr9' : 141213431, 'chr10' : 135534747, 'chr11' : 135006516, 'chr12' : 133851895, 'chr13' : 115169878, 'chr14' : 107349540, 'chr15' : 102531392, 'chr16' : 90354753, 'chr17' : 81195210, 'chr18' : 78077248, 'chr19' : 59128983, 'chr20' : 63025520, 'chr21' : 48129895, 'chr22' : 51304566, 'chrM' : 16571, 'chrX' : 155270560, 'chrY' : 59373566}
-    # get the coverage of a bedfile according to its scores, bedfile is assumed sorted
-    bed = bioframe.read_table(bedfile, schema="bed")
+    bed = pandas.read_csv(bedfile, sep='\t').sort_values(by=['chrom','start','end'])
     with open(bedgraphfile, "w") as bgf:
         bgf.write('track type=bedGraph name="zhangmo"\n')
         for chrom in chromsizes.keys():
-            sbin, scores = 0, []
+            sbin, ebin, scores = 0, 1, [0, 0]
             bedchrom = bed[bed["chrom"] == chrom]
             for start, end, score in zip(bedchrom["start"], bedchrom["end"], bedchrom["score"]):
-                sbinnew = start // binwidth
-                ebinnew = end // binwidth
-                for ib in range(sbinnew, ebinnew + 1):
-                    scores.extend([0] * (ib - sbin - len(scores) + 1))
-                    scores[ib - sbin] += score
-                for ib in range(sbin + 1, sbinnew):
-                    if scores[ib - sbin] != scores[0]:
-                        if scores[0] > 0:
-                            bgf.write(f"{chrom}\t{sbin * binwidth}\t{ib * binwidth}\t{scores[0]}\n")
-                        scores = scores[ib - sbin:]
-                        sbin = ib
-            if not scores:
+                sbinnew, ebinnew = start // binwidth, end // binwidth + 1
+                if ebin < sbinnew:
+                    ib = sbin
+                    for jb in range(sbin + 1, ebin + 1):
+                        if scores[ib - sbin] != scores[jb - sbin]:
+                            if scores[ib - sbin] > 0:
+                                bgf.write(f"{chrom}\t{ib * binwidth}\t{min(jb * binwidth, chromsizes[chrom])}\t{scores[ib - sbin]}\n")
+                            ib = jb
+                    scores = [score] * (ebinnew - sbinnew + 1)
+                    sbin, ebin = sbinnew, ebinnew
+                else:
+                    scores.extend([0] * (ebinnew - ebin))
+                    for ib in range(sbinnew, ebinnew):
+                        scores[ib - sbin] += score
+                    ib = sbin
+                    for jb in range(sbin + 1, sbinnew):
+                        if scores[ib - sbin] != scores[jb - sbin]:
+                            if scores[0] > 0:
+                                bgf.write(f"{chrom}\t{ib * binwidth}\t{min(jb * binwidth, chromsizes[chrom])}\t{scores[ib - sbin]}\n")
+                            ib = jb
+                    scores = scores[-(ebinnew - ib + 1):]
+                    sbin, ebin = ib, ebinnew
+            if len(bedchrom) == 0:
                 continue
             i = 0
             for j in range(1, len(scores)):
                 if scores[i] != scores[j]:
                     if scores[i] > 0:
-                        bgf.write(f"{chrom}\t{(sbin + i) * binwidth}\t{(sbin + j) * binwidth}\t{scores[i]}\n")
+                        bgf.write(f"{chrom}\t{(sbin + i) * binwidth}\t{min((sbin + j) * binwidth, chromsizes[chrom])}\t{scores[i]}\n")
                     i = j
-            if scores[i] > 0:
-                outend = min((j + 1) * binwidth, chromsizes[chrom])
-                bgf.write(f"{chrom}\t{(sbin + i) * binwidth}\t{outend}\t{scores[i]}\n")
+    subprocess.check_output(f"cat <(head -n 1 {bedgraphfile}) <(tail -n +2 {bedgraphfile} | sort -k1,1 -k2,2n) > {bedgraphfile}.sort", shell=True)
 
 
 def count_fastq(fastq_file):
@@ -454,8 +384,6 @@ def to_sam(fasta_file):
                     FLAGs = []
                     for i in range(len(query_segs)):
                         FLAGs.append(2)
-                        if len(query_segs)>1:
-                            FLAGs[-1] += 1
                         if strands[i]=="-":
                             FLAGs[-1] += 16
                         if strands[(i+1)%len(query_segs)]=="-":
@@ -506,59 +434,7 @@ def to_sam(fasta_file):
 
 
 
-def get_skip_blocks(record):
-    _, _, _, start, _, cigarstring = record.split('\t', 6)
-    cigars = cigarstring.split('N')
-    skips = []
-    for i in range(len(cigars)-1):
-        skips.append(int(re.findall(r'\d+$', cigars[i])[0]))
-        cigars[i] = cigars[i].rstrip(string.digits)
-    tread = pysam.libcalignedsegment.AlignedSegment()
-    blocks = [[int(start), 0]]
-    for i in range(len(cigars)-1):
-        tread.cigarstring = cigars[i]
-        blocks[i][1] = blocks[i][0] + tread.reference_length
-        blocks.append([blocks[i][1]+skips[i], 0])
-    tread.cigarstring = cigars[-1]
-    blocks[-1][1] = blocks[-1][0] + tread.reference_length
-    return blocks
 
-def SAM2BED(samfile, bedfile):
-    HIpat = re.compile("\sHI:i:(\d+)\s")
-    RIpat = re.compile("\sRI:i:(\d+)\s")
-    ASpat = re.compile("\sAS:i:(-?\d+)\s")
-    with open(samfile, "r") as sf, open(bedfile, "w") as bf:
-        for record in sf:
-            if (record.startswith("@HD")):
-                break
-        if record.find("SO:queryname") == -1:
-            raise Exception("samfile must be sorted by queryname")
-        for record in sf:
-            if not record.startswith("@"):
-                break
-        bf.write("chrom\tstart\tend\tqname\tHI\tRI\tBI\tAS\tstrand\n")
-        while record:
-            # qname is query name, which may have multiple alignments
-            # sam records with the same 1-based HI are chimeric parts of the same alignment
-            # each record has unique 1-based RI
-            # each record may have several linear map blocks (small indels are not relevant), block orders are indicated by 1-based BI
-            # AS is the alignment score of the record. If records contains several blocks, then the first block inherits the AS, other blocks inherit 0
-            qname, flag, chrom, _ = record.split('\t', 3)
-            if (int(flag) / 16) % 2:
-                strand = '-'
-            else:
-                strand = "+"
-            HI = int(HIpat.search(record).group(1))
-            RI = int(RIpat.search(record).group(1))
-            AS = int(ASpat.search(record).group(1))
-            blocks = get_skip_blocks(record)
-            for BI, block in enumerate(blocks, start=1):
-                if BI == 1:
-                    ASB = AS
-                else:
-                    ASB = 0
-                bf.write(f"{chrom}\t{block[0]}\t{block[1]}\t{qname}\t{HI}\t{RI}\t{BI}\t{ASB}\t{strand}\n")
-            record = sf.readline()
 
 
 def min_dis(regions1, regions2):
