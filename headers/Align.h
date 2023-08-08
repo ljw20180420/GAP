@@ -24,34 +24,10 @@ struct Align : Graph
     std::unique_ptr<IDTYPE []> ids;
     std::unique_ptr<BITSTYPE []> bits;
 
-    
-
-    struct Doo
-    {
-        QUERYSIZE w;
-        SCORETYPE F, G;
-
-        Doo(QUERYSIZE w_, SCORETYPE F_, SCORETYPE G_)
-            : w(w_), F(F_), G(G_)
-        {
-        }
-    };
-    std::deque<Doo> FG;
-
-    struct SimNode
-    {
-        NUCTYPE c;
-        SIZETYPE sr1, sr2;
-        SIZETYPE shiftFG;
-    };
-    std::unique_ptr<SimNode []> simnodes;
-    SIZETYPE sim_fs = 0;
-
-    std::unique_ptr<SCORETYPE []> croS;
-    SCORETYPE *Ethres;
-    // std::unique_ptr<SCORETYPE *[]> croF, croG;
-    // std::unique_ptr<QUERYSIZE []> croQ;
-    // std::unique_ptr<QUERYSIZE *[]> crop;
+    std::unique_ptr<SCORETYPE []> Ethres;
+    std::unique_ptr<SCORETYPE []> croF;
+    std::unique_ptr<QUERYSIZE []> crow;
+    SIZETYPE crosize;
 
     SIZETYPE trn, tnn;
 
@@ -165,10 +141,10 @@ struct Align : Graph
                 edge.D0vals[s] = fpval;
         }
 
-        simnodes.reset(new SimNode[2 * Omax]);
-
-        croS.reset(new SCORETYPE[Omax + 1]);
-        Ethres = croS.get();
+        Ethres.reset(new SCORETYPE[Omax + 1]);
+        // crosize = std::ceil(Omax * Omax * 1.4); // the initial crosize assume matchscore = 1 and u = -2, so the aligning shift is upper-bounded by 1/3, thereby 1.4 > 1 + 1/3 should be safe
+        // croF.reset(new SCORETYPE[2 * crosize]);
+        // crow.reset(new QUERYSIZE[crosize]);
     }
 
     void run()
@@ -415,17 +391,38 @@ struct Align : Graph
             }
     }
 
+    struct Doo
+    {
+        QUERYSIZE w;
+        SCORETYPE F, G;
+
+        Doo(QUERYSIZE w_, SCORETYPE F_, SCORETYPE G_)
+            : w(w_), F(F_), G(G_)
+        {
+        }
+
+        Doo()
+        {}
+    };
+
+    struct SimNode
+    {
+        NUCTYPE c;
+        SIZETYPE sr1, sr2;
+        SIZETYPE shiftFG;
+
+        SimNode(NUCTYPE c_, SIZETYPE sr1_, SIZETYPE sr2_, SIZETYPE shiftFG_)
+        : c(c_), sr1(sr1_), sr2(sr2_), shiftFG(shiftFG_)
+        {}
+    };
+
     void CrossIterationGlobal(Edge *edge)
     {
         SCORETYPE *Avals = edge->tail->Avals[edge->tail->scc_sz - 1];
-        RankVec &rankvec = file2rankvec[edge->name]; 
+        RankVec &rankvec = file2rankvec[edge->name];
 
-        SIZETYPE sr1 = 0, sr2 = rankvec.bwt_sz;
-        simnodes[0].c = 0; // simnodes[0] has no base, we simply set it to 0, which does not mean that it has base #(0) 
-        simnodes[0].sr1 = sr1;
-        simnodes[0].sr2 = sr2;
-        simnodes[0].shiftFG = FG.size();
-        ++sim_fs; // sim_fs becomes 1 here 
+        std::deque<SimNode> simnodes = {SimNode{0, 0, rankvec.bwt_sz, 0}}; // simnodes[0] has no base, we simply set it to 0, which does not mean that it has base #(0)
+        std::deque<Doo> FG;
         SCORETYPE EO, EN;
         for (SIZETYPE w = 0; w <= O.size(); ++w)
         {
@@ -457,43 +454,45 @@ struct Align : Graph
             while (true)
             {
                 NUCTYPE c;
-                if (simnodes[sim_fs - 1].shiftFG < FG.size())
+                if (simnodes.back().shiftFG < FG.size())
                     c = 1;
                 else
                 {
-                    for (c = 6; sim_fs > 0 && c == 6; --sim_fs)
-                        c = simnodes[sim_fs - 1].c;
-                    FG.erase(FG.begin() + simnodes[sim_fs].shiftFG, FG.end());
-                    if (sim_fs == 0)
-                        return;
+                    SIZETYPE shiftFG;
+                    do
+                    {
+                        if (simnodes.size() == 1)
+                            return;
+                        shiftFG = simnodes.back().shiftFG;
+                        c = simnodes.back().c;
+                        simnodes.pop_back();
+                    } while(c == 6);
+                    FG.resize(shiftFG);
                 }
+                SIZETYPE sr1, sr2;
                 do
                 {
                     ++c;
-                    sr1 = rankvec.C[c] + rankvec.rank(c, simnodes[sim_fs - 1].sr1);
-                    sr2 = rankvec.C[c] + rankvec.rank(c, simnodes[sim_fs - 1].sr2);
+                    sr1 = rankvec.C[c] + rankvec.rank(c, simnodes.back().sr1);
+                    sr2 = rankvec.C[c] + rankvec.rank(c, simnodes.back().sr2);
                 } while (sr1 >= sr2 && c < 6);
                 if (sr1 < sr2)
                 {
-                    simnodes[sim_fs].c = c;
-                    simnodes[sim_fs].sr1 = sr1;
-                    simnodes[sim_fs].sr2 = sr2;
-                    simnodes[sim_fs].shiftFG = FG.size();
-                    ++sim_fs;
+                    simnodes.emplace_back(c, sr1, sr2, FG.size());
                     break;
                 }
                 else 
-                    FG.erase(FG.begin() + simnodes[sim_fs - 1].shiftFG, FG.end());
+                    FG.resize(simnodes.back().shiftFG);
             }
 
-            for (SIZETYPE idx = simnodes[sim_fs - 2].shiftFG, w; idx < simnodes[sim_fs - 1].shiftFG; ++idx)
+            for (SIZETYPE idx = simnodes[simnodes.size() - 2].shiftFG, w; idx < simnodes.back().shiftFG; ++idx)
             {
-                if (idx == simnodes[sim_fs - 2].shiftFG || w < FG[idx].w - 1) // if w exit loop not by break, then w = FG[idx].w
+                if (idx == simnodes[simnodes.size() - 2].shiftFG || w < FG[idx].w - 1) // if w exit loop not by break, then w = FG[idx].w
                     EO = -inf;
                 else
                     EO = EN;
                 QUERYSIZE W;
-                if (idx < simnodes[sim_fs - 1].shiftFG - 1)
+                if (idx < simnodes.back().shiftFG - 1)
                     W = FG[idx + 1].w;
                 else
                     W = O.size() + 1;
@@ -502,7 +501,7 @@ struct Align : Graph
                     if (w == 0)
                         EN = -inf;
                     else
-                        EN = std::max(EO + edge->ue, (simnodes[sim_fs - 1].shiftFG < FG.size() && FG.back().w == w - 1) ? FG.back().G + edge->ve : -inf);
+                        EN = std::max(EO + edge->ue, (simnodes.back().shiftFG < FG.size() && FG.back().w == w - 1) ? FG.back().G + edge->ve : -inf);
                     if (EN < Ethres[w])
                         EN = -inf;
                     SCORETYPE F_val;
@@ -511,10 +510,10 @@ struct Align : Graph
                     else
                         F_val = -inf;
                     SCORETYPE G_val;
-                    if (w == FG[idx].w && idx > simnodes[sim_fs - 2].shiftFG && FG[idx - 1].w == w - 1)
-                        G_val = FG[idx - 1].G + edge->gamma[simnodes[sim_fs - 1].c][O[w - 1]];
+                    if (w == FG[idx].w && idx > simnodes[simnodes.size() - 2].shiftFG && FG[idx - 1].w == w - 1)
+                        G_val = FG[idx - 1].G + edge->gamma[simnodes.back().c][O[w - 1]];
                     else if (w == FG[idx].w + 1)
-                        G_val = FG[idx].G + edge->gamma[simnodes[sim_fs - 1].c][O[w - 1]];
+                        G_val = FG[idx].G + edge->gamma[simnodes.back().c][O[w - 1]];
                     else
                         G_val = -inf;
                     G_val = std::max({G_val, EN, F_val});
@@ -530,7 +529,7 @@ struct Align : Graph
                                 edge->head->AdeltaDot[w].clear();
                                 edge->head->AdeltaGlobal[w].clear();
                             }
-                            edge->head->AdeltaGlobal[w].emplace_back(edge, simnodes[sim_fs - 1].sr1, sim_fs - 1);
+                            edge->head->AdeltaGlobal[w].emplace_back(edge, simnodes.back().sr1, simnodes.size() - 1);
                         }
                     }
                     else if (w > FG[idx].w + 1 && EN == -inf)
