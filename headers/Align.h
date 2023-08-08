@@ -24,8 +24,7 @@ struct Align : Graph
     std::unique_ptr<IDTYPE []> ids;
     std::unique_ptr<BITSTYPE []> bits;
 
-    std::unique_ptr<SCORETYPE []> Ethres;
-    std::unique_ptr<SCORETYPE []> croF;
+    std::unique_ptr<SCORETYPE []> Ethres, croF;
     std::unique_ptr<QUERYSIZE []> crow;
     SIZETYPE crosize;
 
@@ -142,9 +141,9 @@ struct Align : Graph
         }
 
         Ethres.reset(new SCORETYPE[Omax + 1]);
-        // crosize = std::ceil(Omax * Omax * 1.4); // the initial crosize assume matchscore = 1 and u = -2, so the aligning shift is upper-bounded by 1/3, thereby 1.4 > 1 + 1/3 should be safe
-        // croF.reset(new SCORETYPE[2 * crosize]);
-        // crow.reset(new QUERYSIZE[crosize]);
+        crosize = std::ceil((Omax + 1) * (Omax + 1) * 1.4); // the initial crosize assume matchscore = 1 and u = -2, so the aligning shift is upper-bounded by 1/3, thereby 1.4 > 1 + 1/3 should be safe
+        croF.reset(new SCORETYPE[2 * crosize]);
+        crow.reset(new QUERYSIZE[crosize]);
     }
 
     void run()
@@ -391,20 +390,6 @@ struct Align : Graph
             }
     }
 
-    struct Doo
-    {
-        QUERYSIZE w;
-        SCORETYPE F, G;
-
-        Doo(QUERYSIZE w_, SCORETYPE F_, SCORETYPE G_)
-            : w(w_), F(F_), G(G_)
-        {
-        }
-
-        Doo()
-        {}
-    };
-
     struct SimNode
     {
         NUCTYPE c;
@@ -420,25 +405,27 @@ struct Align : Graph
     {
         SCORETYPE *Avals = edge->tail->Avals[edge->tail->scc_sz - 1];
         RankVec &rankvec = file2rankvec[edge->name];
+        SCORETYPE *croG = croF.get() + crosize;
 
         std::deque<SimNode> simnodes = {SimNode{0, 0, rankvec.bwt_sz, 0}}; // simnodes[0] has no base, we simply set it to 0, which does not mean that it has base #(0)
-        std::deque<Doo> FG;
         SCORETYPE EO, EN;
         for (SIZETYPE w = 0; w <= O.size(); ++w)
         {
             if (w > 0)
-                EN = std::max(EO + edge->ue, FG[w - 1].G + edge->ve);
+                EN = std::max(EO + edge->ue, croG[w - 1] + edge->ve);
             else
                 EN = -inf;
             SCORETYPE tgw = (O.size() > w ? (O.size() - w - 1) * edge->tail->ue + edge->tail->ve : 0);
-            FG.emplace_back(w, -inf, std::max(EN, Avals[w] + edge->T));
-            Ethres[w] = std::max(EN, FG[w].G + std::min({SCORETYPE(0), edge->tail->ve - edge->ue, SCORETYPE(tgw - (O.size() - w) * edge->ue)}));
+            crow[w] = w;
+            croF[w] = -inf;
+            croG[w] = std::max(EN, Avals[w] + edge->T);
+            Ethres[w] = std::max(EN, croG[w] + std::min({SCORETYPE(0), edge->tail->ve - edge->ue, SCORETYPE(tgw - (O.size() - w) * edge->ue)}));
 
-            if (FG[w].G >= edge->head->Avals[0][w])
+            if (croG[w] >= edge->head->Avals[0][w])
             {
-                if (FG[w].G > edge->head->Avals[0][w])
+                if (croG[w] > edge->head->Avals[0][w])
                 {
-                    edge->head->Avals[0][w] = FG[w].G;
+                    edge->head->Avals[0][w] = croG[w];
                     edge->head->AdeltaDot[w].clear();
                     edge->head->AdeltaGlobal[w].clear();
                 }
@@ -447,6 +434,7 @@ struct Align : Graph
 
             EO = EN;
         }
+        SIZETYPE shiftFG = O.size() + 1;
 
 
         while (true)
@@ -454,11 +442,10 @@ struct Align : Graph
             while (true)
             {
                 NUCTYPE c;
-                if (simnodes.back().shiftFG < FG.size())
+                if (simnodes.back().shiftFG < shiftFG)
                     c = 1;
                 else
                 {
-                    SIZETYPE shiftFG;
                     do
                     {
                         if (simnodes.size() == 1)
@@ -467,7 +454,6 @@ struct Align : Graph
                         c = simnodes.back().c;
                         simnodes.pop_back();
                     } while(c == 6);
-                    FG.resize(shiftFG);
                 }
                 SIZETYPE sr1, sr2;
                 do
@@ -478,48 +464,56 @@ struct Align : Graph
                 } while (sr1 >= sr2 && c < 6);
                 if (sr1 < sr2)
                 {
-                    simnodes.emplace_back(c, sr1, sr2, FG.size());
+                    simnodes.emplace_back(c, sr1, sr2, shiftFG);
                     break;
                 }
                 else 
-                    FG.resize(simnodes.back().shiftFG);
+                    shiftFG = simnodes.back().shiftFG;
             }
 
             for (SIZETYPE idx = simnodes[simnodes.size() - 2].shiftFG, w; idx < simnodes.back().shiftFG; ++idx)
             {
-                if (idx == simnodes[simnodes.size() - 2].shiftFG || w < FG[idx].w - 1) // if w exit loop not by break, then w = FG[idx].w
+                if (idx >= crosize)
+                {
+                    std::cerr << "the default memory is too low for CrossIterationGlobal\n";
+                    exit(EXIT_FAILURE);
+                }
+                if (idx == simnodes[simnodes.size() - 2].shiftFG || w < crow[idx] - 1) // if w exit loop not by break, then w = crow[idx]
                     EO = -inf;
                 else
                     EO = EN;
                 QUERYSIZE W;
                 if (idx < simnodes.back().shiftFG - 1)
-                    W = FG[idx + 1].w;
+                    W = crow[idx + 1];
                 else
                     W = O.size() + 1;
-                for (w = FG[idx].w; w < W; ++w)
+                for (w = crow[idx]; w < W; ++w)
                 {
                     if (w == 0)
                         EN = -inf;
                     else
-                        EN = std::max(EO + edge->ue, (simnodes.back().shiftFG < FG.size() && FG.back().w == w - 1) ? FG.back().G + edge->ve : -inf);
+                        EN = std::max(EO + edge->ue, (simnodes.back().shiftFG < shiftFG && crow[shiftFG - 1] == w - 1) ? croG[shiftFG - 1] + edge->ve : -inf);
                     if (EN < Ethres[w])
                         EN = -inf;
                     SCORETYPE F_val;
-                    if (w == FG[idx].w)
-                        F_val = std::max(FG[idx].F + edge->uf, FG[idx].G + edge->vf);
+                    if (w == crow[idx])
+                        F_val = std::max(croF[idx] + edge->uf, croG[idx] + edge->vf);
                     else
                         F_val = -inf;
                     SCORETYPE G_val;
-                    if (w == FG[idx].w && idx > simnodes[simnodes.size() - 2].shiftFG && FG[idx - 1].w == w - 1)
-                        G_val = FG[idx - 1].G + edge->gamma[simnodes.back().c][O[w - 1]];
-                    else if (w == FG[idx].w + 1)
-                        G_val = FG[idx].G + edge->gamma[simnodes.back().c][O[w - 1]];
+                    if (w == crow[idx] && idx > simnodes[simnodes.size() - 2].shiftFG && crow[idx - 1] == w - 1)
+                        G_val = croG[idx - 1] + edge->gamma[simnodes.back().c][O[w - 1]];
+                    else if (w == crow[idx] + 1)
+                        G_val = croG[idx] + edge->gamma[simnodes.back().c][O[w - 1]];
                     else
                         G_val = -inf;
                     G_val = std::max({G_val, EN, F_val});
-                    if (G_val >= FG[w].G)
+                    if (G_val >= croG[w])
                     {
-                        FG.emplace_back(w, F_val, G_val);
+                        crow[shiftFG] = w;
+                        croF[shiftFG] = F_val;
+                        croG[shiftFG] = G_val;
+                        ++shiftFG;
 
                         if (G_val >= edge->head->Avals[0][w])
                         {
@@ -532,7 +526,7 @@ struct Align : Graph
                             edge->head->AdeltaGlobal[w].emplace_back(edge, simnodes.back().sr1, simnodes.size() - 1);
                         }
                     }
-                    else if (w > FG[idx].w + 1 && EN == -inf)
+                    else if (w > crow[idx] + 1 && EN == -inf)
                         break;
                     EO = EN;
                 }
