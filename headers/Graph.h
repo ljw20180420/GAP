@@ -16,36 +16,28 @@ using SOURCESIZE = uint32_t;
 using BITSTYPE = uint8_t; // this is used for track the alignment, e.g. 8bits (uint8_t) can track 8 maxmial sources
 constexpr static const SCORETYPE inf = std::numeric_limits<SCORETYPE>::max() / 2;
 
-struct Dot
+struct Node;
+
+struct SNC
 {
-    static const DOTTYPE DotQ = -2, DotAbar = -1;
-
-    DOTTYPE n; // n determines the type of Dot
-    SIZETYPE s;
-    QUERYSIZE w;
-    SCORETYPE val;
-    SIZETYPE fs; // first source
-    SOURCESIZE s_sz;
+    SCORETYPE E;
+    SCORETYPE F0;
+    SCORETYPE G0;
+    SCORETYPE hatG;
+    NUCTYPE c;
+    NUCTYPE idl;
     QUERYSIZE lambda;
-    IDTYPE id;
+    SIZETYPE sr1;
+    SIZETYPE sr2;
+    IDTYPE cid; // 0 means not try to add child yet
+    SNC *itp;
+    SNC *jump;
 
-    static DOTTYPE DOTTYPE2NODEIDX(DOTTYPE nidx)
+    SNC(SCORETYPE E_, SCORETYPE F0_, SCORETYPE G0_, SCORETYPE hatG_, NUCTYPE c_, NUCTYPE idl_, QUERYSIZE lambda_, SIZETYPE sr1_, SIZETYPE sr2_, SIZETYPE cid_, SNC *itp_, SNC *jump_)
+        : E(E_), F0(F0_), G0(G0_), hatG(hatG_), c(c_), idl(idl_), lambda(lambda_), sr1(sr1_), sr2(sr2_), cid(cid_), itp(itp_), jump(jump_)
     {
-        return (-nidx + DotQ - 1) / 2;
-    }
-
-    static DOTTYPE NODEIDX2DOTTYPEB(DOTTYPE nidx)
-    {
-        return -2 * nidx + DotQ - 1;
-    }
-
-    static DOTTYPE NODEIDX2DOTTYPEA(DOTTYPE nidx)
-    {
-        return -2 * nidx + DotQ - 2;
     }
 };
-
-struct Node;
 
 struct Edge
 {
@@ -69,11 +61,23 @@ struct Edge
     // short specific score
     SCORETYPE vfp, ufp, vfm, ufm, gfm;
     std::vector<SCORETYPE> gf, gfpT;
-};
 
-struct EdgeLocalCross;
-struct EdgeLocalCircuit;
-struct EdgeGlobalCircuit;
+    // cross short specific data
+    std::unique_ptr<SCORETYPE *[]> Fvals;
+
+    // short specific data
+    std::unique_ptr<SCORETYPE *[]> Evals, Gvals;
+
+    // circuit short specific data
+    std::unique_ptr<SCORETYPE *[]> F0vals, G0vals, DXvals;
+    SCORETYPE *Dvals;
+
+    // circuit specific data
+    std::unique_ptr<SCORETYPE *[]> D0vals;
+
+    // circuit long specific data
+    std::deque<SNC> sncs;
+};
 
 struct Node
 {
@@ -103,67 +107,10 @@ struct Node
     std::unique_ptr<std::deque<GlobalSuffix> []> AdeltaGlobal;
 };
 
-struct EdgeLocalCross : Edge
-{
-    std::unique_ptr<SCORETYPE *[]> Evals, Fvals, Gvals;
-
-    EdgeLocalCross(Edge &edge)
-        : Edge(edge)
-    {
-    }
-};
-
-struct EdgeLocalCircuit : Edge
-{
-    std::unique_ptr<SCORETYPE *[]> Evals, F0vals, G0vals, Gvals, D0vals, DXvals;
-    SCORETYPE *Dvals;
-
-    EdgeLocalCircuit(Edge &edge)
-        : Edge(edge)
-    {
-    }
-};
-
-struct SNC
-{
-    SCORETYPE E;
-    SCORETYPE F0;
-    SCORETYPE G0;
-    SCORETYPE hatG;
-    NUCTYPE c;
-    NUCTYPE idl;
-    QUERYSIZE lambda;
-    SIZETYPE sr1;
-    SIZETYPE sr2;
-    IDTYPE cid; // 0 means not try to add child yet
-    SNC *itp;
-    SNC *jump;
-
-    SNC(SCORETYPE E_, SCORETYPE F0_, SCORETYPE G0_, SCORETYPE hatG_, NUCTYPE c_, NUCTYPE idl_, QUERYSIZE lambda_, SIZETYPE sr1_, SIZETYPE sr2_, SIZETYPE cid_, SNC *itp_, SNC *jump_)
-        : E(E_), F0(F0_), G0(G0_), hatG(hatG_), c(c_), idl(idl_), lambda(lambda_), sr1(sr1_), sr2(sr2_), cid(cid_), itp(itp_), jump(jump_)
-    {
-    }
-};
-
-struct EdgeGlobalCircuit : Edge
-{
-    std::deque<SNC> sncs;
-    std::unique_ptr<SCORETYPE *[]> D0vals;
-
-    EdgeGlobalCircuit(Edge &edge)
-        : Edge(edge)
-    {
-    }
-};
-
 struct Graph
 {
     std::deque<Node> nodes;
-    std::deque<EdgeLocalCross> local_crosses; // cannot be changed to vector, because emplace_back of vector may change the addresses of elements
-    std::deque<EdgeLocalCircuit> local_circuits;
-    std::deque<Edge> global_crosses;
-    std::deque<EdgeGlobalCircuit> global_circuits;
-    std::deque<Edge *> edges;
+    std::deque<Edge> edges;
 
     std::unique_ptr<SCORETYPE []> vals;
     std::unique_ptr<SHORTSIZE []> ss;
@@ -215,7 +162,6 @@ struct Graph
             nodes.push_back(std::move(node));
         }
 
-        std::list<Edge> locals;
         if (vm.count("shorts"))
             for (std::string shortinfo : vm["shorts"].as<std::vector<std::string>>())
             {
@@ -223,8 +169,9 @@ struct Graph
                 std::string name, tail, head, match, mismatch, v, u, vb, ub, T, min_score;
                 std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(ss, name, ','), tail, ','), head, ','), match, ','), mismatch, ','), v, ','), u, ','), T, ','), min_score, ','), vb, ','), ub, ',');
 
-                Edge local;
-                local.n = locals.size();
+                edges.emplace_back();
+                Edge &local = edges.back();
+                local.n = edges.size() - 1;
                 for (NUCTYPE a = 2; a < RankVec::sigma; ++a)
                     for (NUCTYPE b = 2; b < RankVec::sigma; ++b)
                         if (a==b && a>2)
@@ -253,10 +200,8 @@ struct Graph
                 get_affine(local.gf, ref_sz, 0, local.uf, local.vf);
                 local.gfm = local.vfm + (ref_sz - 1) * local.ufm;
                 get_affine(local.gfpT, ref_sz, local.T, local.ufp, local.vfp);
-                locals.push_back(local);
             }
 
-        std::list<Edge> globals;
         if (vm.count("longs"))
             for (std::string longinfo : vm["longs"].as<std::vector<std::string>>())
             {
@@ -264,8 +209,9 @@ struct Graph
                 std::string name, tail, head, match, mismatch, v, u, vb, ub, T, min_score;
                 std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(ss, name, ','), tail, ','), head, ','), match, ','), mismatch, ','), v, ','), u, ','), T, ','), min_score, ',');
 
-                Edge global;
-                global.n = locals.size() + globals.size();
+                edges.emplace_back();
+                Edge &global = edges.back();
+                global.n = edges.size() - 1;
                 for (NUCTYPE a = 2; a < RankVec::sigma; ++a)
                     for (NUCTYPE b = 2; b < RankVec::sigma; ++b)
                         if (a==b && a>2)
@@ -286,85 +232,46 @@ struct Graph
                 global.uf = global.ue;
                 try{global.T = std::stod(T);}catch(...){global.T = -10;}
                 try{global.min_score = std::stod(min_score);}catch(...){global.min_score = 20;}
-
-                globals.push_back(global);
             }
 
-        std::vector<bool> visit(locals.size() + globals.size());
-        RemoveEdge(nodes, false, visit, locals, globals);
-        RemoveEdge(nodes, true, visit, locals, globals);
-        std::deque<std::deque<Node *>> sccs = SCCTS(locals, globals);
+        std::vector<bool> visit(edges.size());
+        // RemoveEdge(nodes, false, visit, edges);
+        // RemoveEdge(nodes, true, visit, edges);
+        std::deque<std::deque<Node *>> sccs = SCCTS(edges);
         for (SIZETYPE i = 0; i < sccs.size(); ++i)
             for (Node *node : sccs[i])
             {
                 node->scc_id = i;
                 node->scc_sz = sccs[i].size();
             }
-        edges.resize(locals.size() + globals.size());
-        for (Edge &edge : locals)
-            if (edge.tail->scc_id != edge.head->scc_id)
-            {
-                local_crosses.emplace_back(edge);
-                edges[edge.n] = &local_crosses.back();
-            }
-            else
-            {
-                local_circuits.emplace_back(edge);
-                edges[edge.n] = &local_circuits.back();
-            }
-        for (Edge &edge : globals)
-            if (edge.tail->scc_id != edge.head->scc_id)
-            {
-                global_crosses.emplace_back(edge);
-                edges[edge.n] = &global_crosses.back();
-            }
-            else
-            {
-                global_circuits.emplace_back(edge);
-                edges[edge.n] = &global_circuits.back();
-            }
     }
 
-    void DeepFirstLine(Node *node, bool reverse, std::vector<bool> &visit, std::list<Edge> &locals, std::list<Edge> &globals)
+    void DeepFirstLine(Node *node, bool reverse, std::vector<bool> &visit, std::deque<Edge> &edges)
     {
-        for (Edge &edge : locals)
+        for (Edge &edge : edges)
             if (reverse ? edge.head == node : edge.tail == node)
                 if (!visit[edge.n])
                 {
                     visit[edge.n] = true;
-                    DeepFirstLine(reverse ? edge.tail : edge.head, reverse, visit, locals, globals);
-                }
-        for (Edge &edge : globals)
-            if (reverse ? edge.head == node : edge.tail == node)
-                if (!visit[edge.n])
-                {
-                    visit[edge.n] = true;
-                    DeepFirstLine(reverse ? edge.tail : edge.head, reverse, visit, locals, globals);
+                    DeepFirstLine(reverse ? edge.tail : edge.head, reverse, visit, edges);
                 }
     }
 
-    void RemoveEdge(std::deque<Node> &nodes, bool reverse, std::vector<bool> &visit, std::list<Edge> &locals, std::list<Edge> &globals)
-    {
-        for (Edge &edge : locals)
-            visit[edge.n] = false;
-        for (Edge &edge : globals)
-            visit[edge.n] = false;
-        for (Node &node : nodes)
-            if ((!reverse && node.is_root) || (reverse && node.is_target))
-                DeepFirstLine(&node, reverse, visit, locals, globals);
-        for (std::list<Edge>::iterator iter = locals.begin(); iter != locals.end();)
-            if (!visit[iter->n])
-                iter = locals.erase(iter);
-            else
-                ++iter;
-        for (std::list<Edge>::iterator iter = globals.begin(); iter != globals.end();)
-            if (!visit[iter->n])
-                iter = globals.erase(iter);
-            else
-                ++iter;
-    }
+    // void RemoveEdge(std::deque<Node> &nodes, bool reverse, std::vector<bool> &visit, std::list<Edge> &edges)
+    // {
+    //     for (Edge &edge : edges)
+    //         visit[edge.n] = false;
+    //     for (Node &node : nodes)
+    //         if ((!reverse && node.is_root) || (reverse && node.is_target))
+    //             DeepFirstLine(&node, reverse, visit, edges);
+    //     for (std::list<Edge>::iterator iter = edges.begin(); iter != edges.end();)
+    //         if (!visit[iter->n])
+    //             iter = edges.erase(iter);
+    //         else
+    //             ++iter;
+    // }
 
-    void DeepFirst(Node *node, std::stack<Node *> &stack, SIZETYPE &id, std::vector<bool> &visit, std::vector<bool> &in_stack, std::vector<SIZETYPE> &disc, std::vector<SIZETYPE> &low, std::list<Edge> &locals, std::list<Edge> &globals, std::deque<std::deque<Node *>> &sccs)
+    void DeepFirst(Node *node, std::stack<Node *> &stack, SIZETYPE &id, std::vector<bool> &visit, std::vector<bool> &in_stack, std::vector<SIZETYPE> &disc, std::vector<SIZETYPE> &low, std::deque<Edge> &edges, std::deque<std::deque<Node *>> &sccs)
     {
         DOTTYPE n = node->n;
         visit[n] = true;
@@ -373,23 +280,12 @@ struct Graph
         ++id;
         stack.push(node);
         in_stack[n] = true;
-        for (Edge &edge : locals)
+        for (Edge &edge : edges)
             if (edge.tail == node)
             {
                 if (!visit[edge.head->n])
                 {
-                    DeepFirst(edge.head, stack, id, visit, in_stack, disc, low, locals, globals, sccs);
-                    low[n] = low[n] < low[edge.head->n] ? low[n] : low[edge.head->n];
-                }
-                else if (in_stack[edge.head->n])
-                    low[n] = low[n] < disc[edge.head->n] ? low[n] : disc[edge.head->n];
-            }
-        for (Edge &edge : globals)
-            if (edge.tail == node)
-            {
-                if (!visit[edge.head->n])
-                {
-                    DeepFirst(edge.head, stack, id, visit, in_stack, disc, low, locals, globals, sccs);
+                    DeepFirst(edge.head, stack, id, visit, in_stack, disc, low, edges, sccs);
                     low[n] = low[n] < low[edge.head->n] ? low[n] : low[edge.head->n];
                 }
                 else if (in_stack[edge.head->n])
@@ -409,7 +305,7 @@ struct Graph
         }
     }
 
-    std::deque<std::deque<Node *>> SCCTS(std::list<Edge> &locals, std::list<Edge> &globals)
+    std::deque<std::deque<Node *>> SCCTS(std::deque<Edge> &edges)
     {
         std::vector<bool> visit(nodes.size()), in_stack(nodes.size());
         std::vector<SIZETYPE> disc(nodes.size()), low(nodes.size());
@@ -423,7 +319,7 @@ struct Graph
         std::deque<std::deque<Node *>> sccs;
         for (SIZETYPE n = 0; n < nodes.size(); ++n)
             if (!visit[n])
-                DeepFirst(&nodes[n], stack, id, visit, in_stack, disc, low, locals, globals, sccs);
+                DeepFirst(&nodes[n], stack, id, visit, in_stack, disc, low, edges, sccs);
         return sccs;
     }
 
@@ -437,14 +333,25 @@ struct Graph
                 fout << '\t' << node.name << "[shape=square]\n";
             else if (node.is_target)
                 fout << '\t' << node.name << "[shape=diamond]\n";            
-        for (auto &edge : local_crosses)
-            fout << '\t' << edge.tail->name << "->" << edge.head->name << "[color=black,label=\"" << edge.name << "\"]\n";
-        for (auto &edge : local_circuits)
-            fout << '\t' << edge.tail->name << "->" << edge.head->name << "[color=red,label=\"" << edge.name << "\"]\n";
-        for (auto &edge : global_crosses)
-            fout << '\t' << edge.tail->name << "->" << edge.head->name << "[color=green,label=\"" << edge.name << "\"]\n";
-        for (auto &edge : global_circuits)
-            fout << '\t' << edge.tail->name << "->" << edge.head->name << "[color=blue,label=\"" << edge.name << "\"]\n";
+        for (Edge &edge : edges)
+        {
+            fout << '\t' << edge.tail->name << "->" << edge.head->name;
+            if (file2short.count(edge.name))
+            {
+                if (edge.head->scc_id != edge.tail->scc_id)
+                    fout << "[color=black,label=\"";
+                else
+                    fout << "[color=red,label=\"";
+            }
+            else
+            {
+                if (edge.head->scc_id != edge.tail->scc_id)
+                    fout << "[color=green,label=\"";
+                else
+                    fout << "[color=blue,label=\"";
+            }
+            fout << edge.name << "\"]\n";
+        }
         fout << "}\n";
         fout.close();
         return system(("dot -Tpdf " + file + " > " + file + ".pdf").c_str());

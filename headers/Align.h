@@ -10,9 +10,40 @@
 #include <typeinfo>
 #include <bit>
 #include "Graph.h"
+#include <boost/graph/adjacency_list.hpp>
+
+struct Dot
+{
+    static const DOTTYPE DotQ = -2, DotAbar = -1;
+
+    DOTTYPE n; // n determines the type of Dot
+    SIZETYPE s;
+    QUERYSIZE w;
+    SCORETYPE val;
+    SIZETYPE fs; // first source
+    SOURCESIZE s_sz;
+    QUERYSIZE lambda;
+    IDTYPE id;
+
+    static DOTTYPE DOTTYPE2NODEIDX(DOTTYPE nidx)
+    {
+        return (-nidx + DotQ - 1) / 2;
+    }
+
+    static DOTTYPE NODEIDX2DOTTYPEB(DOTTYPE nidx)
+    {
+        return -2 * nidx + DotQ - 1;
+    }
+
+    static DOTTYPE NODEIDX2DOTTYPEA(DOTTYPE nidx)
+    {
+        return -2 * nidx + DotQ - 2;
+    }
+};
 
 struct Align : Graph
 {
+    // boost::adjacency_list<boost::listS, boost::vecS, boost::directedS> graph;
 
     std::mutex &mtx;
     std::ifstream &fin;
@@ -40,20 +71,26 @@ struct Align : Graph
             trn += node.scc_sz + 1;
             tnn += (Omax + 1) * (node.scc_sz + 1);
         }
-        for (EdgeLocalCross &edge : local_crosses)
+        for (Edge &edge : edges)
         {
+            if (edge.head->scc_id == edge.tail->scc_id || !file2short.count(edge.name))
+                continue;
             SHORTSIZE ref_sz = file2short[edge.name].second;
             trn += 3 * (ref_sz + 1);
             tnn += (Omax + 1) * 3 * (ref_sz + 1);
         }
-        for (EdgeLocalCircuit &edge : local_circuits)
+        for (Edge &edge : edges)
         {
+            if (edge.head->scc_id != edge.tail->scc_id || !file2short.count(edge.name))
+                continue;
             SHORTSIZE ref_sz = file2short[edge.name].second;
             trn += 1 + 4 * (ref_sz + 1) + 2 * (edge.tail->scc_sz - 1);
             tnn += (Omax + 1) * (1 + 4 * (ref_sz + 1) + 2 * (edge.tail->scc_sz - 1));
         }
-        for (EdgeGlobalCircuit &edge : global_circuits)
+        for (Edge &edge : edges)
         {
+            if (edge.head->scc_id != edge.tail->scc_id || file2short.count(edge.name))
+                continue;
             trn += edge.tail->scc_sz - 1;
             tnn += (Omax + 1) * (edge.tail->scc_sz - 1);
         }
@@ -86,8 +123,10 @@ struct Align : Graph
             nodes[i].AdeltaGlobal.reset(new std::deque<Node::GlobalSuffix>[Omax + 1]);
         }
 
-        for (EdgeLocalCross &edge : local_crosses)
+        for (Edge &edge : edges)
         {
+            if (edge.head->scc_id == edge.tail->scc_id || !file2short.count(edge.name))
+                continue;
             SHORTSIZE ref_sz = file2short[edge.name].second;
             for (SIZETYPE i = 0; i < 3; ++i)
                 for (SIZETYPE j = 0; j <= ref_sz; ++j, ++fps, ++fpn)
@@ -104,8 +143,10 @@ struct Align : Graph
             }
         }
 
-        for (EdgeLocalCircuit &edge : local_circuits)
+        for (Edge &edge : edges)
         {
+            if (edge.head->scc_id != edge.tail->scc_id || !file2short.count(edge.name))
+                continue;
             SHORTSIZE ref_sz = file2short[edge.name].second;
             *(fps++) = 0;
             *(fpn++) = edge.n;
@@ -128,8 +169,10 @@ struct Align : Graph
             }
         }
 
-        for (EdgeGlobalCircuit &edge : global_circuits)
+        for (Edge &edge : edges)
         {
+            if (edge.head->scc_id != edge.tail->scc_id || file2short.count(edge.name))
+                continue;
             for (SIZETYPE j = 0; j < edge.tail->scc_sz-1; ++j, ++fps, ++fpn)
             {
                 *fps = j;
@@ -218,32 +261,30 @@ struct Align : Graph
                         node.AdeltaDot[w].emplace_back(&node.Bvals[w]);
                     }    
                 }
-                for (Edge *edge : edges)
-                    if (edge->head->scc_id == scc_id && edge->tail->scc_id == scc_id && file2short.count(edge->name))
-                        CircuitIteration(w, (EdgeLocalCircuit*)edge);
+                for (Edge &edge : edges)
+                    if (edge.head->scc_id == scc_id && edge.tail->scc_id == scc_id && file2short.count(edge.name))
+                        CircuitIteration(w, &edge);
                 CircuitIterationGlobal(w, scc_id);
                 for (SIZETYPE l = 1; l < scc_sz; ++l)
                 {
-                    for (Edge *edge : edges)
+                    for (Edge &edge : edges)
                     {
-                        if (edge->head->scc_id != scc_id || edge->tail->scc_id != scc_id || !file2long.count(edge->name))
+                        if (edge.head->scc_id != scc_id || edge.tail->scc_id != scc_id || !file2long.count(edge.name))
                             continue;
-                        EdgeGlobalCircuit *circuit = (EdgeGlobalCircuit *)edge;
-                        circuit->D0vals[l - 1][w] = circuit->tail->Avals[l - 1][w] + circuit->T;
+                        edge.D0vals[l - 1][w] = edge.tail->Avals[l - 1][w] + edge.T;
                     }
-                    for (Edge *edge : edges)
+                    for (Edge &edge : edges)
                     {
-                        if (edge->head->scc_id != scc_id || edge->tail->scc_id != scc_id || !file2short.count(edge->name))
+                        if (edge.head->scc_id != scc_id || edge.tail->scc_id != scc_id || !file2short.count(edge.name))
                             continue;
-                        EdgeLocalCircuit *circuit = (EdgeLocalCircuit *)edge;
-                        SHORTSIZE ref_sz = file2short[circuit->name].second;
-                        circuit->D0vals[l - 1][w] = circuit->tail->Avals[l - 1][w] + circuit->T;
-                        SIZETYPE M = &(circuit->DXvals[l - 1][w]) - vals.get();
+                        SHORTSIZE ref_sz = file2short[edge.name].second;
+                        edge.D0vals[l - 1][w] = edge.tail->Avals[l - 1][w] + edge.T;
+                        SIZETYPE M = &(edge.DXvals[l - 1][w]) - vals.get();
                         bits[M] = 0;
-                        circuit->DXvals[l - 1][w] = std::max(circuit->tail->Avals[l - 1][w] + circuit->gfpT[ref_sz], circuit->D0vals[l - 1][w] + circuit->gf[ref_sz]);
-                        if (circuit->DXvals[l - 1][w] == circuit->tail->Avals[l - 1][w] + circuit->gfpT[ref_sz])
+                        edge.DXvals[l - 1][w] = std::max(edge.tail->Avals[l - 1][w] + edge.gfpT[ref_sz], edge.D0vals[l - 1][w] + edge.gf[ref_sz]);
+                        if (edge.DXvals[l - 1][w] == edge.tail->Avals[l - 1][w] + edge.gfpT[ref_sz])
                             bits[M] += 1;
-                        if (circuit->DXvals[l - 1][w] == circuit->D0vals[l - 1][w] + circuit->gf[ref_sz])
+                        if (edge.DXvals[l - 1][w] == edge.D0vals[l - 1][w] + edge.gf[ref_sz])
                             bits[M] += 2;
                     }
                     for (Node &node : nodes)
@@ -255,9 +296,9 @@ struct Align : Graph
                         node.Avals[l][w] = node.Avals[0][w];
                         bits[M] = 1;
                         SIZETYPE ei = 1;
-                        for (Edge *edge : edges)
+                        for (Edge &edge : edges)
                         {
-                            if (edge->head != &node || edge->tail->scc_id != scc_id)
+                            if (edge.head != &node || edge.tail->scc_id != scc_id)
                                 continue;
                             ei *= 2;
                             if (ei > std::numeric_limits<BITSTYPE>::max())
@@ -266,16 +307,10 @@ struct Align : Graph
                                 break;
                             }
                             SCORETYPE Dscore;
-                            if (file2short.count(edge->name))
-                            {
-                                EdgeLocalCircuit *circuit = (EdgeLocalCircuit *)edge;
-                                Dscore = std::max(circuit->D0vals[l - 1][w] + circuit->gfm, circuit->DXvals[l - 1][w]);
-                            }
+                            if (file2short.count(edge.name))
+                                Dscore = std::max(edge.D0vals[l - 1][w] + edge.gfm, edge.DXvals[l - 1][w]);
                             else
-                            {
-                                EdgeGlobalCircuit *circuit = (EdgeGlobalCircuit *)edge;
-                                Dscore = circuit->D0vals[l - 1][w];
-                            }
+                                Dscore = edge.D0vals[l - 1][w];
                             if (Dscore >= node.Avals[l][w])
                             {
                                 if (Dscore > node.Avals[l][w])
@@ -289,12 +324,12 @@ struct Align : Graph
                     }
                 }
             }
-            for (Edge *edge : edges)
-                if (edge->tail->scc_id == scc_id && edge->head->scc_id != scc_id && file2short.count(edge->name))
-                    CrossIteration((EdgeLocalCross *)edge);
-            for (Edge *edge : edges)
-                if (edge->tail->scc_id == scc_id && edge->head->scc_id != scc_id && file2long.count(edge->name))
-                    CrossIterationGlobal(edge);
+            for (Edge &edge : edges)
+                if (edge.tail->scc_id == scc_id && edge.head->scc_id != scc_id && file2short.count(edge.name))
+                    CrossIteration(&edge);
+            for (Edge &edge : edges)
+                if (edge.tail->scc_id == scc_id && edge.head->scc_id != scc_id && file2long.count(edge.name))
+                    CrossIterationGlobal(&edge);
         }
 
         SIZETYPE M = pQval - vals.get();
@@ -324,7 +359,7 @@ struct Align : Graph
         }
     }
 
-    void CrossIteration(EdgeLocalCross *edge)
+    void CrossIteration(Edge *edge)
     {
         NUCTYPE *ref = file2short[edge->name].first.get();
         SHORTSIZE ref_sz = file2short[edge->name].second;
@@ -534,7 +569,7 @@ struct Align : Graph
         }
     }
 
-    void CircuitIteration(QUERYSIZE w, EdgeLocalCircuit *edge)
+    void CircuitIteration(QUERYSIZE w, Edge *edge)
     {
         NUCTYPE *ref = file2short[edge->name].first.get();
         SHORTSIZE ref_sz = file2short[edge->name].second;
@@ -632,10 +667,10 @@ struct Align : Graph
         if (w == 0)
             return;
 
-        std::vector<EdgeGlobalCircuit *> circuits;
-        for (Edge *edge : edges)
-            if (edge->head->scc_id == scc_id && edge->tail->scc_id == scc_id && file2long.count(edge->name))
-                circuits.push_back((EdgeGlobalCircuit *)edge);
+        std::vector<Edge *> circuits;
+        for (Edge &edge : edges)
+            if (edge.head->scc_id == scc_id && edge.tail->scc_id == scc_id && file2long.count(edge.name))
+                circuits.push_back(&edge);
         std::vector<SCORETYPE> tgws(circuits.size());
         std::vector<SNC *> jumps(circuits.size());
         std::vector<RankVec *> prankvecs;
@@ -799,31 +834,30 @@ struct Align : Graph
             return VALTYPE::ABAR;
         if (swn.n>=0)
         {
-            if (file2long.count(edges[swn.n]->name))
+            if (file2long.count(edges[swn.n].name))
                 return VALTYPE::LID0;
-            if (edges[swn.n]->tail->scc_id==edges[swn.n]->head->scc_id)
+            if (edges[swn.n].tail->scc_id==edges[swn.n].head->scc_id)
             {
-                EdgeLocalCircuit *edge = (EdgeLocalCircuit *) edges[swn.n];
-                if (M < edge->Evals[0] - vals.get())
+                Edge &edge = edges[swn.n];
+                if (M < edge.Evals[0] - vals.get())
                     return VALTYPE::SID;
-                if (M < edge->F0vals[0] - vals.get())
+                if (M < edge.F0vals[0] - vals.get())
                     return VALTYPE::SIE;
-                if (M < edge->G0vals[0] - vals.get())
+                if (M < edge.G0vals[0] - vals.get())
                     return VALTYPE::SIF0;
-                if (M < edge->Gvals[0] - vals.get())
+                if (M < edge.Gvals[0] - vals.get())
                     return VALTYPE::SIG0;
-                if (M < edge->D0vals[0]-vals.get())
+                if (M < edge.D0vals[0]-vals.get())
                     return VALTYPE::SIG;
-                if (M < edge->DXvals[0]-vals.get())
+                if (M < edge.DXvals[0]-vals.get())
                     return VALTYPE::SID0;
                 return VALTYPE::SIDX;
             }
             else
             {
-                EdgeLocalCross *edge = (EdgeLocalCross *) edges[swn.n];
-                if (M < edge->Fvals[0] - vals.get())
+                if (M < edges[swn.n].Fvals[0] - vals.get())
                     return VALTYPE::SOE;
-                if (M < edge->Gvals[0] - vals.get())
+                if (M < edges[swn.n].Gvals[0] - vals.get())
                     return VALTYPE::SOF;
                 return VALTYPE::SOG;
             }
@@ -985,13 +1019,13 @@ struct Align : Graph
     {
         std::map<Edge *, TrackTree> long2tracktree;
         std::map<Edge *, std::unique_ptr<SCORETYPE []>> edge2tailAvals;
-        for (Edge *edge : edges)
+        for (Edge &edge : edges)
         {
-            if (file2long.count(edge->name))
-                long2tracktree.try_emplace(edge, edge->n, O.size());
-            edge2tailAvals[edge].reset(new SCORETYPE[O.size()+1]);
+            if (file2long.count(edge.name))
+                long2tracktree.try_emplace(&edge, edge.n, O.size());
+            edge2tailAvals[&edge].reset(new SCORETYPE[O.size()+1]);
             for (SIZETYPE i=0; i<=O.size(); ++i)
-                edge2tailAvals[edge].get()[i] = edge->tail->Avals[edge->tail->scc_sz - 1][i];
+                edge2tailAvals[&edge].get()[i] = edge.tail->Avals[edge.tail->scc_sz - 1][i];
         }
 
         SIZETYPE Onsz = Oname.size();
@@ -1042,88 +1076,80 @@ struct Align : Graph
                         break;
                     case VALTYPE::SOE:
                     {
-                        EdgeLocalCross *edge = (EdgeLocalCross *)edges[swn.n];
                         if (bits[M] & 1)
                             arrangesource(valuequeue, &vals[M-1], localqueue, id);
                         if (bits[M] & 2)
-                            arrangesource(valuequeue, &(edge->Gvals[swn.s][swn.w - 1]), localqueue, id);
+                            arrangesource(valuequeue, &(edges[swn.n].Gvals[swn.s][swn.w - 1]), localqueue, id);
                         break;
                     }
                     case VALTYPE::SOF:
                     {
-                        EdgeLocalCross *edge = (EdgeLocalCross *)edges[swn.n];
                         if (bits[M] & 1)
                             arrangesource(valuequeue, &vals[M-Omax-1], localqueue, id);
                         if (bits[M] & 2)
-                            arrangesource(valuequeue, &(edge->Gvals[swn.s - 1][swn.w]), localqueue, id);
+                            arrangesource(valuequeue, &(edges[swn.n].Gvals[swn.s - 1][swn.w]), localqueue, id);
                         break;
                     }
                     case VALTYPE::SOG:
                     {
-                        EdgeLocalCross *edge = (EdgeLocalCross *)edges[swn.n];
                         if (bits[M] & 1)
-                            arrangesource(valuequeue, &(edge->Evals[swn.s][swn.w]), localqueue, id);
+                            arrangesource(valuequeue, &(edges[swn.n].Evals[swn.s][swn.w]), localqueue, id);
                         if (bits[M] & 2)
-                            arrangesource(valuequeue, &(edge->Fvals[swn.s][swn.w]), localqueue, id);
+                            arrangesource(valuequeue, &(edges[swn.n].Fvals[swn.s][swn.w]), localqueue, id);
                         if (bits[M] & 4)
-                            arrangesource(valuequeue, &(edge->tail->Avals[edge->tail->scc_sz - 1][swn.w]), localqueue, id);
+                            arrangesource(valuequeue, &(edges[swn.n].tail->Avals[edges[swn.n].tail->scc_sz - 1][swn.w]), localqueue, id);
                         if (bits[M] & 8)
                             arrangesource(valuequeue, &vals[M-Omax-2], localqueue, id);
                         break;
                     }
                     case VALTYPE::SID:
-                        arrangesource(valuequeue, &(edges[swn.n]->tail->Avals[edges[swn.n]->tail->scc_sz - 1][swn.w]), localqueue, id);
+                        arrangesource(valuequeue, &(edges[swn.n].tail->Avals[edges[swn.n].tail->scc_sz - 1][swn.w]), localqueue, id);
                         break;
                     case VALTYPE::SIE:
                     {
-                        EdgeLocalCircuit *edge = (EdgeLocalCircuit *)edges[swn.n];
                         if (bits[M] & 1)
                             arrangesource(valuequeue, &vals[M-1], localqueue, id);
                         if (bits[M] & 2)
-                            arrangesource(valuequeue, &(edge->Gvals[swn.s][swn.w - 1]), localqueue, id);
+                            arrangesource(valuequeue, &(edges[swn.n].Gvals[swn.s][swn.w - 1]), localqueue, id);
                         break;
                     }
                     case VALTYPE::SIF0:
                     {
-                        EdgeLocalCircuit *edge = (EdgeLocalCircuit *)edges[swn.n];
                         if (bits[M] & 1)
                             arrangesource(valuequeue, &vals[M-Omax-1], localqueue, id);
                         if (bits[M] & 2)
-                            arrangesource(valuequeue, &(edge->G0vals[swn.s - 1][swn.w]), localqueue, id);
+                            arrangesource(valuequeue, &(edges[swn.n].G0vals[swn.s - 1][swn.w]), localqueue, id);
                         break;
                     }
                     case VALTYPE::SIG0:
                     {
-                        EdgeLocalCircuit *edge = (EdgeLocalCircuit *)edges[swn.n];
                         if (bits[M] & uint8_t(1))
-                            arrangesource(valuequeue, &(edge->Evals[swn.s][swn.w]), localqueue, id);
+                            arrangesource(valuequeue, &(edges[swn.n].Evals[swn.s][swn.w]), localqueue, id);
                         if (bits[M] & uint8_t(2))
-                            arrangesource(valuequeue, &(edge->F0vals[swn.s][swn.w]), localqueue, id);
+                            arrangesource(valuequeue, &(edges[swn.n].F0vals[swn.s][swn.w]), localqueue, id);
                         if (bits[M] & uint8_t(4))
-                            arrangesource(valuequeue, &(edge->Gvals[swn.s - 1][swn.w - 1]), localqueue, id);
+                            arrangesource(valuequeue, &(edges[swn.n].Gvals[swn.s - 1][swn.w - 1]), localqueue, id);
                         break;
                     }
                     case VALTYPE::SIG:
                     {
-                        EdgeLocalCircuit *edge = (EdgeLocalCircuit *)edges[swn.n];
                         if (bits[M] & uint8_t(1))
-                            arrangesource(valuequeue, &(edge->G0vals[swn.s][swn.w]), localqueue, id);
+                            arrangesource(valuequeue, &(edges[swn.n].G0vals[swn.s][swn.w]), localqueue, id);
                         if (bits[M] & uint8_t(2))
-                            arrangesource(valuequeue, &(edge->Dvals[swn.w]), localqueue, id);
+                            arrangesource(valuequeue, &(edges[swn.n].Dvals[swn.w]), localqueue, id);
                         if (bits[M] & uint8_t(4))
-                            arrangesource(valuequeue, &(edge->tail->Avals[edge->tail->scc_sz - 1][swn.w]), localqueue, id);
+                            arrangesource(valuequeue, &(edges[swn.n].tail->Avals[edges[swn.n].tail->scc_sz - 1][swn.w]), localqueue, id);
                         break;
                     }
                     case VALTYPE::LID0: case VALTYPE::SID0:
-                        arrangesource(valuequeue, &(edges[swn.n]->tail->Avals[swn.s][swn.w]), localqueue, id);
+                        arrangesource(valuequeue, &(edges[swn.n].tail->Avals[swn.s][swn.w]), localqueue, id);
                         break;
                     case VALTYPE::SIDX:
                     {
-                        EdgeLocalCircuit *edge = (EdgeLocalCircuit *) edges[swn.n];
                         if (bits[M] & uint8_t(1))
-                            arrangesource(valuequeue, &(edge->tail->Avals[swn.s][swn.w]), localqueue, id);
+                            arrangesource(valuequeue, &(edges[swn.n].tail->Avals[swn.s][swn.w]), localqueue, id);
                         if (bits[M] & uint8_t(2))
-                            arrangesource(valuequeue, &(edge->D0vals[swn.s][swn.w]), localqueue, id);
+                            arrangesource(valuequeue, &(edges[swn.n].D0vals[swn.s][swn.w]), localqueue, id);
                         break;
                     }
                     case VALTYPE::NA:
@@ -1132,9 +1158,9 @@ struct Align : Graph
                         if (bits[M] & int8_t(1))
                             arrangesource(valuequeue, &node.Avals[0][swn.w], localqueue, id);
                         SIZETYPE ei = 1;
-                        for (Edge *edge : edges)
+                        for (Edge &edge : edges)
                         {
-                            if (edge->head != &node || edge->tail->scc_id != node.scc_id)
+                            if (edge.head != &node || edge.tail->scc_id != node.scc_id)
                                 continue;
                             ei *= 2;
                             if (ei > std::numeric_limits<BITSTYPE>::max())
@@ -1142,19 +1168,15 @@ struct Align : Graph
                             if (bits[M] & int8_t(ei))
                             {
                                 SCORETYPE *source;
-                                if (file2short.count(edge->name))
+                                if (file2short.count(edge.name))
                                 {
-                                    EdgeLocalCircuit *circuit = (EdgeLocalCircuit *)edge;
-                                    if (Mval == circuit->D0vals[swn.s - 1][swn.w] + circuit->gfm) // this works because D0/DX[l-1] are only tracked by A[l]
-                                        source = &(circuit->D0vals[swn.s - 1][swn.w]);
+                                    if (Mval == edge.D0vals[swn.s - 1][swn.w] + edge.gfm) // this works because D0/DX[l-1] are only tracked by A[l]
+                                        source = &(edge.D0vals[swn.s - 1][swn.w]);
                                     else
-                                        source = &(circuit->DXvals[swn.s - 1][swn.w]);
+                                        source = &(edge.DXvals[swn.s - 1][swn.w]);
                                 }
                                 else
-                                {
-                                    EdgeGlobalCircuit *circuit = (EdgeGlobalCircuit *)edge;
-                                    source = &(circuit->D0vals[swn.s - 1][swn.w]);
-                                }
+                                    source = &(edge.D0vals[swn.s - 1][swn.w]);
                                 arrangesource(valuequeue, source, localqueue, id);
                             }
                         }
@@ -1185,7 +1207,7 @@ struct Align : Graph
                         arrangesource(valuequeue, dot_sources[M->fs + i], globalqueue, id);
                     else
                     {
-                        Node *tail = edges[M->n]->tail;
+                        Node *tail = edges[M->n].tail;
                         arrangesource(valuequeue, &tail->Avals[tail->scc_sz - 1][M->w], localqueue, id);
                     }
                 }
