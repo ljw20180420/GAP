@@ -10,7 +10,6 @@
 #include <unistd.h>
 #include <ctime>
 
-
 QUERYSIZE set_Omax(std::string input)
 {
     QUERYSIZE Omax = 0;
@@ -110,8 +109,9 @@ int main(int argc, char **argv)
         }
 
     {
-        Graph graph(vm, file2short, file2rankvec);
-        graph.draw("graph.gv");
+        graph_t graph;
+        construct_graph(graph, vm, file2short);
+        draw(graph, file2short);
     }
 
     QUERYSIZE Omax = set_Omax(vm["input"].as<std::string>());
@@ -141,6 +141,7 @@ int main(int argc, char **argv)
 
     Track track(vm, file2short, file2rankvec); 
     track.ReadTrack(mg_files);
+
 
     return EXIT_SUCCESS;
 }

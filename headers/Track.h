@@ -3,8 +3,22 @@
 
 #include "Align.h"
 
-struct Track : Graph
+struct Track
 {
+    graph_t graph;
+    SIZETYPE comp_num;
+    boost::property_map<graph_t, boost::vertex_Node_t>::type node_map;
+    boost::property_map<graph_t, boost::edge_Edge_t>::type edge_map;
+    boost::property_map<graph_t, boost::vertex_comp_t>::type comp_map;
+    boost::property_map<graph_t, boost::vertex_compsz_t>::type compsz_map;
+    std::vector<boost::graph_traits<graph_t>::edge_iterator> eis;
+
+    boost::program_options::variables_map &vm;
+    std::map<std::string, std::pair<std::unique_ptr<NUCTYPE []>, SHORTSIZE>> &file2short;
+    std::map<std::string, RankVec> &file2rankvec;
+    std::map<std::string, std::ifstream> file2long;
+    std::map<std::string, std::ifstream> file2SA;
+
     struct MegaRange
     {
         SIZETYPE fs;
@@ -18,19 +32,41 @@ struct Track : Graph
     std::deque<std::pair<Dot *, std::deque<Dot *>>> megasources;
     std::map<std::string, std::vector<std::pair<std::string, SIZETYPE>>> file2cumlen;
 
-    Track(boost::program_options::variables_map &vm, std::map<std::string, std::pair<std::unique_ptr<NUCTYPE []>, SHORTSIZE>> &file2short, std::map<std::string, RankVec> &file2rankvec)
-    : Graph(vm, file2short, file2rankvec), fout_align("alg"), fout_extract("ext"), fout_fail("fail"), fout_death("death")
+    Track(boost::program_options::variables_map &vm_, std::map<std::string, std::pair<std::unique_ptr<NUCTYPE []>, SHORTSIZE>> &file2short_, std::map<std::string, RankVec> &file2rankvec_)
+    : vm(vm_), file2short(file2short_), file2rankvec(file2rankvec_), fout_align("alg"), fout_extract("ext"), fout_fail("fail"), fout_death("death")
     {
-        for (std::string file : vm["longs"].as<std::vector<std::string>>())
-        {
-            file = file.substr(0, file.find(','));
-            if (file2cumlen.count(file))
-                continue;
+        comp_num = construct_graph(graph, vm, file2short);
+        node_map = boost::get(boost::vertex_Node, graph);
+        edge_map = boost::get(boost::edge_Edge, graph);
+        comp_map = boost::get(boost::vertex_comp, graph);
+        compsz_map = boost::get(boost::vertex_compsz, graph);
+        eis.resize(boost::num_edges(graph));
+        boost::graph_traits<graph_t>::edge_iterator ei, ei_end;
+        for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
+            eis[edge_map[*ei].n] = ei;
 
-            std::string refname;
-            SIZETYPE cumlen;
-            for (std::ifstream fin(file+".cumlen"); fin >> refname >> cumlen;)
-                file2cumlen[file].emplace_back(refname, cumlen);
+        if (vm.count("longs"))
+        {
+            for (std::string file : vm["longs"].as<std::vector<std::string>>())
+            {
+                file = file.substr(0, file.find(','));
+                if (file2long.count(file))
+                    continue;
+                file2long[file].open(file);
+                file2SA[file].open(file+".sa");
+            }
+
+            for (std::string file : vm["longs"].as<std::vector<std::string>>())
+            {
+                file = file.substr(0, file.find(','));
+                if (file2cumlen.count(file))
+                    continue;
+
+                std::string refname;
+                SIZETYPE cumlen;
+                for (std::ifstream fin(file+".cumlen"); fin >> refname >> cumlen;)
+                    file2cumlen[file].emplace_back(refname, cumlen);
+            }
         }
     }
 
@@ -265,16 +301,19 @@ struct Track : Graph
     {
         if (extract.size() % 2 == 0)
             return true;
-        SCORETYPE summin_score = edges[pdot->n].min_score;
+        boost::graph_traits<graph_t>::edge_descriptor ed = *eis[pdot->n];
+        boost::graph_traits<graph_t>::vertex_descriptor hd = boost::target(ed, graph), td = boost::source(ed, graph);
+        SCORETYPE summin_score = edge_map[ed].min_score;
         SCORETYPE sumdiffval = megasources[extract[0]].first->val - pdot->val;
-        Node *new_node = edges[pdot->n].tail;
-        if (new_node == edges[pdot->n].head && sumdiffval < summin_score)
+        if (td == hd && sumdiffval < summin_score)
             return false;
         for (SIZETYPE i = 1; i < extract.size(); i += 2)
         {
-            summin_score += edges[megasources[extract[i]].first->n].min_score;
+            ed = *eis[megasources[extract[i]].first->n];
+            summin_score += edge_map[ed].min_score;
             sumdiffval += megasources[extract[i + 1]].first->val - megasources[extract[i]].first->val;
-            if (new_node == edges[megasources[extract[i]].first->n].head && sumdiffval < summin_score)
+            hd = boost::target(ed, graph);
+            if (td == hd && sumdiffval < summin_score)
                 return false;
         }
         return true;
@@ -287,7 +326,8 @@ struct Track : Graph
         PD[0] = 0;
         for (SIZETYPE i = 1; i < row; ++i)
         {
-            if (file2short.count(edges[megasources[extract1[2 * i - 1]].first->n].name))
+            boost::graph_traits<graph_t>::edge_descriptor ed = *eis[megasources[extract1[2 * i - 1]].first->n];
+            if (file2short.count(edge_map[ed].name))
                 Fd[i - 1] = megasources[extract1[2 * i - 1]].first->s - megasources[extract1[2 * i - 2]].first->s;
             else
                 Fd[i - 1] = megasources[extract1[2 * i - 1]].first->lambda;
@@ -295,13 +335,16 @@ struct Track : Graph
         }
         for (SIZETYPE j = 1; j < col; ++j)
         {
-            if (file2short.count(edges[megasources[extract2[2 * j - 1]].first->n].name))
+            boost::graph_traits<graph_t>::edge_descriptor ed = *eis[megasources[extract2[2 * j - 1]].first->n];
+            if (file2short.count(edge_map[ed].name))
                 Ed[j - 1] = megasources[extract2[2 * j - 1]].first->s - megasources[extract2[2 * j - 2]].first->s;
             else
                 Ed[j - 1] = megasources[extract2[2 * j - 1]].first->lambda;
             PD[j * row] = PD[(j - 1) * row] + Ed[j - 1];
         }
         for (SIZETYPE i = 1; i < row; ++i)
+        {
+            boost::graph_traits<graph_t>::edge_descriptor ed = *eis[megasources[extract1[2 * i - 1]].first->n];
             for (SIZETYPE j = 1; j < col; ++j)
             {
                 SIZETYPE F = PD[j * row + i - 1] + Fd[i - 1];
@@ -310,7 +353,7 @@ struct Track : Graph
                 if (megasources[extract1[2 * i - 1]].first->n == megasources[extract2[2 * j - 1]].first->n)
                 {
                     SIZETYPE segdiff;
-                    if (file2short.count(edges[megasources[extract1[2 * i - 1]].first->n].name))
+                    if (file2short.count(edge_map[ed].name))
                     {
                         SIZETYPE right_min = std::min(megasources[extract1[2 * i - 1]].first->s, megasources[extract2[2 * j - 1]].first->s);
                         SIZETYPE left_max = std::max(megasources[extract1[2 * i - 2]].first->s, megasources[extract2[2 * j - 2]].first->s);
@@ -325,6 +368,7 @@ struct Track : Graph
                     PD[j * row + i] = std::min(PD[j * row + i], PD[(j - 1) * row + i - 1] + segdiff);
                 }
             }
+        }
         return PD[row * col - 1];
     }
 
@@ -369,20 +413,21 @@ struct Track : Graph
                     align_ref.push_back(' ');
                 }
 
-                bool islocal = file2short.count(edges[path[0]->n].name);
+                Edge &edge = edge_map[*eis[path[0]->n]];
+                bool islocal = file2short.count(edge.name);
                 NUCTYPE *ref;
                 SIZETYPE ref_sz;
                 NUCTYPE revref[path.back()->lambda];
                 if (islocal)
                 {
-                    std::pair<std::unique_ptr<NUCTYPE []>, SHORTSIZE> &pair = file2short[edges[path[0]->n].name];
+                    std::pair<std::unique_ptr<NUCTYPE []>, SHORTSIZE> &pair = file2short[edge.name];
                     ref = pair.first.get();
                     ref_sz = pair.second;
                 }
                 else
                 {
-                    std::ifstream &REVREFfin = file2long[edges[path[0]->n].name];
-                    REVREFfin.seekg(file2rankvec[edges[path[0]->n].name].bwt_sz - 1 - path.back()->s);
+                    std::ifstream &REVREFfin = file2long[edge.name];
+                    REVREFfin.seekg(file2rankvec[edge.name].bwt_sz - 1 - path.back()->s);
                     REVREFfin.read((char*)revref, path.back()->lambda);
                 }
 
@@ -445,7 +490,7 @@ struct Track : Graph
             {
                 Dot *pdot1 = megasources[extracts[i][j]].first;
                 Dot *pdot2 = megasources[extracts[i][j + 1]].first;
-                Edge &edge = edges[pdot2->n];
+                Edge &edge = edge_map[*eis[pdot2->n]];
                 if (file2rankvec.count(edge.name))
                 {
                     std::map<std::string, std::deque<std::pair<SIZETYPE, SIZETYPE>>> seqranges = get_seqranges(pdot2);
@@ -472,9 +517,10 @@ struct Track : Graph
     std::map<std::string, std::deque<std::pair<SIZETYPE, SIZETYPE>>> get_seqranges(Dot *pdot)
     {
         std::map<std::string, std::deque<std::pair<SIZETYPE, SIZETYPE>>> seqranges;
-        std::vector<std::pair<std::string, SIZETYPE>> &cumlen = file2cumlen[edges[pdot->n].name];
-        RankVec &rankvec = file2rankvec[edges[pdot->n].name];
-        std::ifstream &REVREFfin = file2long[edges[pdot->n].name];
+        Edge &edge = edge_map[*eis[pdot->n]];
+        std::vector<std::pair<std::string, SIZETYPE>> &cumlen = file2cumlen[edge.name];
+        RankVec &rankvec = file2rankvec[edge.name];
+        std::ifstream &REVREFfin = file2long[edge.name];
         NUCTYPE revref[pdot->lambda];
         REVREFfin.seekg(rankvec.bwt_sz - pdot->s - 1);
         REVREFfin.read((char*)revref, pdot->lambda);
@@ -488,7 +534,7 @@ struct Track : Graph
         }
             
         
-        std::ifstream &SAfin = file2SA[edges[pdot->n].name];
+        std::ifstream &SAfin = file2SA[edge.name];
         for (SIZETYPE sx = sr1; sx < sr2 && sx - sr1 < vm["max_range"].as<SIZETYPE>(); ++sx)
         {
             SIZETYPE s;
