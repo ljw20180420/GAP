@@ -6,6 +6,7 @@
 struct Track
 {
     graph_t graph;
+    boost::property_map<graph_t, boost::edge_name_t>::type edge_name_map;
     boost::property_map<graph_t, boost::edge_index_t>::type edge_index_map;
     boost::property_map<graph_t, boost::edge_Edge_t>::type edge_map;
     std::vector<boost::graph_traits<graph_t>::edge_iterator> eis;
@@ -34,6 +35,7 @@ struct Track
     {
         construct_graph(graph, vm, file2short);
         edge_index_map = boost::get(boost::edge_index, graph);
+        edge_name_map = boost::get(boost::edge_name, graph);
         edge_map = boost::get(boost::edge_Edge, graph);
         eis.resize(boost::num_edges(graph));
         boost::graph_traits<graph_t>::edge_iterator ei, ei_end;
@@ -322,7 +324,7 @@ struct Track
         for (SIZETYPE i = 1; i < row; ++i)
         {
             boost::graph_traits<graph_t>::edge_descriptor ed = *eis[megasources[extract1[2 * i - 1]].first->n];
-            if (file2short.count(edge_map[ed].name))
+            if (file2short.count(edge_name_map[ed]))
                 Fd[i - 1] = megasources[extract1[2 * i - 1]].first->s - megasources[extract1[2 * i - 2]].first->s;
             else
                 Fd[i - 1] = megasources[extract1[2 * i - 1]].first->lambda;
@@ -331,7 +333,7 @@ struct Track
         for (SIZETYPE j = 1; j < col; ++j)
         {
             boost::graph_traits<graph_t>::edge_descriptor ed = *eis[megasources[extract2[2 * j - 1]].first->n];
-            if (file2short.count(edge_map[ed].name))
+            if (file2short.count(edge_name_map[ed]))
                 Ed[j - 1] = megasources[extract2[2 * j - 1]].first->s - megasources[extract2[2 * j - 2]].first->s;
             else
                 Ed[j - 1] = megasources[extract2[2 * j - 1]].first->lambda;
@@ -348,7 +350,7 @@ struct Track
                 if (megasources[extract1[2 * i - 1]].first->n == megasources[extract2[2 * j - 1]].first->n)
                 {
                     SIZETYPE segdiff;
-                    if (file2short.count(edge_map[ed].name))
+                    if (file2short.count(edge_name_map[ed]))
                     {
                         SIZETYPE right_min = std::min(megasources[extract1[2 * i - 1]].first->s, megasources[extract2[2 * j - 1]].first->s);
                         SIZETYPE left_max = std::max(megasources[extract1[2 * i - 2]].first->s, megasources[extract2[2 * j - 2]].first->s);
@@ -408,21 +410,21 @@ struct Track
                     align_ref.push_back(' ');
                 }
 
-                Edge &edge = edge_map[*eis[path[0]->n]];
-                bool islocal = file2short.count(edge.name);
+                std::string name = edge_name_map[*eis[path[0]->n]];
+                bool islocal = file2short.count(name);
                 NUCTYPE *ref;
                 SIZETYPE ref_sz;
                 NUCTYPE revref[path.back()->lambda];
                 if (islocal)
                 {
-                    std::pair<std::unique_ptr<NUCTYPE []>, SHORTSIZE> &pair = file2short[edge.name];
+                    std::pair<std::unique_ptr<NUCTYPE []>, SHORTSIZE> &pair = file2short[name];
                     ref = pair.first.get();
                     ref_sz = pair.second;
                 }
                 else
                 {
-                    std::ifstream &REVREFfin = file2long[edge.name];
-                    REVREFfin.seekg(file2rankvec[edge.name].bwt_sz - 1 - path.back()->s);
+                    std::ifstream &REVREFfin = file2long[name];
+                    REVREFfin.seekg(file2rankvec[name].bwt_sz - 1 - path.back()->s);
                     REVREFfin.read((char*)revref, path.back()->lambda);
                 }
 
@@ -485,16 +487,16 @@ struct Track
             {
                 Dot *pdot1 = megasources[extracts[i][j]].first;
                 Dot *pdot2 = megasources[extracts[i][j + 1]].first;
-                Edge &edge = edge_map[*eis[pdot2->n]];
-                if (file2rankvec.count(edge.name))
+                std::string name = edge_name_map[*eis[pdot2->n]];
+                if (file2rankvec.count(name))
                 {
                     std::map<std::string, std::deque<std::pair<SIZETYPE, SIZETYPE>>> seqranges = get_seqranges(pdot2);
-                    fout_extract << edge.name << ':';
+                    fout_extract << name << ':';
                     for (std::pair<const std::string, std::deque<std::pair<SIZETYPE, SIZETYPE>>> &seqrange : seqranges)
                         for (std::pair<SIZETYPE, SIZETYPE> &range : seqrange.second)
                             fout_extract << seqrange.first << '\t' << range.first << '\t';
                     fout_extract << pdot1->w << '\t' << pdot1->val << '\n';
-                    fout_extract << edge.name << ':';
+                    fout_extract << name << ':';
                     for (std::pair<const std::string, std::deque<std::pair<SIZETYPE, SIZETYPE>>> &seqrange : seqranges)
                         for (std::pair<SIZETYPE, SIZETYPE> &range : seqrange.second)
                             fout_extract << seqrange.first << '\t' << range.second << '\t';
@@ -502,8 +504,8 @@ struct Track
                 }
                 else
                 {
-                    fout_extract << edge.name << '\t' << pdot1->s << '\t' << pdot1->w << '\t' << pdot1->val << '\n'
-                                 << edge.name << '\t' << pdot2->s << '\t' << pdot2->w << '\t' << pdot2->val << '\n';
+                    fout_extract << name << '\t' << pdot1->s << '\t' << pdot1->w << '\t' << pdot1->val << '\n'
+                                 << name << '\t' << pdot2->s << '\t' << pdot2->w << '\t' << pdot2->val << '\n';
                 }
             }
         }
@@ -512,10 +514,10 @@ struct Track
     std::map<std::string, std::deque<std::pair<SIZETYPE, SIZETYPE>>> get_seqranges(Dot *pdot)
     {
         std::map<std::string, std::deque<std::pair<SIZETYPE, SIZETYPE>>> seqranges;
-        Edge &edge = edge_map[*eis[pdot->n]];
-        std::vector<std::pair<std::string, SIZETYPE>> &cumlen = file2cumlen[edge.name];
-        RankVec &rankvec = file2rankvec[edge.name];
-        std::ifstream &REVREFfin = file2long[edge.name];
+        std::string name = edge_name_map[*eis[pdot->n]];
+        std::vector<std::pair<std::string, SIZETYPE>> &cumlen = file2cumlen[name];
+        RankVec &rankvec = file2rankvec[name];
+        std::ifstream &REVREFfin = file2long[name];
         NUCTYPE revref[pdot->lambda];
         REVREFfin.seekg(rankvec.bwt_sz - pdot->s - 1);
         REVREFfin.read((char*)revref, pdot->lambda);
@@ -529,7 +531,7 @@ struct Track
         }
             
         
-        std::ifstream &SAfin = file2SA[edge.name];
+        std::ifstream &SAfin = file2SA[name];
         for (SIZETYPE sx = sr1; sx < sr2 && sx - sr1 < vm["max_range"].as<SIZETYPE>(); ++sx)
         {
             SIZETYPE s;

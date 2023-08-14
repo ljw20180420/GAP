@@ -18,6 +18,7 @@ struct Align
     boost::property_map<graph_t, boost::vertex_Node_t>::type node_map;
     boost::property_map<graph_t, boost::vertex_comp_t>::type comp_map;
     boost::property_map<graph_t, boost::vertex_compsz_t>::type compsz_map;
+    boost::property_map<graph_t, boost::edge_name_t>::type edge_name_map;
     boost::property_map<graph_t, boost::edge_index_t>::type edge_index_map;
     boost::property_map<graph_t, boost::edge_Edge_t>::type edge_map;
     std::vector<boost::graph_traits<graph_t>::edge_iterator> eis;
@@ -56,6 +57,7 @@ struct Align
         node_map = boost::get(boost::vertex_Node, graph);
         comp_map = boost::get(boost::vertex_comp, graph);
         compsz_map = boost::get(boost::vertex_compsz, graph);
+        edge_name_map = boost::get(boost::edge_name, graph);
         edge_index_map = boost::get(boost::edge_index, graph);
         edge_map = boost::get(boost::edge_Edge, graph);
         eis.resize(boost::num_edges(graph));
@@ -83,27 +85,24 @@ struct Align
 
         for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
         {
-            Edge &edge = edge_map[*ei];
-            if (comp_map[boost::target(*ei, graph)] == comp_map[boost::source(*ei, graph)] || !file2short.count(edge.name))
+            if (comp_map[boost::target(*ei, graph)] == comp_map[boost::source(*ei, graph)] || !file2short.count(edge_name_map[*ei]))
                 continue;
-            SHORTSIZE ref_sz = file2short[edge.name].second;
+            SHORTSIZE ref_sz = file2short[edge_name_map[*ei]].second;
             trn += 3 * (ref_sz + 1);
             tnn += (Omax + 1) * 3 * (ref_sz + 1);
         }
         for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
         {
-            Edge &edge = edge_map[*ei];
-            if (comp_map[boost::target(*ei, graph)] != comp_map[boost::source(*ei, graph)] || !file2short.count(edge.name))
+            if (comp_map[boost::target(*ei, graph)] != comp_map[boost::source(*ei, graph)] || !file2short.count(edge_name_map[*ei]))
                 continue;
             SIZETYPE tail_scc_sz = compsz_map[boost::source(*ei, graph)];
-            SHORTSIZE ref_sz = file2short[edge.name].second;
+            SHORTSIZE ref_sz = file2short[edge_name_map[*ei]].second;
             trn += 1 + 4 * (ref_sz + 1) + 2 * (tail_scc_sz - 1);
             tnn += (Omax + 1) * (1 + 4 * (ref_sz + 1) + 2 * (tail_scc_sz - 1));
         }
         for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
         {
-            Edge &edge = edge_map[*ei];
-            if (comp_map[boost::target(*ei, graph)] != comp_map[boost::source(*ei, graph)] || file2short.count(edge.name))
+            if (comp_map[boost::target(*ei, graph)] != comp_map[boost::source(*ei, graph)] || file2short.count(edge_name_map[*ei]))
                 continue;
             SIZETYPE tail_scc_sz = compsz_map[boost::source(*ei, graph)];
             trn += tail_scc_sz - 1;
@@ -142,9 +141,9 @@ struct Align
         for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
         {
             Edge &edge = edge_map[*ei];
-            if (comp_map[boost::target(*ei, graph)] == comp_map[boost::source(*ei, graph)] || !file2short.count(edge.name))
+            if (comp_map[boost::target(*ei, graph)] == comp_map[boost::source(*ei, graph)] || !file2short.count(edge_name_map[*ei]))
                 continue;
-            SHORTSIZE ref_sz = file2short[edge.name].second;
+            SHORTSIZE ref_sz = file2short[edge_name_map[*ei]].second;
             for (SIZETYPE i = 0; i < 3; ++i)
                 for (SIZETYPE j = 0; j <= ref_sz; ++j, ++fps, ++fpn)
                 {
@@ -163,9 +162,9 @@ struct Align
         for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
         {
             Edge &edge = edge_map[*ei];
-            if (comp_map[boost::target(*ei, graph)] != comp_map[boost::source(*ei, graph)] || !file2short.count(edge.name))
+            if (comp_map[boost::target(*ei, graph)] != comp_map[boost::source(*ei, graph)] || !file2short.count(edge_name_map[*ei]))
                 continue;
-            SHORTSIZE ref_sz = file2short[edge.name].second;
+            SHORTSIZE ref_sz = file2short[edge_name_map[*ei]].second;
             *(fps++) = 0;
             *(fpn++) = edge_index_map[*ei];
             SIZETYPE tail_scc_sz = compsz_map[boost::source(*ei, graph)];
@@ -191,7 +190,7 @@ struct Align
         for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
         {
             Edge &edge = edge_map[*ei];
-            if (comp_map[boost::target(*ei, graph)] != comp_map[boost::source(*ei, graph)] || file2short.count(edge.name))
+            if (comp_map[boost::target(*ei, graph)] != comp_map[boost::source(*ei, graph)] || file2short.count(edge_name_map[*ei]))
                 continue;
             SIZETYPE tail_scc_sz = compsz_map[boost::source(*ei, graph)];
             for (SIZETYPE j = 0; j < tail_scc_sz-1; ++j, ++fps, ++fpn)
@@ -205,11 +204,8 @@ struct Align
         }
 
         for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
-        {
-            Edge &edge = edge_map[*ei];
-            if (!file2short.count(edge.name))
-                edge.tailAvals = new SCORETYPE[Omax + 1];
-        }
+            if (!file2short.count(edge_name_map[*ei]))
+                edge_map[*ei].tailAvals = new SCORETYPE[Omax + 1];
 
         Ethres.reset(new SCORETYPE[Omax + 1]);
         crosize = std::ceil((Omax + 1) * (Omax + 1) * 1.4); // the initial crosize assume matchscore = 1 and u = -2, so the aligning shift is upper-bounded by 1/3, thereby 1.4 > 1 + 1/3 should be safe
@@ -295,7 +291,7 @@ struct Align
                 for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
                     if (comp_map[boost::target(*ei, graph)] == ct && comp_map[boost::source(*ei, graph)] == ct)
                     {
-                        if (file2short.count(edge_map[*ei].name))
+                        if (file2short.count(edge_name_map[*ei]))
                             CircuitIteration(w, ei);
                         else
                             CircuitIterationGlobal(w, ei);
@@ -305,17 +301,17 @@ struct Align
                     for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
                     {
                         Edge &edge = edge_map[*ei];
-                        if (comp_map[boost::target(*ei, graph)] != ct || comp_map[boost::source(*ei, graph)] != ct || !file2long.count(edge.name))
+                        if (comp_map[boost::target(*ei, graph)] != ct || comp_map[boost::source(*ei, graph)] != ct || !file2long.count(edge_name_map[*ei]))
                             continue;
                         edge.D0vals[l - 1][w] = node_map[boost::source(*ei, graph)].Avals[l - 1][w] + edge.T;
                     }
                     for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
                     {
                         Edge &edge = edge_map[*ei];
-                        if (comp_map[boost::target(*ei, graph)] != ct || comp_map[boost::source(*ei, graph)] != ct || !file2short.count(edge.name))
+                        if (comp_map[boost::target(*ei, graph)] != ct || comp_map[boost::source(*ei, graph)] != ct || !file2short.count(edge_name_map[*ei]))
                             continue;
                         Node &tail = node_map[boost::source(*ei, graph)];
-                        SHORTSIZE ref_sz = file2short[edge.name].second;
+                        SHORTSIZE ref_sz = file2short[edge_name_map[*ei]].second;
                         edge.D0vals[l - 1][w] = tail.Avals[l - 1][w] + edge.T;
                         SIZETYPE M = &(edge.DXvals[l - 1][w]) - vals.get();
                         bits[M] = 0;
@@ -348,7 +344,7 @@ struct Align
                                 break;
                             }
                             SCORETYPE Dscore;
-                            if (file2short.count(edge.name))
+                            if (file2short.count(edge_name_map[*ei]))
                                 Dscore = std::max(edge.D0vals[l - 1][w] + edge.gfm, edge.DXvals[l - 1][w]);
                             else
                                 Dscore = edge.D0vals[l - 1][w];
@@ -366,10 +362,10 @@ struct Align
                 }
             }
             for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
-                if (comp_map[boost::source(*ei, graph)] == ct && comp_map[boost::target(*ei, graph)] != ct && file2short.count(edge_map[*ei].name))
+                if (comp_map[boost::source(*ei, graph)] == ct && comp_map[boost::target(*ei, graph)] != ct && file2short.count(edge_name_map[*ei]))
                     CrossIteration(ei);
             for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
-                if (comp_map[boost::source(*ei, graph)] == ct && comp_map[boost::target(*ei, graph)] != ct && file2long.count(edge_map[*ei].name))
+                if (comp_map[boost::source(*ei, graph)] == ct && comp_map[boost::target(*ei, graph)] != ct && file2long.count(edge_name_map[*ei]))
                     CrossIterationGlobal(ei);
         }
 
@@ -404,8 +400,8 @@ struct Align
     void CrossIteration(boost::graph_traits<graph_t>::edge_iterator ei)
     {
         Edge &edge = edge_map[*ei];
-        NUCTYPE *ref = file2short[edge.name].first.get();
-        SHORTSIZE ref_sz = file2short[edge.name].second;
+        NUCTYPE *ref = file2short[edge_name_map[*ei]].first.get();
+        SHORTSIZE ref_sz = file2short[edge_name_map[*ei]].second;
         SCORETYPE *Avals = node_map[boost::source(*ei, graph)].Avals[compsz_map[boost::source(*ei, graph)] - 1];
         SCORETYPE **Evals = edge.Evals, **Fvals = edge.Fvals, **Gvals = edge.Gvals;
         for (SIZETYPE s = 0; s <= ref_sz; ++s)
@@ -484,7 +480,7 @@ struct Align
         Edge &edge = edge_map[*ei];
         Node &head = node_map[boost::target(*ei, graph)], &tail = node_map[boost::source(*ei, graph)];
         SCORETYPE *Avals = tail.Avals[compsz_map[boost::source(*ei, graph)] - 1];
-        RankVec &rankvec = file2rankvec[edge.name];
+        RankVec &rankvec = file2rankvec[edge_name_map[*ei]];
         SCORETYPE *croG = croF.get() + crosize;
 
         std::deque<SimNode> simnodes = {SimNode{0, 0, rankvec.bwt_sz, 0}}; // simnodes[0] has no base, we simply set it to 0, which does not mean that it has base #(0)
@@ -618,8 +614,8 @@ struct Align
     {
         Edge &edge = edge_map[*ei];
         Node &head = node_map[boost::target(*ei, graph)], &tail = node_map[boost::source(*ei, graph)];
-        NUCTYPE *ref = file2short[edge.name].first.get();
-        SHORTSIZE ref_sz = file2short[edge.name].second;
+        NUCTYPE *ref = file2short[edge_name_map[*ei]].first.get();
+        SHORTSIZE ref_sz = file2short[edge_name_map[*ei]].second;
         SCORETYPE *Avals = tail.Avals[compsz_map[boost::source(*ei, graph)] - 1];
         SCORETYPE *Dvals = edge.Dvals;
         SCORETYPE **Evals = edge.Evals, **F0vals = edge.F0vals, **G0vals = edge.G0vals, **Gvals = edge.Gvals;
@@ -716,7 +712,7 @@ struct Align
 
         SCORETYPE tgws;
         SNC *jump;
-        RankVec *prankvec = &file2rankvec[edge_map[*ei].name];
+        RankVec *prankvec = &file2rankvec[edge_name_map[*ei]];
 
         boost::graph_traits<graph_t>::vertex_descriptor hd = boost::target(*ei, graph), td = boost::source(*ei, graph);
         Edge &edge = edge_map[*ei];
@@ -871,7 +867,7 @@ struct Align
         if (swn.n>=0)
         {
             Edge &edge = edge_map[*eis[swn.n]];
-            if (file2long.count(edge.name))
+            if (file2long.count(edge_name_map[*eis[swn.n]]))
                 return VALTYPE::LID0;
             if (comp_map[boost::source(*eis[swn.n], graph)] == comp_map[boost::target(*eis[swn.n], graph)])
             {
@@ -979,7 +975,7 @@ struct Align
         for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
         {
             Edge &edge = edge_map[*ei];
-            if (file2long.count(edge.name))
+            if (file2long.count(edge_name_map[*ei]))
             {
                 edge.tracktree.initialize(edge_index_map[*ei], O.size());
                 boost::graph_traits<graph_t>::vertex_descriptor td = boost::source(*ei, graph);
@@ -1141,7 +1137,7 @@ struct Align
                             if (bits[M] & int8_t(ib))
                             {
                                 SCORETYPE *source;
-                                if (file2short.count(edge.name))
+                                if (file2short.count(edge_name_map[*inei]))
                                 {
                                     if (Mval == edge.D0vals[swn.s - 1][swn.w] + edge.gfm) // this works because D0/DX[l-1] are only tracked by A[l]
                                         source = &(edge.D0vals[swn.s - 1][swn.w]);
@@ -1213,12 +1209,13 @@ struct Align
             SCORETYPE *Avals = edge.tailAvals;
             TrackTree &tracktree = edge.tracktree;
             std::deque<TrackTree::TrackNode> &tracknodes = tracktree.tracknodes;
-            RankVec &rankvec = file2rankvec[edge.name];
-            std::ifstream &SAfin = file2SA[edge.name];
+            std::string name = edge_name_map[*ei];
+            RankVec &rankvec = file2rankvec[name];
+            std::ifstream &SAfin = file2SA[name];
             SIZETYPE start;
             SAfin.seekg(globalsuffix.start * sizeof(SIZETYPE));
             SAfin.read((char*)&start, sizeof(SIZETYPE));
-            std::ifstream &REVREFfin = file2long[edge.name];
+            std::ifstream &REVREFfin = file2long[name];
             NUCTYPE revref[globalsuffix.lambda];
             REVREFfin.seekg(start);
             REVREFfin.read((char*)revref, globalsuffix.lambda);

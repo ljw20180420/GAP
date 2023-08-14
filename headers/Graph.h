@@ -156,9 +156,6 @@ struct Node;
 
 struct Edge
 {
-    // basic information
-    std::string name;
-
     // basic score
     SCORETYPE gamma[RankVec::sigma][RankVec::sigma] = {
         {-inf, -inf, -inf, -inf, -inf, -inf, -inf},
@@ -226,7 +223,7 @@ namespace boost
     enum edge_Edge_t {edge_Edge = 114};
     BOOST_INSTALL_PROPERTY(edge, Edge);
 }
-typedef boost::adjacency_list<boost::vecS, boost::vecS, boost::bidirectionalS, boost::property<boost::vertex_compsz_t, SIZETYPE, boost::property<boost::vertex_comp_t, SIZETYPE, boost::property<boost::vertex_Node_t, Node>>>, boost::property<boost::edge_index_t, DOTTYPE, boost::property<boost::edge_Edge_t, Edge>>> graph_t;
+typedef boost::adjacency_list<boost::vecS, boost::vecS, boost::bidirectionalS, boost::property<boost::vertex_compsz_t, SIZETYPE, boost::property<boost::vertex_comp_t, SIZETYPE, boost::property<boost::vertex_Node_t, Node>>>, boost::property<boost::edge_name_t, std::string, boost::property<boost::edge_index_t, DOTTYPE, boost::property<boost::edge_Edge_t, Edge>>>> graph_t;
 
 struct Node
 {
@@ -280,6 +277,7 @@ std::vector<SIZETYPE> construct_graph(graph_t &graph, boost::program_options::va
     boost::property_map<graph_t, boost::vertex_Node_t>::type node_map = boost::get(boost::vertex_Node, graph);
     boost::property_map<graph_t, boost::vertex_comp_t>::type comp_map = boost::get(boost::vertex_comp, graph);
     boost::property_map<graph_t, boost::vertex_compsz_t>::type compsz_map = boost::get(boost::vertex_compsz, graph);
+    boost::property_map<graph_t, boost::edge_name_t>::type edge_name_map = boost::get(boost::edge_name, graph);
     boost::property_map<graph_t, boost::edge_index_t>::type edge_index_map = boost::get(boost::edge_index, graph);
     boost::property_map<graph_t, boost::edge_Edge_t>::type edge_map = boost::get(boost::edge_Edge, graph);
 
@@ -330,7 +328,7 @@ std::vector<SIZETYPE> construct_graph(graph_t &graph, boost::program_options::va
         }
         Edge &edge = edge_map[ed];
         edge_index_map[ed] = boost::num_edges(graph) - 1;
-        edge.name = name;
+        edge_name_map[ed] = name;
         for (NUCTYPE a = 2; a < RankVec::sigma; ++a)
             for (NUCTYPE b = 2; b < RankVec::sigma; ++b)
                 if (a==b && a>2)
@@ -349,7 +347,7 @@ std::vector<SIZETYPE> construct_graph(graph_t &graph, boost::program_options::va
             edge.vfm = edge.vfp;
             try{edge.ufp = std::stod(ub);}catch(...){edge.ufp = 0;}
             edge.ufm = edge.ufp;
-            SHORTSIZE ref_sz = file2short[edge.name].second;
+            SHORTSIZE ref_sz = file2short[name].second;
             get_affine(edge.gf, ref_sz, 0, edge.uf, edge.vf);
             edge.gfm = edge.vfm + (ref_sz - 1) * edge.ufm;
             get_affine(edge.gfpT, ref_sz, edge.T, edge.ufp, edge.vfp);
@@ -391,30 +389,28 @@ int draw(graph_t &graph, std::map<std::string, std::pair<std::unique_ptr<NUCTYPE
             fout << '\t' << node.name << "[shape=diamond]\n";
     }
     
-    boost::property_map<graph_t, boost::edge_Edge_t>::type edge_map = boost::get(boost::edge_Edge, graph);
+    boost::property_map<graph_t, boost::edge_name_t>::type edge_name_map = boost::get(boost::edge_name, graph);
     boost::property_map<graph_t, boost::vertex_comp_t>::type comp_map = boost::get(boost::vertex_comp, graph);
     boost::graph_traits<graph_t>::edge_iterator ei, ei_end;
     for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
     {
-        Edge &edge = edge_map[*ei];
-        boost::graph_traits<graph_t>::vertex_descriptor t = boost::source(*ei, graph), h = boost::target(*ei, graph); 
-        Node &tail = node_map[t], &head = node_map[h];
-        fout << '\t' << tail.name << "->" << head.name;
-        if (file2short.count(edge.name))
+        boost::graph_traits<graph_t>::vertex_descriptor td = boost::source(*ei, graph), hd = boost::target(*ei, graph); 
+        fout << '\t' << node_map[td].name << "->" << node_map[hd].name;
+        if (file2short.count(edge_name_map[*ei]))
         {
-            if (comp_map[h] != comp_map[t])
+            if (comp_map[hd] != comp_map[td])
                 fout << "[color=black,label=\"";
             else
                 fout << "[color=red,label=\"";
         }
         else
         {
-            if (comp_map[h] != comp_map[t])
+            if (comp_map[hd] != comp_map[td])
                 fout << "[color=green,label=\"";
             else
                 fout << "[color=blue,label=\"";
         }
-        fout << edge.name << "\"]\n";
+        fout << edge_name_map[*ei] << "\"]\n";
     }
     fout << "}\n";
     fout.close();
