@@ -157,7 +157,6 @@ struct Node;
 struct Edge
 {
     // basic information
-    DOTTYPE n;
     std::string name;
 
     // basic score
@@ -227,7 +226,7 @@ namespace boost
     enum edge_Edge_t {edge_Edge = 114};
     BOOST_INSTALL_PROPERTY(edge, Edge);
 }
-typedef boost::adjacency_list<boost::vecS, boost::vecS, boost::bidirectionalS, boost::property<boost::vertex_compsz_t, SIZETYPE, boost::property<boost::vertex_comp_t, SIZETYPE, boost::property<boost::vertex_Node_t, Node>>>, boost::property<boost::edge_Edge_t, Edge>> graph_t;
+typedef boost::adjacency_list<boost::vecS, boost::vecS, boost::bidirectionalS, boost::property<boost::vertex_compsz_t, SIZETYPE, boost::property<boost::vertex_comp_t, SIZETYPE, boost::property<boost::vertex_Node_t, Node>>>, boost::property<boost::edge_index_t, DOTTYPE, boost::property<boost::edge_Edge_t, Edge>>> graph_t;
 
 struct Node
 {
@@ -279,9 +278,10 @@ void get_affine(std::vector<SCORETYPE> &g, SHORTSIZE seqlen, SCORETYPE initial, 
 std::vector<SIZETYPE> construct_graph(graph_t &graph, boost::program_options::variables_map &vm, std::map<std::string, std::pair<std::unique_ptr<NUCTYPE []>, SHORTSIZE>> &file2short)
 {
     boost::property_map<graph_t, boost::vertex_Node_t>::type node_map = boost::get(boost::vertex_Node, graph);
-    boost::property_map<graph_t, boost::edge_Edge_t>::type edge_map = boost::get(boost::edge_Edge, graph);
     boost::property_map<graph_t, boost::vertex_comp_t>::type comp_map = boost::get(boost::vertex_comp, graph);
     boost::property_map<graph_t, boost::vertex_compsz_t>::type compsz_map = boost::get(boost::vertex_compsz, graph);
+    boost::property_map<graph_t, boost::edge_index_t>::type edge_index_map = boost::get(boost::edge_index, graph);
+    boost::property_map<graph_t, boost::edge_Edge_t>::type edge_map = boost::get(boost::edge_Edge, graph);
 
     for (std::string nodeinfo : vm["nodes"].as<std::vector<std::string>>())
     {
@@ -329,7 +329,7 @@ std::vector<SIZETYPE> construct_graph(graph_t &graph, boost::program_options::va
             exit(EXIT_FAILURE);
         }
         Edge &edge = edge_map[ed];
-        edge.n = boost::num_edges(graph) - 1;
+        edge_index_map[ed] = boost::num_edges(graph) - 1;
         edge.name = name;
         for (NUCTYPE a = 2; a < RankVec::sigma; ++a)
             for (NUCTYPE b = 2; b < RankVec::sigma; ++b)

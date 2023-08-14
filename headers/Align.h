@@ -16,9 +16,10 @@ struct Align
     graph_t graph;
     std::vector<SIZETYPE> comp_time;
     boost::property_map<graph_t, boost::vertex_Node_t>::type node_map;
-    boost::property_map<graph_t, boost::edge_Edge_t>::type edge_map;
     boost::property_map<graph_t, boost::vertex_comp_t>::type comp_map;
     boost::property_map<graph_t, boost::vertex_compsz_t>::type compsz_map;
+    boost::property_map<graph_t, boost::edge_index_t>::type edge_index_map;
+    boost::property_map<graph_t, boost::edge_Edge_t>::type edge_map;
     std::vector<boost::graph_traits<graph_t>::edge_iterator> eis;
 
     std::mutex &mtx;
@@ -53,13 +54,14 @@ struct Align
     {
         comp_time = construct_graph(graph, vm, file2short);
         node_map = boost::get(boost::vertex_Node, graph);
-        edge_map = boost::get(boost::edge_Edge, graph);
         comp_map = boost::get(boost::vertex_comp, graph);
         compsz_map = boost::get(boost::vertex_compsz, graph);
+        edge_index_map = boost::get(boost::edge_index, graph);
+        edge_map = boost::get(boost::edge_Edge, graph);
         eis.resize(boost::num_edges(graph));
         boost::graph_traits<graph_t>::edge_iterator ei, ei_end;
         for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
-            eis[edge_map[*ei].n] = ei;
+            eis[edge_index_map[*ei]] = ei;
 
         if (vm.count("longs"))
             for (std::string file : vm["longs"].as<std::vector<std::string>>())
@@ -147,7 +149,7 @@ struct Align
                 for (SIZETYPE j = 0; j <= ref_sz; ++j, ++fps, ++fpn)
                 {
                     *fps = j;
-                    *fpn = edge.n;
+                    *fpn = edge_index_map[*ei];
                 }
             SIZETYPE si = 0;
             for (SCORETYPE ***pYvalss : {&edge.Evals, &edge.Fvals, &edge.Gvals})
@@ -165,14 +167,14 @@ struct Align
                 continue;
             SHORTSIZE ref_sz = file2short[edge.name].second;
             *(fps++) = 0;
-            *(fpn++) = edge.n;
+            *(fpn++) = edge_index_map[*ei];
             SIZETYPE tail_scc_sz = compsz_map[boost::source(*ei, graph)];
             SIZETYPE Ss[6] = {ref_sz+1, ref_sz+1, ref_sz+1, ref_sz+1, tail_scc_sz-1, tail_scc_sz-1};
             for (SIZETYPE i = 0; i < 6; ++i)
                 for (SIZETYPE j = 0; j < Ss[i]; ++j, ++fps, ++fpn)
                 {
                     *fps = j;
-                    *fpn = edge.n;
+                    *fpn = edge_index_map[*ei];
                 }
             edge.Dvals = fpval;
             fpval += Omax + 1;
@@ -195,7 +197,7 @@ struct Align
             for (SIZETYPE j = 0; j < tail_scc_sz-1; ++j, ++fps, ++fpn)
             {
                 *fps = j;
-                *fpn = edge.n;
+                *fpn = edge_index_map[*ei];
             }
             edge.D0vals = new SCORETYPE *[tail_scc_sz-1];
             for (SIZETYPE s = 0; s < tail_scc_sz-1; ++s, fpval += Omax + 1)
@@ -979,7 +981,7 @@ struct Align
             Edge &edge = edge_map[*ei];
             if (file2long.count(edge.name))
             {
-                edge.tracktree.initialize(edge.n, O.size());
+                edge.tracktree.initialize(edge_index_map[*ei], O.size());
                 boost::graph_traits<graph_t>::vertex_descriptor td = boost::source(*ei, graph);
                 SCORETYPE *Avals = node_map[td].Avals[compsz_map[td] - 1];
                 for (SIZETYPE i=0; i<=O.size(); ++i)

@@ -6,6 +6,7 @@
 struct Track
 {
     graph_t graph;
+    boost::property_map<graph_t, boost::edge_index_t>::type edge_index_map;
     boost::property_map<graph_t, boost::edge_Edge_t>::type edge_map;
     std::vector<boost::graph_traits<graph_t>::edge_iterator> eis;
 
@@ -32,11 +33,12 @@ struct Track
     : vm(vm_), file2short(file2short_), file2rankvec(file2rankvec_), fout_align("alg"), fout_extract("ext"), fout_fail("fail"), fout_death("death")
     {
         construct_graph(graph, vm, file2short);
+        edge_index_map = boost::get(boost::edge_index, graph);
         edge_map = boost::get(boost::edge_Edge, graph);
         eis.resize(boost::num_edges(graph));
         boost::graph_traits<graph_t>::edge_iterator ei, ei_end;
         for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
-            eis[edge_map[*ei].n] = ei;
+            eis[edge_index_map[*ei]] = ei;
 
         if (vm.count("longs"))
         {
