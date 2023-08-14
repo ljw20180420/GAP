@@ -291,9 +291,13 @@ struct Align
                     scc_sz = compsz_map[nd];
                 }
                 for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
-                    if (comp_map[boost::target(*ei, graph)] == ct && comp_map[boost::source(*ei, graph)] == ct && file2short.count(edge_map[*ei].name))
-                        CircuitIteration(w, ei);
-                CircuitIterationGlobal(w, ct);
+                    if (comp_map[boost::target(*ei, graph)] == ct && comp_map[boost::source(*ei, graph)] == ct)
+                    {
+                        if (file2short.count(edge_map[*ei].name))
+                            CircuitIteration(w, ei);
+                        else
+                            CircuitIterationGlobal(w, ei);
+                    }
                 for (SIZETYPE l = 1; l < scc_sz; ++l)
                 {
                     for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
@@ -703,145 +707,126 @@ struct Align
         }
     }
 
-    void CircuitIterationGlobal(QUERYSIZE w, SIZETYPE ct)
+    void CircuitIterationGlobal(QUERYSIZE w, boost::graph_traits<graph_t>::edge_iterator ei)
     {
         if (w == 0)
             return;
 
-        std::vector<boost::graph_traits<graph_t>::edge_iterator> circuits;
-        boost::graph_traits<graph_t>::edge_iterator ei, ei_end;
-        for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
-            if (comp_map[boost::target(*ei, graph)] == ct && comp_map[boost::source(*ei, graph)] == ct && file2long.count(edge_map[*ei].name))
-                circuits.push_back(ei);
-        std::vector<SCORETYPE> tgws(circuits.size());
-        std::vector<SNC *> jumps(circuits.size());
-        std::vector<RankVec *> prankvecs;
-        for (SIZETYPE i = 0; i < circuits.size(); ++i)
-            prankvecs.push_back(&file2rankvec[edge_map[*circuits[i]].name]);
+        SCORETYPE tgws;
+        SNC *jump;
+        RankVec *prankvec = &file2rankvec[edge_map[*ei].name];
 
-        for (SIZETYPE i = 0; i < circuits.size(); ++i)
+        boost::graph_traits<graph_t>::vertex_descriptor hd = boost::target(*ei, graph), td = boost::source(*ei, graph);
+        Edge &edge = edge_map[*ei];
+        Node &head = node_map[hd], &tail = node_map[td];
+        if (w == 1)
         {
-            boost::graph_traits<graph_t>::vertex_descriptor hd = boost::target(*circuits[i], graph), td = boost::source(*circuits[i], graph);
-            Edge &edge = edge_map[*circuits[i]];
-            Node &head = node_map[hd], &tail = node_map[td];
-            if (w == 1)
+            edge.sncs.emplace_back(-inf, -inf, -inf, -inf, 0, 5, 0, 0, prankvec->bwt_sz, 1, (SNC *)NULL, (SNC *)NULL); // the root SNC has no base, we simply set it to 0, which does not mean that it has base #(0)
+            for (NUCTYPE c = 2; c <= 6; ++c)
             {
-                edge.sncs.emplace_back(-inf, -inf, -inf, -inf, 0, 5, 0, 0, prankvecs[i]->bwt_sz, 1, (SNC *)NULL, (SNC *)NULL); // the root SNC has no base, we simply set it to 0, which does not mean that it has base #(0)
-                for (NUCTYPE c = 2; c <= 6; ++c)
+                SIZETYPE sr1 = prankvec->C[c] + prankvec->rank(c, edge.sncs.front().sr1);
+                SIZETYPE sr2 = prankvec->C[c] + prankvec->rank(c, edge.sncs.front().sr2);
+                if (sr1 < sr2)
                 {
-                    SIZETYPE sr1 = prankvecs[i]->C[c] + prankvecs[i]->rank(c, edge.sncs.front().sr1);
-                    SIZETYPE sr2 = prankvecs[i]->C[c] + prankvecs[i]->rank(c, edge.sncs.front().sr2);
-                    if (sr1 < sr2)
-                    {
-                        edge.sncs.emplace_back(-inf, -inf, -inf, -inf, c, 0, 1, sr1, sr2, 0, &(edge.sncs.front()), edge.sncs.front().jump);
-                        edge.sncs.front().jump = &(edge.sncs.back());
-                    }
+                    edge.sncs.emplace_back(-inf, -inf, -inf, -inf, c, 0, 1, sr1, sr2, 0, &(edge.sncs.front()), edge.sncs.front().jump);
+                    edge.sncs.front().jump = &(edge.sncs.back());
                 }
             }
-            else
+        }
+        else
+        {
+            for (SNC *prejump = &(edge.sncs.front()), *jump = prejump->jump; jump; jump = prejump->jump)
             {
-                for (SNC *prejump = &(edge.sncs.front()), *jump = prejump->jump; jump; jump = prejump->jump)
-                {
-                    jump->hatG = jump->G0;
-                    if (jump->itp != &(edge.sncs.front()) && jump->itp->hatG == -inf && jump->hatG == -inf && jump->E == -inf)
-                        prejump->jump = jump->jump;
-                    else
-                        prejump = jump;
-                }
+                jump->hatG = jump->G0;
+                if (jump->itp != &(edge.sncs.front()) && jump->itp->hatG == -inf && jump->hatG == -inf && jump->E == -inf)
+                    prejump->jump = jump->jump;
+                else
+                    prejump = jump;
             }
-
-            edge.sncs.front().hatG = std::max(edge.sncs.front().G0, tail.Avals[compsz_map[td] - 1][w - 1] + edge.T);
-            edge.sncs.front().E = std::max(edge.sncs.front().hatG + edge.ve, edge.sncs.front().E + edge.ue);
-            tgws[i] = (O.size() > w ? (O.size() - w - 1) * tail.ue + tail.ve : 0);
-            edge.sncs.front().F0 = -inf;
-            edge.sncs.front().G0 = edge.sncs.front().E;
-
-            if (edge.sncs.front().G0 >= head.Avals[0][w])
-            {
-                if (edge.sncs.front().G0 > head.Avals[0][w])
-                {
-                    head.Avals[0][w] = edge.sncs.front().G0;
-                    head.AdeltaDot[w].clear();
-                    head.AdeltaGlobal[w].clear();
-                }
-                head.AdeltaGlobal[w].emplace_back(circuits[i], edge.sncs.front().sr1, edge.sncs.front().lambda);
-            }
-
-            jumps[i] = edge.sncs.front().jump;
         }
 
-        while (circuits.size() > 0)
-            for (SIZETYPE i = 0; i < circuits.size();)
+        edge.sncs.front().hatG = std::max(edge.sncs.front().G0, tail.Avals[compsz_map[td] - 1][w - 1] + edge.T);
+        edge.sncs.front().E = std::max(edge.sncs.front().hatG + edge.ve, edge.sncs.front().E + edge.ue);
+        tgws = (O.size() > w ? (O.size() - w - 1) * tail.ue + tail.ve : 0);
+        edge.sncs.front().F0 = -inf;
+        edge.sncs.front().G0 = edge.sncs.front().E;
+
+        if (edge.sncs.front().G0 >= head.Avals[0][w])
+        {
+            if (edge.sncs.front().G0 > head.Avals[0][w])
             {
-                boost::graph_traits<graph_t>::vertex_descriptor hd = boost::target(*circuits[i], graph), td = boost::source(*circuits[i], graph);
-                Edge &edge = edge_map[*circuits[i]];
-                Node &head = node_map[hd], &tail = node_map[td];
+                head.Avals[0][w] = edge.sncs.front().G0;
+                head.AdeltaDot[w].clear();
+                head.AdeltaGlobal[w].clear();
+            }
+            head.AdeltaGlobal[w].emplace_back(ei, edge.sncs.front().sr1, edge.sncs.front().lambda);
+        }
 
-                SCORETYPE Gthres = std::max(edge.sncs.front().E, tail.Avals[0][w] + edge.T);
-                SCORETYPE Ethres = std::max(edge.sncs.front().E, Gthres + std::min(SCORETYPE(0), std::min(tail.ve - edge.ue, SCORETYPE(tgws[i] - (O.size() - w) * edge.ue))));
+        jump = edge.sncs.front().jump;
 
-                if (jumps[i])
+        while (true)
+        {
+            SCORETYPE Gthres = std::max(edge.sncs.front().E, tail.Avals[0][w] + edge.T);
+            SCORETYPE Ethres = std::max(edge.sncs.front().E, Gthres + std::min(SCORETYPE(0), std::min(tail.ve - edge.ue, SCORETYPE(tgws - (O.size() - w) * edge.ue))));
+
+            if (jump)
+            {
+                jump->E = std::max(jump->hatG + edge.ve, jump->E + edge.ue);
+                if (jump->E < Ethres)
+                    jump->E = -inf;
+                jump->F0 = std::max(jump->itp->G0 + edge.vf, jump->itp->F0 + edge.uf);
+                jump->G0 = std::max(std::max(jump->E, jump->F0), jump->itp->hatG + edge.gamma[jump->c][O[w - 1]]);
+                if (jump->G0 < Gthres)
                 {
-                    jumps[i]->E = std::max(jumps[i]->hatG + edge.ve, jumps[i]->E + edge.ue);
-                    if (jumps[i]->E < Ethres)
-                        jumps[i]->E = -inf;
-                    jumps[i]->F0 = std::max(jumps[i]->itp->G0 + edge.vf, jumps[i]->itp->F0 + edge.uf);
-                    jumps[i]->G0 = std::max(std::max(jumps[i]->E, jumps[i]->F0), jumps[i]->itp->hatG + edge.gamma[jumps[i]->c][O[w - 1]]);
-                    if (jumps[i]->G0 < Gthres)
-                    {
-                        jumps[i]->F0 = -inf;
-                        jumps[i]->G0 = -inf;
-                    }
-                    else
-                    {
-                        if (jumps[i]->G0 >= head.Avals[0][w])
-                        {
-                            if (jumps[i]->G0 > head.Avals[0][w])
-                            {
-                                head.Avals[0][w] = jumps[i]->G0;
-                                head.AdeltaDot[w].clear();
-                                head.AdeltaGlobal[w].clear();
-                            }
-                            head.AdeltaGlobal[w].emplace_back(circuits[i], jumps[i]->sr1, jumps[i]->lambda);
-                        }
-                    }
-                        
-                    if (jumps[i]->G0 != -inf && jumps[i]->hatG == -inf)
-                    {
-                        if (jumps[i]->cid == 0)
-                        {
-                            jumps[i]->cid = edge.sncs.size();
-                            for (NUCTYPE c = 2; c < RankVec::sigma; ++c)
-                            {
-                                SIZETYPE sr1 = prankvecs[i]->C[c] + prankvecs[i]->rank(c, jumps[i]->sr1);
-                                SIZETYPE sr2 = prankvecs[i]->C[c] + prankvecs[i]->rank(c, jumps[i]->sr2);
-                                if (sr1 < sr2)
-                                {
-                                    edge.sncs.emplace_back(-inf, -inf, -inf, -inf, c, 0, jumps[i]->lambda + 1, sr1, sr2, 0, jumps[i], (SNC *)NULL);
-                                    ++jumps[i]->idl;
-                                }
-                            }
-                        }
-                        for (NUCTYPE idi = 0; idi < jumps[i]->idl; ++idi)
-                            if (edge.sncs[jumps[i]->cid + idi].E == -inf && edge.sncs[jumps[i]->cid + idi].G0 == -inf)
-                            {
-                                edge.sncs[jumps[i]->cid + idi].jump = jumps[i]->jump;
-                                jumps[i]->jump = &(edge.sncs[jumps[i]->cid + idi]);
-                            }
-                    }
-                    jumps[i] = jumps[i]->jump;
-                    
-                    ++ i;
+                    jump->F0 = -inf;
+                    jump->G0 = -inf;
                 }
                 else
                 {
-                    if (w == O.size())
-                        edge.sncs.clear();
-                    circuits.erase(circuits.begin() + i);
-                    tgws.erase(tgws.begin() + i);
-                    jumps.erase(jumps.begin() + i);
+                    if (jump->G0 >= head.Avals[0][w])
+                    {
+                        if (jump->G0 > head.Avals[0][w])
+                        {
+                            head.Avals[0][w] = jump->G0;
+                            head.AdeltaDot[w].clear();
+                            head.AdeltaGlobal[w].clear();
+                        }
+                        head.AdeltaGlobal[w].emplace_back(ei, jump->sr1, jump->lambda);
+                    }
                 }
+                    
+                if (jump->G0 != -inf && jump->hatG == -inf)
+                {
+                    if (jump->cid == 0)
+                    {
+                        jump->cid = edge.sncs.size();
+                        for (NUCTYPE c = 2; c < RankVec::sigma; ++c)
+                        {
+                            SIZETYPE sr1 = prankvec->C[c] + prankvec->rank(c, jump->sr1);
+                            SIZETYPE sr2 = prankvec->C[c] + prankvec->rank(c, jump->sr2);
+                            if (sr1 < sr2)
+                            {
+                                edge.sncs.emplace_back(-inf, -inf, -inf, -inf, c, 0, jump->lambda + 1, sr1, sr2, 0, jump, (SNC *)NULL);
+                                ++jump->idl;
+                            }
+                        }
+                    }
+                    for (NUCTYPE idi = 0; idi < jump->idl; ++idi)
+                        if (edge.sncs[jump->cid + idi].E == -inf && edge.sncs[jump->cid + idi].G0 == -inf)
+                        {
+                            edge.sncs[jump->cid + idi].jump = jump->jump;
+                            jump->jump = &(edge.sncs[jump->cid + idi]);
+                        }
+                }
+                jump = jump->jump;
             }
+            else
+            {
+                if (w == O.size())
+                    edge.sncs.clear();
+                break;
+            }
+        }
     }
 
     struct SWN
