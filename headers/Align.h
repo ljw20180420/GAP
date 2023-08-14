@@ -73,10 +73,10 @@ struct Align
 
         trn = 0;
         tnn = 1 + boost::num_vertices(graph); // Q and Abars
-        for (boost::graph_traits<graph_t>::vertex_descriptor n = 0; n < boost::num_vertices(graph); ++n)
+        for (boost::graph_traits<graph_t>::vertex_descriptor nd = 0; nd < boost::num_vertices(graph); ++nd)
         {
-            trn += compsz_map[n] + 1;
-            tnn += (Omax + 1) * (compsz_map[n] + 1);
+            trn += compsz_map[nd] + 1;
+            tnn += (Omax + 1) * (compsz_map[nd] + 1);
         }
 
         for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
@@ -117,21 +117,21 @@ struct Align
         pQval = --rpval;
         SHORTSIZE *fps = ss.get();
         DOTTYPE *fpn = ns.get();
-        for (boost::graph_traits<graph_t>::vertex_descriptor n = 0; n < boost::num_vertices(graph); ++n)
+        for (boost::graph_traits<graph_t>::vertex_descriptor nd = 0; nd < boost::num_vertices(graph); ++nd)
         {
-            Node &node = node_map[n];
+            Node &node = node_map[nd];
             node.pAbarval = --rpval;
             *(fps++) = 0;
-            *(fpn++) = Dot::NODEIDX2DOTTYPEB(n);
-            for (SIZETYPE j = 0; j < compsz_map[n]; ++j, ++fps, ++fpn)
+            *(fpn++) = Dot::NODEIDX2DOTTYPEB(nd);
+            for (SIZETYPE j = 0; j < compsz_map[nd]; ++j, ++fps, ++fpn)
             {
                 *fps = j;
-                *fpn = Dot::NODEIDX2DOTTYPEA(n);
+                *fpn = Dot::NODEIDX2DOTTYPEA(nd);
             }
             node.Bvals = fpval;
             fpval += Omax + 1;
-            node.Avals = new SCORETYPE *[compsz_map[n]];
-            for (SIZETYPE s = 0; s < compsz_map[n]; ++s, fpval += Omax + 1)
+            node.Avals = new SCORETYPE *[compsz_map[nd]];
+            for (SIZETYPE s = 0; s < compsz_map[nd]; ++s, fpval += Omax + 1)
                 node.Avals[s] = fpval;
             node.AdeltaDot = new std::deque<SCORETYPE *>[Omax + 1];
             node.AdeltaGlobal = new std::deque<Node::GlobalSuffix>[Omax + 1];
@@ -240,9 +240,9 @@ struct Align
 
     void Mix()
     {
-        for (boost::graph_traits<graph_t>::vertex_descriptor n = 0; n < boost::num_vertices(graph); ++n)
+        for (boost::graph_traits<graph_t>::vertex_descriptor nd = 0; nd < boost::num_vertices(graph); ++nd)
         {
-            Node &node = node_map[n];
+            Node &node = node_map[nd];
             for (SIZETYPE w = 0; w <= O.size(); ++w)
                 node.Avals[0][w] = -inf;
             if (node.is_root)
@@ -259,22 +259,22 @@ struct Align
         {
             for (SIZETYPE w = 0; w <= O.size(); ++w)
             {
-                for (boost::graph_traits<graph_t>::vertex_descriptor n = 0; n < boost::num_vertices(graph); ++n)
+                for (boost::graph_traits<graph_t>::vertex_descriptor nd = 0; nd < boost::num_vertices(graph); ++nd)
                 {
-                    if (comp_map[n] != ct)
+                    if (comp_map[nd] != ct)
                         continue;
 
-                    Node &node = node_map[n];
+                    Node &node = node_map[nd];
                     SIZETYPE M = &node.Bvals[w] - vals.get();
                     bits[M] = 0;
                     if (w == 0)
                         node.Bvals[w] = -inf;
                     else
                     {
-                        node.Bvals[w] = std::max(node.Bvals[w - 1] + node.ue, node.Avals[compsz_map[n] - 1][w - 1] + node.ve);
+                        node.Bvals[w] = std::max(node.Bvals[w - 1] + node.ue, node.Avals[compsz_map[nd] - 1][w - 1] + node.ve);
                         if (node.Bvals[w] == node.Bvals[w - 1] + node.ue)
                             bits[M] += 1;
-                        if (node.Bvals[w] == node.Avals[compsz_map[n] - 1][w - 1] + node.ve)
+                        if (node.Bvals[w] == node.Avals[compsz_map[nd] - 1][w - 1] + node.ve)
                             bits[M] += 2;                    
                     }
                     if (node.Bvals[w] >= node.Avals[0][w])
@@ -288,7 +288,7 @@ struct Align
                         node.AdeltaDot[w].emplace_back(&node.Bvals[w]);
                     }    
 
-                    scc_sz = compsz_map[n];
+                    scc_sz = compsz_map[nd];
                 }
                 for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
                     if (comp_map[boost::target(*ei, graph)] == ct && comp_map[boost::source(*ei, graph)] == ct && file2short.count(edge_map[*ei].name))
@@ -319,12 +319,12 @@ struct Align
                         if (edge.DXvals[l - 1][w] == edge.D0vals[l - 1][w] + edge.gf[ref_sz])
                             bits[M] += 2;
                     }
-                    for (boost::graph_traits<graph_t>::vertex_descriptor n = 0; n < boost::num_vertices(graph); ++n)
+                    for (boost::graph_traits<graph_t>::vertex_descriptor nd = 0; nd < boost::num_vertices(graph); ++nd)
                     {
-                        if (comp_map[n] != ct)
+                        if (comp_map[nd] != ct)
                             continue;
                         
-                        Node &node = node_map[n];
+                        Node &node = node_map[nd];
                         SIZETYPE M = &node.Avals[l][w] - vals.get();
                         node.Avals[l][w] = node.Avals[0][w];
                         bits[M] = 1;
@@ -332,12 +332,12 @@ struct Align
                         for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
                         {
                             Edge &edge = edge_map[*ei];
-                            if (boost::target(*ei, graph) != n || comp_map[boost::source(*ei, graph)] != ct)
+                            if (boost::target(*ei, graph) != nd || comp_map[boost::source(*ei, graph)] != ct)
                                 continue;
                             ib *= 2;
                             if (ib > std::numeric_limits<BITSTYPE>::max())
                             {
-                                std::cerr << "the upper limits of BITSTYPE reached by node" << n << ", A[" << l << "][" << w << "]\n";
+                                std::cerr << "the upper limits of BITSTYPE reached by node" << nd << ", A[" << l << "][" << w << "]\n";
                                 break;
                             }
                             SCORETYPE Dscore;
@@ -370,9 +370,9 @@ struct Align
         bits[M] = 0;
         *pQval = -inf;
         SIZETYPE ib = 1;
-        for (boost::graph_traits<graph_t>::vertex_descriptor n = 0; n < boost::num_vertices(graph); ++n)
+        for (boost::graph_traits<graph_t>::vertex_descriptor nd = 0; nd < boost::num_vertices(graph); ++nd)
         {
-            Node &node = node_map[n];
+            Node &node = node_map[nd];
             if (!node.is_target)
                 continue;
             if (ib > std::numeric_limits<BITSTYPE>::max())
@@ -380,7 +380,7 @@ struct Align
                 std::cerr << "the upper limits of BITSTYPE reached by Q (the graph has too many targets)\n";
                 break;
             }
-            SCORETYPE score = node.Avals[compsz_map[n] - 1][O.size()];
+            SCORETYPE score = node.Avals[compsz_map[nd] - 1][O.size()];
             if (score >= *pQval)
             {
                 if (score > *pQval)
@@ -1033,15 +1033,15 @@ struct Align
                     case VALTYPE::Q:
                     {
                         SIZETYPE ib = 1;
-                        for (boost::graph_traits<graph_t>::vertex_descriptor n = 0; n < boost::num_vertices(graph); ++n)
+                        for (boost::graph_traits<graph_t>::vertex_descriptor nd = 0; nd < boost::num_vertices(graph); ++nd)
                         {
-                            Node &node = node_map[n];
+                            Node &node = node_map[nd];
                             if (!node.is_target)
                                 continue;
                             if (ib > std::numeric_limits<BITSTYPE>::max())
                                 break;
                             if (bits[M] & ib)
-                                arrangesource(valuequeue, &node.Avals[compsz_map[n] - 1][O.size()], localqueue, id);
+                                arrangesource(valuequeue, &node.Avals[compsz_map[nd] - 1][O.size()], localqueue, id);
                             ib *= 2;
                         }
                         break;
