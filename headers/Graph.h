@@ -216,7 +216,8 @@ struct Edge
     }
 };
 
-namespace boost {
+namespace boost
+{
     enum vertex_Node_t {vertex_Node = 111};
     BOOST_INSTALL_PROPERTY(vertex, Node);
     enum vertex_comp_t {vertex_comp = 112};
@@ -226,7 +227,7 @@ namespace boost {
     enum edge_Edge_t {edge_Edge = 114};
     BOOST_INSTALL_PROPERTY(edge, Edge);
 }
-typedef boost::adjacency_list<boost::listS, boost::vecS, boost::directedS, boost::property<boost::vertex_compsz_t, SIZETYPE, boost::property<boost::vertex_comp_t, SIZETYPE, boost::property<boost::vertex_Node_t, Node>>>, boost::property<boost::edge_Edge_t, Edge>> graph_t;
+typedef boost::adjacency_list<boost::vecS, boost::vecS, boost::bidirectionalS, boost::property<boost::vertex_compsz_t, SIZETYPE, boost::property<boost::vertex_comp_t, SIZETYPE, boost::property<boost::vertex_Node_t, Node>>>, boost::property<boost::edge_Edge_t, Edge>> graph_t;
 
 struct Node
 {

@@ -329,10 +329,11 @@ struct Align
                         node.Avals[l][w] = node.Avals[0][w];
                         bits[M] = 1;
                         SIZETYPE ib = 1;
-                        for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
+                        boost::graph_traits<graph_t>::in_edge_iterator inei, inei_end;
+                        for (boost::tie(inei, inei_end) = boost::in_edges(nd, graph); inei != inei_end; ++inei)
                         {
-                            Edge &edge = edge_map[*ei];
-                            if (boost::target(*ei, graph) != nd || comp_map[boost::source(*ei, graph)] != ct)
+                            Edge &edge = edge_map[*inei];
+                            if (comp_map[boost::source(*inei, graph)] != ct)
                                 continue;
                             ib *= 2;
                             if (ib > std::numeric_limits<BITSTYPE>::max())
@@ -1141,11 +1142,11 @@ struct Align
                         if (bits[M] & int8_t(1))
                             arrangesource(valuequeue, &node_map[nd].Avals[0][swn.w], localqueue, id);
                         SIZETYPE ib = 1;
-                        boost::graph_traits<graph_t>::edge_iterator ei, ei_end;
-                        for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
+                        boost::graph_traits<graph_t>::in_edge_iterator inei, inei_end;
+                        for (boost::tie(inei, inei_end) = boost::in_edges(nd, graph); inei != inei_end; ++inei)
                         {
-                            Edge &edge = edge_map[*ei];
-                            if (boost::target(*ei, graph) != nd || comp_map[boost::source(*ei, graph)] != comp_map[nd])
+                            Edge &edge = edge_map[*inei];
+                            if (comp_map[boost::source(*inei, graph)] != comp_map[nd])
                                 continue;
                             ib *= 2;
                             if (ib > std::numeric_limits<BITSTYPE>::max())
