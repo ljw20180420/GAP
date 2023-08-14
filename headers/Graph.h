@@ -295,99 +295,66 @@ std::vector<SIZETYPE> construct_graph(graph_t &graph, boost::program_options::va
         try{node.ue = std::stod(u);}catch(...){node.ue = 0.0;}
     }
 
+    std::vector<std::string> shorts_longs;
+    SIZETYPE short_num = 0;
     if (vm.count("shorts"))
-        for (std::string info : vm["shorts"].as<std::vector<std::string>>())
+    {
+        short_num = vm["shorts"].as<std::vector<std::string>>().size();
+        shorts_longs.insert(shorts_longs.end(), vm["shorts"].as<std::vector<std::string>>().begin(), vm["shorts"].as<std::vector<std::string>>().end());
+    }
+    if (vm.count("longs"))
+        shorts_longs.insert(shorts_longs.end(), vm["longs"].as<std::vector<std::string>>().begin(), vm["longs"].as<std::vector<std::string>>().end());
+    for (SIZETYPE i = 0; i < shorts_longs.size(); ++i)
+    {
+        std::stringstream ss(shorts_longs[i]);
+        std::string name, tail, head, match, mismatch, v, u, T, min_score, vb, ub;
+        std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(ss, name, ','), tail, ','), head, ','), match, ','), mismatch, ','), v, ','), u, ','), T, ','), min_score, ','), vb, ','), ub, ',');
+        boost::graph_traits<graph_t>::edge_descriptor ed;
+        bool inserted = false;
+        for (boost::graph_traits<graph_t>::vertex_descriptor nd = 0, td = boost::num_vertices(graph), hd = boost::num_vertices(graph); nd < boost::num_vertices(graph); ++nd)
         {
-            std::stringstream ss(info);
-            std::string name, tail, head, match, mismatch, v, u, vb, ub, T, min_score;
-            std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(ss, name, ','), tail, ','), head, ','), match, ','), mismatch, ','), v, ','), u, ','), T, ','), min_score, ','), vb, ','), ub, ',');
-            boost::graph_traits<graph_t>::edge_descriptor ed;
-            bool inserted = false;
-            for (boost::graph_traits<graph_t>::vertex_descriptor n = 0, t = boost::num_vertices(graph), h = boost::num_vertices(graph); n < boost::num_vertices(graph); ++n)
+            if (td == boost::num_vertices(graph) && node_map[nd].name == tail)
+                td = nd;
+            if (hd == boost::num_vertices(graph) && node_map[nd].name == head)
+                hd = nd;
+            if (td != boost::num_vertices(graph) && hd != boost::num_vertices(graph))
             {
-                if (t == boost::num_vertices(graph) && node_map[n].name == tail)
-                    t = n;
-                if (h == boost::num_vertices(graph) && node_map[n].name == head)
-                    h = n;
-                if (t != boost::num_vertices(graph) && h != boost::num_vertices(graph))
-                {
-                    boost::tie(ed, inserted) = boost::add_edge(t, h, graph);
-                    break;
-                }
+                boost::tie(ed, inserted) = boost::add_edge(td, hd, graph);
+                break;
             }
-            if (!inserted)
-            {
-                std::cerr << "short edge " << name << " cannot be added\n";
-                exit(EXIT_FAILURE);
-            }
-            Edge &edge = edge_map[ed];
-            edge.n = boost::num_edges(graph) - 1;
-            edge.name = name;
-            for (NUCTYPE a = 2; a < RankVec::sigma; ++a)
-                for (NUCTYPE b = 2; b < RankVec::sigma; ++b)
-                    if (a==b && a>2)
-                        try{edge.gamma[a][b]=std::stod(match);}catch(...){edge.gamma[a][b]=1;}
-                    else
-                        try{edge.gamma[a][b]=std::stod(mismatch);}catch(...){edge.gamma[a][b]=-3;}
-            try{edge.ve = std::stod(v);}catch(...){edge.ve = -5;}
-            edge.vf = edge.ve;
-            try{edge.ue = std::stod(u);}catch(...){edge.ue = -2;}
-            edge.uf = edge.ue;
-            try{edge.T = std::stod(T);}catch(...){edge.T = -10;}
-            try{edge.min_score = std::stod(min_score);}catch(...){edge.min_score = 20;}
+        }
+        if (!inserted)
+        {
+            std::cerr << "short edge " << name << " cannot be added\n";
+            exit(EXIT_FAILURE);
+        }
+        Edge &edge = edge_map[ed];
+        edge.n = boost::num_edges(graph) - 1;
+        edge.name = name;
+        for (NUCTYPE a = 2; a < RankVec::sigma; ++a)
+            for (NUCTYPE b = 2; b < RankVec::sigma; ++b)
+                if (a==b && a>2)
+                    try{edge.gamma[a][b]=std::stod(match);}catch(...){edge.gamma[a][b]=1;}
+                else
+                    try{edge.gamma[a][b]=std::stod(mismatch);}catch(...){edge.gamma[a][b]=-3;}
+        try{edge.ve = std::stod(v);}catch(...){edge.ve = -5;}
+        edge.vf = edge.ve;
+        try{edge.ue = std::stod(u);}catch(...){edge.ue = -2;}
+        edge.uf = edge.ue;
+        try{edge.T = std::stod(T);}catch(...){edge.T = -10;}
+        try{edge.min_score = std::stod(min_score);}catch(...){edge.min_score = 20;}
+        if (i < short_num)
+        {
             try{edge.vfp = std::stod(vb);}catch(...){edge.vfp = 0;}
             edge.vfm = edge.vfp;
             try{edge.ufp = std::stod(ub);}catch(...){edge.ufp = 0;}
             edge.ufm = edge.ufp;
-
             SHORTSIZE ref_sz = file2short[edge.name].second;
             get_affine(edge.gf, ref_sz, 0, edge.uf, edge.vf);
             edge.gfm = edge.vfm + (ref_sz - 1) * edge.ufm;
             get_affine(edge.gfpT, ref_sz, edge.T, edge.ufp, edge.vfp);
         }
-
-    if (vm.count("longs"))
-        for (std::string info : vm["longs"].as<std::vector<std::string>>())
-        {
-            std::stringstream ss(info);
-            std::string name, tail, head, match, mismatch, v, u, vb, ub, T, min_score;
-            std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(std::getline(ss, name, ','), tail, ','), head, ','), match, ','), mismatch, ','), v, ','), u, ','), T, ','), min_score, ',');
-            boost::graph_traits<graph_t>::edge_descriptor ed;
-            bool inserted = false;
-            for (boost::graph_traits<graph_t>::vertex_descriptor n = 0, t = boost::num_vertices(graph), h = boost::num_vertices(graph); n < boost::num_vertices(graph); ++n)
-            {
-                if (t == boost::num_vertices(graph) && node_map[n].name == tail)
-                    t = n;
-                if (h == boost::num_vertices(graph) && node_map[n].name == head)
-                    h = n;
-                if (t != boost::num_vertices(graph) && h != boost::num_vertices(graph))
-                {
-                    boost::tie(ed, inserted) = boost::add_edge(t, h, graph);
-                    break;
-                }
-            }
-            if (!inserted)
-            {
-                std::cerr << "short edge " << name << " cannot be added\n";
-                exit(EXIT_FAILURE);
-            }
-            Edge &edge = edge_map[ed];
-            edge.n = boost::num_edges(graph) - 1;
-            edge.name = name;
-
-            for (NUCTYPE a = 2; a < RankVec::sigma; ++a)
-                for (NUCTYPE b = 2; b < RankVec::sigma; ++b)
-                    if (a==b && a>2)
-                        try{edge.gamma[a][b]=std::stod(match);}catch(...){edge.gamma[a][b]=1;}
-                    else
-                        try{edge.gamma[a][b]=std::stod(mismatch);}catch(...){edge.gamma[a][b]=-3;}
-            try{edge.ve = std::stod(v);}catch(...){edge.ve = -5;}
-            edge.vf = edge.ve;
-            try{edge.ue = std::stod(u);}catch(...){edge.ue = -2;}
-            edge.uf = edge.ue;
-            try{edge.T = std::stod(T);}catch(...){edge.T = -10;}
-            try{edge.min_score = std::stod(min_score);}catch(...){edge.min_score = 20;}
-        }
+    }
     
     std::vector<SIZETYPE> t_map(boost::num_vertices(graph));
     SIZETYPE comp_num = boost::strong_components(graph, comp_map, boost::discover_time_map(boost::make_iterator_property_map(t_map.begin(), boost::get(boost::vertex_index, graph))));
