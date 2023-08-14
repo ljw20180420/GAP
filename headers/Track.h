@@ -6,11 +6,7 @@
 struct Track
 {
     graph_t graph;
-    SIZETYPE comp_num;
-    boost::property_map<graph_t, boost::vertex_Node_t>::type node_map;
     boost::property_map<graph_t, boost::edge_Edge_t>::type edge_map;
-    boost::property_map<graph_t, boost::vertex_comp_t>::type comp_map;
-    boost::property_map<graph_t, boost::vertex_compsz_t>::type compsz_map;
     std::vector<boost::graph_traits<graph_t>::edge_iterator> eis;
 
     boost::program_options::variables_map &vm;
@@ -35,11 +31,8 @@ struct Track
     Track(boost::program_options::variables_map &vm_, std::map<std::string, std::pair<std::unique_ptr<NUCTYPE []>, SHORTSIZE>> &file2short_, std::map<std::string, RankVec> &file2rankvec_)
     : vm(vm_), file2short(file2short_), file2rankvec(file2rankvec_), fout_align("alg"), fout_extract("ext"), fout_fail("fail"), fout_death("death")
     {
-        comp_num = construct_graph(graph, vm, file2short);
-        node_map = boost::get(boost::vertex_Node, graph);
+        construct_graph(graph, vm, file2short);
         edge_map = boost::get(boost::edge_Edge, graph);
-        comp_map = boost::get(boost::vertex_comp, graph);
-        compsz_map = boost::get(boost::vertex_compsz, graph);
         eis.resize(boost::num_edges(graph));
         boost::graph_traits<graph_t>::edge_iterator ei, ei_end;
         for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)

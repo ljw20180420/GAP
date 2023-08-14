@@ -14,7 +14,7 @@
 struct Align
 {
     graph_t graph;
-    SIZETYPE comp_num;
+    std::vector<SIZETYPE> comp_time;
     boost::property_map<graph_t, boost::vertex_Node_t>::type node_map;
     boost::property_map<graph_t, boost::edge_Edge_t>::type edge_map;
     boost::property_map<graph_t, boost::vertex_comp_t>::type comp_map;
@@ -51,7 +51,7 @@ struct Align
     Align(std::mutex &mtx_, std::ifstream &fin_, boost::program_options::variables_map &vm, std::map<std::string, std::pair<std::unique_ptr<NUCTYPE []>, SHORTSIZE>> &file2short_, std::map<std::string, RankVec> &file2rankvec_, std::string mgfile, QUERYSIZE Omax_)
         : mtx(mtx_), fin(fin_), file2short(file2short_), file2rankvec(file2rankvec_), fout(mgfile, std::ifstream::binary), Omax(Omax_)
     {
-        comp_num = construct_graph(graph, vm, file2short);
+        comp_time = construct_graph(graph, vm, file2short);
         node_map = boost::get(boost::vertex_Node, graph);
         edge_map = boost::get(boost::edge_Edge, graph);
         comp_map = boost::get(boost::vertex_comp, graph);
@@ -254,13 +254,14 @@ struct Align
         }
 
         boost::graph_traits<graph_t>::edge_iterator ei, ei_end;
-        for (SIZETYPE scc_id = 0, scc_sz; scc_id < comp_num; ++scc_id)
+        SIZETYPE scc_sz;
+        for (SIZETYPE ct : comp_time)
         {
             for (SIZETYPE w = 0; w <= O.size(); ++w)
             {
                 for (boost::graph_traits<graph_t>::vertex_descriptor n = 0; n < boost::num_vertices(graph); ++n)
                 {
-                    if (comp_map[n] != scc_id)
+                    if (comp_map[n] != ct)
                         continue;
 
                     Node &node = node_map[n];
@@ -290,22 +291,22 @@ struct Align
                     scc_sz = compsz_map[n];
                 }
                 for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
-                    if (comp_map[boost::target(*ei, graph)] == scc_id && comp_map[boost::source(*ei, graph)] == scc_id && file2short.count(edge_map[*ei].name))
+                    if (comp_map[boost::target(*ei, graph)] == ct && comp_map[boost::source(*ei, graph)] == ct && file2short.count(edge_map[*ei].name))
                         CircuitIteration(w, ei);
-                CircuitIterationGlobal(w, scc_id);
+                CircuitIterationGlobal(w, ct);
                 for (SIZETYPE l = 1; l < scc_sz; ++l)
                 {
                     for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
                     {
                         Edge &edge = edge_map[*ei];
-                        if (comp_map[boost::target(*ei, graph)] != scc_id || comp_map[boost::source(*ei, graph)] != scc_id || !file2long.count(edge.name))
+                        if (comp_map[boost::target(*ei, graph)] != ct || comp_map[boost::source(*ei, graph)] != ct || !file2long.count(edge.name))
                             continue;
                         edge.D0vals[l - 1][w] = node_map[boost::source(*ei, graph)].Avals[l - 1][w] + edge.T;
                     }
                     for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
                     {
                         Edge &edge = edge_map[*ei];
-                        if (comp_map[boost::target(*ei, graph)] != scc_id || comp_map[boost::source(*ei, graph)] != scc_id || !file2short.count(edge.name))
+                        if (comp_map[boost::target(*ei, graph)] != ct || comp_map[boost::source(*ei, graph)] != ct || !file2short.count(edge.name))
                             continue;
                         Node &tail = node_map[boost::source(*ei, graph)];
                         SHORTSIZE ref_sz = file2short[edge.name].second;
@@ -320,7 +321,7 @@ struct Align
                     }
                     for (boost::graph_traits<graph_t>::vertex_descriptor n = 0; n < boost::num_vertices(graph); ++n)
                     {
-                        if (comp_map[n] != scc_id)
+                        if (comp_map[n] != ct)
                             continue;
                         
                         Node &node = node_map[n];
@@ -331,7 +332,7 @@ struct Align
                         for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
                         {
                             Edge &edge = edge_map[*ei];
-                            if (boost::target(*ei, graph) != n || comp_map[boost::source(*ei, graph)] != scc_id)
+                            if (boost::target(*ei, graph) != n || comp_map[boost::source(*ei, graph)] != ct)
                                 continue;
                             ib *= 2;
                             if (ib > std::numeric_limits<BITSTYPE>::max())
@@ -358,10 +359,10 @@ struct Align
                 }
             }
             for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
-                if (comp_map[boost::source(*ei, graph)] == scc_id && comp_map[boost::target(*ei, graph)] != scc_id && file2short.count(edge_map[*ei].name))
+                if (comp_map[boost::source(*ei, graph)] == ct && comp_map[boost::target(*ei, graph)] != ct && file2short.count(edge_map[*ei].name))
                     CrossIteration(ei);
             for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
-                if (comp_map[boost::source(*ei, graph)] == scc_id && comp_map[boost::target(*ei, graph)] != scc_id && file2long.count(edge_map[*ei].name))
+                if (comp_map[boost::source(*ei, graph)] == ct && comp_map[boost::target(*ei, graph)] != ct && file2long.count(edge_map[*ei].name))
                     CrossIterationGlobal(ei);
         }
 
@@ -701,7 +702,7 @@ struct Align
         }
     }
 
-    void CircuitIterationGlobal(QUERYSIZE w, SIZETYPE scc_id)
+    void CircuitIterationGlobal(QUERYSIZE w, SIZETYPE ct)
     {
         if (w == 0)
             return;
@@ -709,7 +710,7 @@ struct Align
         std::vector<boost::graph_traits<graph_t>::edge_iterator> circuits;
         boost::graph_traits<graph_t>::edge_iterator ei, ei_end;
         for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
-            if (comp_map[boost::target(*ei, graph)] == scc_id && comp_map[boost::source(*ei, graph)] == scc_id && file2long.count(edge_map[*ei].name))
+            if (comp_map[boost::target(*ei, graph)] == ct && comp_map[boost::source(*ei, graph)] == ct && file2long.count(edge_map[*ei].name))
                 circuits.push_back(ei);
         std::vector<SCORETYPE> tgws(circuits.size());
         std::vector<SNC *> jumps(circuits.size());

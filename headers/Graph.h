@@ -275,7 +275,7 @@ void get_affine(std::vector<SCORETYPE> &g, SHORTSIZE seqlen, SCORETYPE initial, 
             g[s + 1] = g[s] + u;
 }
 
-SIZETYPE construct_graph(graph_t &graph, boost::program_options::variables_map &vm, std::map<std::string, std::pair<std::unique_ptr<NUCTYPE []>, SHORTSIZE>> &file2short)
+std::vector<SIZETYPE> construct_graph(graph_t &graph, boost::program_options::variables_map &vm, std::map<std::string, std::pair<std::unique_ptr<NUCTYPE []>, SHORTSIZE>> &file2short)
 {
     boost::property_map<graph_t, boost::vertex_Node_t>::type node_map = boost::get(boost::vertex_Node, graph);
     boost::property_map<graph_t, boost::edge_Edge_t>::type edge_map = boost::get(boost::edge_Edge, graph);
@@ -390,24 +390,21 @@ SIZETYPE construct_graph(graph_t &graph, boost::program_options::variables_map &
     
     std::vector<SIZETYPE> t_map(boost::num_vertices(graph));
     SIZETYPE comp_num = boost::strong_components(graph, comp_map, boost::discover_time_map(boost::make_iterator_property_map(t_map.begin(), boost::get(boost::vertex_index, graph))));
-    std::vector<SIZETYPE> comp_time(comp_num, std::numeric_limits<int>::max());
-    for (boost::graph_traits<graph_t>::vertex_descriptor nd = 0; nd < boost::num_vertices(graph); ++nd)
-        comp_time[comp_map[nd]] = std::min(comp_time[comp_map[nd]], t_map[nd]);
-    std::vector<SIZETYPE> idx(comp_num);
-    std::iota(idx.begin(), idx.end(), 0);
-    std::sort(idx.begin(), idx.end(), [&comp_time](SIZETYPE idx1, SIZETYPE idx2){return comp_time[idx1] < comp_time[idx2];});
-    for (SIZETYPE i = 0; i < comp_num; ++i)
-        comp_time[idx[i]] = i;
-    for (boost::graph_traits<graph_t>::vertex_descriptor nd = 0; nd < boost::num_vertices(graph); ++nd)
-        comp_map[nd] = comp_time[comp_map[nd]];
 
     std::vector<SIZETYPE> scc_szs(comp_num, 0);
     for (boost::graph_traits<graph_t>::vertex_descriptor n = 0; n < boost::num_vertices(graph); ++n)
         ++scc_szs[comp_map[n]];
     for (boost::graph_traits<graph_t>::vertex_descriptor n = 0; n < boost::num_vertices(graph); ++n)
         compsz_map[n] = scc_szs[comp_map[n]];
+
+    std::vector<SIZETYPE> comp_time(comp_num, std::numeric_limits<int>::max());
+    for (boost::graph_traits<graph_t>::vertex_descriptor nd = 0; nd < boost::num_vertices(graph); ++nd)
+        comp_time[comp_map[nd]] = std::min(comp_time[comp_map[nd]], t_map[nd]);
+    for (boost::graph_traits<graph_t>::vertex_descriptor nd = 0; nd < boost::num_vertices(graph); ++nd)
+        comp_map[nd] = comp_time[comp_map[nd]];
+    std::sort(comp_time.begin(), comp_time.end());
     
-    return comp_num;
+    return comp_time;
 }
 
 int draw(graph_t &graph, std::map<std::string, std::pair<std::unique_ptr<NUCTYPE []>, SHORTSIZE>> &file2short)
