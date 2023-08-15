@@ -879,9 +879,9 @@ struct Align
                     return VALTYPE::SIF0;
                 if (M < edge.Gvals[0] - vals.get())
                     return VALTYPE::SIG0;
-                if (M < edge.D0vals[0]-vals.get())
+                if (M < edge.D0vals[0] - vals.get())
                     return VALTYPE::SIG;
-                if (M < edge.DXvals[0]-vals.get())
+                if (M < edge.DXvals[0] - vals.get())
                     return VALTYPE::SID0;
                 return VALTYPE::SIDX;
             }

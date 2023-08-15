@@ -223,12 +223,11 @@ namespace boost
     enum edge_Edge_t {edge_Edge = 114};
     BOOST_INSTALL_PROPERTY(edge, Edge);
 }
-typedef boost::adjacency_list<boost::vecS, boost::vecS, boost::bidirectionalS, boost::property<boost::vertex_compsz_t, SIZETYPE, boost::property<boost::vertex_comp_t, SIZETYPE, boost::property<boost::vertex_Node_t, Node>>>, boost::property<boost::edge_name_t, std::string, boost::property<boost::edge_index_t, DOTTYPE, boost::property<boost::edge_Edge_t, Edge>>>> graph_t;
+typedef boost::adjacency_list<boost::vecS, boost::vecS, boost::bidirectionalS, boost::property<boost::vertex_name_t, std::string, boost::property<boost::vertex_compsz_t, SIZETYPE, boost::property<boost::vertex_comp_t, SIZETYPE, boost::property<boost::vertex_Node_t, Node>>>>, boost::property<boost::edge_name_t, std::string, boost::property<boost::edge_index_t, DOTTYPE, boost::property<boost::edge_Edge_t, Edge>>>> graph_t;
 
 struct Node
 {
     bool is_root, is_target;
-    std::string name;
     SCORETYPE ve, ue;
 
     SCORETYPE ** Avals = NULL;
@@ -274,6 +273,7 @@ void get_affine(std::vector<SCORETYPE> &g, SHORTSIZE seqlen, SCORETYPE initial, 
 
 std::vector<SIZETYPE> construct_graph(graph_t &graph, boost::program_options::variables_map &vm, std::map<std::string, std::pair<std::unique_ptr<NUCTYPE []>, SHORTSIZE>> &file2short)
 {
+    boost::property_map<graph_t, boost::vertex_name_t>::type node_name_map = boost::get(boost::vertex_name, graph);
     boost::property_map<graph_t, boost::vertex_Node_t>::type node_map = boost::get(boost::vertex_Node, graph);
     boost::property_map<graph_t, boost::vertex_comp_t>::type comp_map = boost::get(boost::vertex_comp, graph);
     boost::property_map<graph_t, boost::vertex_compsz_t>::type compsz_map = boost::get(boost::vertex_compsz, graph);
@@ -283,10 +283,11 @@ std::vector<SIZETYPE> construct_graph(graph_t &graph, boost::program_options::va
 
     for (std::string nodeinfo : vm["nodes"].as<std::vector<std::string>>())
     {
-        Node &node = node_map[boost::add_vertex(graph)];
+        boost::graph_traits<graph_t>::vertex_descriptor nd = boost::add_vertex(graph);
+        Node &node = node_map[nd];
         std::stringstream ss(nodeinfo);
         std::string is_root, is_target, v, u;
-        std::getline(std::getline(std::getline(std::getline(std::getline(ss, node.name, ','), is_root, ','), is_target, ','), v, ','), u, ',');
+        std::getline(std::getline(std::getline(std::getline(std::getline(ss, node_name_map[nd], ','), is_root, ','), is_target, ','), v, ','), u, ',');
         node.is_root = std::stoi(is_root);
         node.is_target = std::stoi(is_target);
         try{node.ve = std::stod(v);}catch(...){node.ve = 0.0;}
@@ -311,9 +312,9 @@ std::vector<SIZETYPE> construct_graph(graph_t &graph, boost::program_options::va
         bool inserted = false;
         for (boost::graph_traits<graph_t>::vertex_descriptor nd = 0, td = boost::num_vertices(graph), hd = boost::num_vertices(graph); nd < boost::num_vertices(graph); ++nd)
         {
-            if (td == boost::num_vertices(graph) && node_map[nd].name == tail)
+            if (td == boost::num_vertices(graph) && node_name_map[nd] == tail)
                 td = nd;
-            if (hd == boost::num_vertices(graph) && node_map[nd].name == head)
+            if (hd == boost::num_vertices(graph) && node_name_map[nd] == head)
                 hd = nd;
             if (td != boost::num_vertices(graph) && hd != boost::num_vertices(graph))
             {
@@ -379,14 +380,15 @@ int draw(graph_t &graph, std::map<std::string, std::pair<std::unique_ptr<NUCTYPE
     fout << "digraph align_graph\n{\n";
     fout << "\tnode[shape=circle]\n";
 
+    boost::property_map<graph_t, boost::vertex_name_t>::type node_name_map = boost::get(boost::vertex_name, graph);
     boost::property_map<graph_t, boost::vertex_Node_t>::type node_map = boost::get(boost::vertex_Node, graph);
-    for (boost::graph_traits<graph_t>::vertex_descriptor n = 0; n < boost::num_vertices(graph); ++n)
+    for (boost::graph_traits<graph_t>::vertex_descriptor nd = 0; nd < boost::num_vertices(graph); ++nd)
     {
-        Node &node = node_map[n];
+        Node &node = node_map[nd];
         if (node.is_root)
-            fout << '\t' << node.name << "[shape=square]\n";
+            fout << '\t' << node_name_map[nd] << "[shape=square]\n";
         else if (node.is_target)
-            fout << '\t' << node.name << "[shape=diamond]\n";
+            fout << '\t' << node_name_map[nd] << "[shape=diamond]\n";
     }
     
     boost::property_map<graph_t, boost::edge_name_t>::type edge_name_map = boost::get(boost::edge_name, graph);
@@ -395,7 +397,7 @@ int draw(graph_t &graph, std::map<std::string, std::pair<std::unique_ptr<NUCTYPE
     for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
     {
         boost::graph_traits<graph_t>::vertex_descriptor td = boost::source(*ei, graph), hd = boost::target(*ei, graph); 
-        fout << '\t' << node_map[td].name << "->" << node_map[hd].name;
+        fout << '\t' << node_name_map[td] << "->" << node_name_map[hd];
         if (file2short.count(edge_name_map[*ei]))
         {
             if (comp_map[hd] != comp_map[td])
