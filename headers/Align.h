@@ -410,11 +410,9 @@ struct Align
     void CrossIteration(boost::graph_traits<graph_t>::edge_iterator ei)
     {
         Edge &edge = edge_map[*ei];
-        NUCTYPE *ref = file2short[edge_name_map[*ei]].first.get();
-        SHORTSIZE ref_sz = file2short[edge_name_map[*ei]].second;
         SCORETYPE *Avals = node_map[boost::source(*ei, graph)].Avals[compsz_map[boost::source(*ei, graph)] - 1];
         SCORETYPE **Evals = edge.Evals, **Fvals = edge.Fvals, **Gvals = edge.Gvals;
-        for (SIZETYPE s = 0; s <= ref_sz; ++s)
+        for (SIZETYPE s = 0; s <= file2short[edge_name_map[*ei]].second; ++s)
             for (SIZETYPE w = 0; w <= O.size(); ++w)
             {
                 if (w == 0)
@@ -429,7 +427,10 @@ struct Align
                 
                 Gvals[s][w] = std::max({Evals[s][w], Fvals[s][w], Avals[w] + edge.gfpT[s]});
                 if (s > 0 && w > 0)
+                {
+                    NUCTYPE *ref = file2short[edge_name_map[*ei]].first.get();
                     Gvals[s][w] = std::max(Gvals[s][w], Gvals[s - 1][w - 1] + edge.gamma[ref[s - 1]][O[w - 1]]);
+                }
 
                 Node &head = node_map[boost::target(*ei, graph)];
                 if (Gvals[s][w] >= head.Avals[0][w])
@@ -451,28 +452,22 @@ struct Align
         std::vector<SCORETYPE *> sources;
         if (M < edge.Fvals[0] - vals.get())
         {
-            if (swn.w > 0)
-            {
-                if (vals[M] == edge.Evals[swn.s][swn.w - 1] + edge.ue)
-                    sources.push_back(&edge.Evals[swn.s][swn.w - 1]);
-                if (vals[M] == edge.Gvals[swn.s][swn.w - 1] + edge.ve)
-                    sources.push_back(&edge.Gvals[swn.s][swn.w - 1]);
-            }
+            if (vals[M] == edge.Evals[swn.s][swn.w - 1] + edge.ue)
+                sources.push_back(&edge.Evals[swn.s][swn.w - 1]);
+            if (vals[M] == edge.Gvals[swn.s][swn.w - 1] + edge.ve)
+                sources.push_back(&edge.Gvals[swn.s][swn.w - 1]);
             return sources;
         }
         if (M < edge.Gvals[0] - vals.get())
         {
-            if (swn.s > 0)
-            {
-                if (vals[M] == edge.Fvals[swn.s - 1][swn.w] + edge.uf)
-                    sources.push_back(&edge.Fvals[swn.s - 1][swn.w]);
-                if (vals[M] == edge.Gvals[swn.s - 1][swn.w] + edge.vf)
-                    sources.push_back(&edge.Gvals[swn.s - 1][swn.w]);
-            }
+            if (vals[M] == edge.Fvals[swn.s - 1][swn.w] + edge.uf)
+                sources.push_back(&edge.Fvals[swn.s - 1][swn.w]);
+            if (vals[M] == edge.Gvals[swn.s - 1][swn.w] + edge.vf)
+                sources.push_back(&edge.Gvals[swn.s - 1][swn.w]);
             return sources;
         }
-        NUCTYPE *ref = file2short[edge_name_map[*ei]].first.get();
         SCORETYPE *Avals = node_map[boost::source(*ei, graph)].Avals[compsz_map[boost::source(*ei, graph)] - 1];
+        NUCTYPE *ref = file2short[edge_name_map[*ei]].first.get();
         if (vals[M] == edge.Evals[swn.s][swn.w])
             sources.push_back(&edge.Evals[swn.s][swn.w]);
         if (vals[M] == edge.Fvals[swn.s][swn.w])
@@ -633,83 +628,38 @@ struct Align
     void CircuitIteration(QUERYSIZE w, boost::graph_traits<graph_t>::edge_iterator ei)
     {
         Edge &edge = edge_map[*ei];
-        Node &head = node_map[boost::target(*ei, graph)], &tail = node_map[boost::source(*ei, graph)];
-        NUCTYPE *ref = file2short[edge_name_map[*ei]].first.get();
-        SHORTSIZE ref_sz = file2short[edge_name_map[*ei]].second;
-        SCORETYPE *Avals = tail.Avals[compsz_map[boost::source(*ei, graph)] - 1];
+        Node &head = node_map[boost::target(*ei, graph)];
+        SCORETYPE *Avals = node_map[boost::source(*ei, graph)].Avals[compsz_map[boost::source(*ei, graph)] - 1];
         SCORETYPE *Dvals = edge.Dvals;
         SCORETYPE **Evals = edge.Evals, **F0vals = edge.F0vals, **G0vals = edge.G0vals, **Gvals = edge.Gvals;
 
         if (w > 0)
             Dvals[w - 1] = Avals[w - 1] + edge.T;
 
-        for (SIZETYPE s = 0; s <= ref_sz; ++s)
+        for (SIZETYPE s = 0; s <= file2short[edge_name_map[*ei]].second; ++s)
         {
             if (w > 0)
             {
-                SCORETYPE scores[3] = {G0vals[s][w - 1], Dvals[w - 1] + edge.gf[s], -inf};
+                Gvals[s][w - 1] = std::max(G0vals[s][w - 1], Dvals[w - 1] + edge.gf[s]);
                 if (s > 0)
-                    scores[2] = Avals[w - 1] + edge.gfpT[s];
-                SIZETYPE M = &(Gvals[s][w - 1]) - vals.get();
-                vals[M] = scores[0];
-                bits[M] = 1;
-                for (SIZETYPE i = 1, bi = 2; i < 3; ++i, bi *= 2)
-                {
-                    if (scores[i] >= vals[M])
-                    {
-                        if (scores[i] > vals[M])
-                        {
-                            vals[M] = scores[i];
-                            bits[M] = 0;
-                        }
-                        bits[M] += bi;
-                    }
-                }
+                    Gvals[s][w - 1] = std::max(Gvals[s][w - 1], Avals[w - 1] + edge.gfpT[s]);
             }
 
-            SIZETYPE M = &Evals[s][w] - vals.get();
-            bits[M] = 0;
             if (w == 0)
-                vals[M] = -inf;
+                Evals[s][w] = -inf;
             else
-            {
-                vals[M] = std::max(Evals[s][w - 1] + edge.ue, Gvals[s][w - 1] + edge.ve);
-                if (vals[M] == Evals[s][w - 1] + edge.ue)
-                    bits[M] += 1;
-                if (vals[M] == Gvals[s][w - 1] + edge.ve)
-                    bits[M] += 2;
-            }
-                
-            M = &F0vals[s][w] - vals.get();
-            bits[M] = 0;
-            if (s == 0)
-                vals[M] = -inf;
-            else
-            {
-                vals[M] = std::max(F0vals[s - 1][w] + edge.uf, G0vals[s - 1][w] + edge.vf);
-                if (vals[M] == F0vals[s - 1][w] + edge.uf)
-                    bits[M] += 1;
-                if (vals[M] == G0vals[s - 1][w] + edge.vf)
-                    bits[M] += 2;
-            }
+                Evals[s][w] = std::max(Evals[s][w - 1] + edge.ue, Gvals[s][w - 1] + edge.ve);
 
-            SCORETYPE scores[3] = {Evals[s][w], F0vals[s][w], -inf};
+            if (s == 0)
+                F0vals[s][w] = -inf;
+            else
+                F0vals[s][w] = std::max(F0vals[s - 1][w] + edge.uf, G0vals[s - 1][w] + edge.vf);
+            
+            G0vals[s][w] = std::max(Evals[s][w], F0vals[s][w]);
             if (s > 0 && w > 0)
-                scores[2] = Gvals[s - 1][w - 1] + edge.gamma[ref[s - 1]][O[w - 1]];
-            M = &G0vals[s][w] - vals.get();
-            vals[M] = scores[0];
-            bits[M] = 1;
-            for (SIZETYPE i = 1, bi = 2; i < 3; ++i, bi *= 2)
             {
-                if (scores[i] >= vals[M])
-                {
-                    if (scores[i] > vals[M])
-                    {
-                        vals[M] = scores[i];
-                        bits[M] = 0;
-                    }
-                    bits[M] += bi;
-                }
+                NUCTYPE *ref = file2short[edge_name_map[*ei]].first.get();
+                G0vals[s][w] = std::max(G0vals[s][w], Gvals[s - 1][w - 1] + edge.gamma[ref[s - 1]][O[w - 1]]);
             }
 
             if (G0vals[s][w] >= head.Avals[0][w])
@@ -723,6 +673,54 @@ struct Align
                 head.AdeltaDot[w].emplace_back(&G0vals[s][w]);
             }
         }
+    }
+
+    std::vector<SCORETYPE *> CircuitTrack(boost::graph_traits<graph_t>::edge_iterator ei, SIZETYPE M, SWN &swn)
+    {
+        Edge &edge = edge_map[*ei];
+        
+        std::vector<SCORETYPE *> sources;
+        if (M < edge.Evals[0] - vals.get())
+        {
+            SCORETYPE *Avals = node_map[boost::source(*ei, graph)].Avals[compsz_map[boost::source(*ei, graph)] - 1];
+            sources.push_back(&Avals[swn.w]);
+            return sources;
+        }
+        if (M < edge.F0vals[0] - vals.get())
+        {
+            if (vals[M] == edge.Evals[swn.s][swn.w - 1] + edge.ue)
+                sources.push_back(&edge.Evals[swn.s][swn.w - 1]);
+            if (vals[M] == edge.Gvals[swn.s][swn.w - 1] + edge.ve)
+                sources.push_back(&edge.Gvals[swn.s][swn.w - 1]);
+            return sources;
+        }
+        if (M < edge.G0vals[0] - vals.get())
+        {
+            if (vals[M] == edge.F0vals[swn.s - 1][swn.w] + edge.uf)
+                sources.push_back(&edge.F0vals[swn.s - 1][swn.w]);
+            if (vals[M] == edge.G0vals[swn.s - 1][swn.w] + edge.vf)
+                sources.push_back(&edge.G0vals[swn.s - 1][swn.w]);
+            return sources;
+        }
+        if (M < edge.Gvals[0] - vals.get())
+        {
+            NUCTYPE *ref = file2short[edge_name_map[*ei]].first.get();
+            if (vals[M] == edge.Evals[swn.s][swn.w])
+                sources.push_back(&edge.Evals[swn.s][swn.w]);
+            if (vals[M] == edge.F0vals[swn.s][swn.w])
+                sources.push_back(&edge.F0vals[swn.s][swn.w]);
+            if (swn.s > 0 && swn.w > 0 && vals[M] == edge.Gvals[swn.s - 1][swn.w - 1] + edge.gamma[ref[swn.s - 1]][O[swn.w - 1]])
+                sources.push_back(&edge.Gvals[swn.s - 1][swn.w - 1]);
+            return sources;
+        }
+        SCORETYPE *Avals = node_map[boost::source(*ei, graph)].Avals[compsz_map[boost::source(*ei, graph)] - 1];
+        if (vals[M] == edge.G0vals[swn.s][swn.w])
+            sources.push_back(&edge.G0vals[swn.s][swn.w]);
+        if (vals[M] == edge.Dvals[swn.w] + edge.gf[swn.s])
+            sources.push_back(&edge.Dvals[swn.w]);
+        if (swn.s >0 && vals[M] == Avals[swn.w] + edge.gfpT[swn.s])
+            sources.push_back(&Avals[swn.w]);
+        return sources;
     }
 
     void CircuitIterationGlobal(QUERYSIZE w, boost::graph_traits<graph_t>::edge_iterator ei)
@@ -882,30 +880,9 @@ struct Align
             Edge &edge = edge_map[*eis[swn.n]];
             if (file2long.count(edge_name_map[*eis[swn.n]]))
                 return VALTYPE::LID0;
-            if (comp_map[boost::source(*eis[swn.n], graph)] == comp_map[boost::target(*eis[swn.n], graph)])
-            {
-                if (M < edge.Evals[0] - vals.get())
-                    return VALTYPE::SID;
-                if (M < edge.F0vals[0] - vals.get())
-                    return VALTYPE::SIE;
-                if (M < edge.G0vals[0] - vals.get())
-                    return VALTYPE::SIF0;
-                if (M < edge.Gvals[0] - vals.get())
-                    return VALTYPE::SIG0;
-                if (M < edge.D0vals[0] - vals.get())
-                    return VALTYPE::SIG;
-                if (M < edge.DXvals[0] - vals.get())
-                    return VALTYPE::SID0;
-                return VALTYPE::SIDX;
-            }
-            else
-            {
-                if (M < edge.Fvals[0] - vals.get())
-                    return VALTYPE::SOE;
-                if (M < edge.Gvals[0] - vals.get())
-                    return VALTYPE::SOF;
-                return VALTYPE::SOG;
-            }
+            if (M < edge.DXvals[0] - vals.get())
+                return VALTYPE::SID0;
+            return VALTYPE::SIDX;
         }
         if (swn.n % 2)
             return VALTYPE::NB;
@@ -1037,6 +1014,18 @@ struct Align
                             arrangesource(source, localqueue, id);
                         continue;
                     }
+                    else
+                    {
+                        Edge &edge = edge_map[*eis[swn.n]];
+                        if(M < edge.D0vals[0] - vals.get())
+                        {
+                            std::vector<SCORETYPE *> sources = CircuitTrack(eis[swn.n], M, swn);
+                            outputdot(M, swn, sources.size());
+                            for (SCORETYPE *source : sources)
+                                arrangesource(source, localqueue, id);
+                            continue;
+                        }
+                    }
                 }
                 Align::VALTYPE type = get_type(M, swn);
                 if (type == VALTYPE::NA && swn.s == 0)
@@ -1064,51 +1053,6 @@ struct Align
                     }
                     case VALTYPE::ABAR:
                         break;
-                    case VALTYPE::SID:
-                    {
-                        boost::graph_traits<graph_t>::vertex_descriptor td = boost::source(*eis[swn.n], graph);
-                        arrangesource(&(node_map[td].Avals[compsz_map[td] - 1][swn.w]), localqueue, id);
-                        break;
-                    }
-                    case VALTYPE::SIE:
-                    {
-                        if (bits[M] & 1)
-                            arrangesource(&vals[M-1], localqueue, id);
-                        if (bits[M] & 2)
-                            arrangesource(&(edge_map[*eis[swn.n]].Gvals[swn.s][swn.w - 1]), localqueue, id);
-                        break;
-                    }
-                    case VALTYPE::SIF0:
-                    {
-                        if (bits[M] & 1)
-                            arrangesource(&vals[M-Omax-1], localqueue, id);
-                        if (bits[M] & 2)
-                            arrangesource(&(edge_map[*eis[swn.n]].G0vals[swn.s - 1][swn.w]), localqueue, id);
-                        break;
-                    }
-                    case VALTYPE::SIG0:
-                    {
-                        if (bits[M] & uint8_t(1))
-                            arrangesource(&(edge_map[*eis[swn.n]].Evals[swn.s][swn.w]), localqueue, id);
-                        if (bits[M] & uint8_t(2))
-                            arrangesource(&(edge_map[*eis[swn.n]].F0vals[swn.s][swn.w]), localqueue, id);
-                        if (bits[M] & uint8_t(4))
-                            arrangesource(&(edge_map[*eis[swn.n]].Gvals[swn.s - 1][swn.w - 1]), localqueue, id);
-                        break;
-                    }
-                    case VALTYPE::SIG:
-                    {
-                        if (bits[M] & uint8_t(1))
-                            arrangesource(&(edge_map[*eis[swn.n]].G0vals[swn.s][swn.w]), localqueue, id);
-                        if (bits[M] & uint8_t(2))
-                            arrangesource(&(edge_map[*eis[swn.n]].Dvals[swn.w]), localqueue, id);
-                        if (bits[M] & uint8_t(4))
-                        {
-                            boost::graph_traits<graph_t>::vertex_descriptor td = boost::source(*eis[swn.n], graph);
-                            arrangesource(&(node_map[td].Avals[compsz_map[td] - 1][swn.w]), localqueue, id);
-                        }
-                        break;
-                    }
                     case VALTYPE::LID0: case VALTYPE::SID0:
                         arrangesource(&(node_map[boost::source(*eis[swn.n], graph)].Avals[swn.s][swn.w]), localqueue, id);
                         break;
