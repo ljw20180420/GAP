@@ -417,48 +417,19 @@ struct Align
         for (SIZETYPE s = 0; s <= ref_sz; ++s)
             for (SIZETYPE w = 0; w <= O.size(); ++w)
             {
-                SIZETYPE M = &Evals[s][w] - vals.get();
-                bits[M] = 0;
                 if (w == 0)
-                    vals[M] = -inf;
+                    Evals[s][w] = -inf;
                 else
-                {
-                    vals[M] = std::max(Evals[s][w - 1] + edge.ue, Gvals[s][w - 1] + edge.ve);
-                    if (vals[M] == Evals[s][w - 1] + edge.ue)
-                        bits[M] += 1;
-                    if (vals[M] == Gvals[s][w - 1] + edge.ve)
-                        bits[M] += 2;
-                }
+                    Evals[s][w] = std::max(Evals[s][w - 1] + edge.ue, Gvals[s][w - 1] + edge.ve);
 
-                M = &Fvals[s][w] - vals.get();
-                bits[M] = 0;
                 if (s == 0)
-                    vals[M] = -inf;
+                    Fvals[s][w] = -inf;
                 else
-                {
-                    vals[M] = std::max(Fvals[s - 1][w] + edge.uf, Gvals[s - 1][w] + edge.vf);
-                    if (vals[M] == Fvals[s - 1][w] + edge.uf)
-                        bits[M] += 1;
-                    if (vals[M] == Gvals[s - 1][w] + edge.vf)
-                        bits[M] += 2;
-                }
+                    Fvals[s][w] = std::max(Fvals[s - 1][w] + edge.uf, Gvals[s - 1][w] + edge.vf);
                 
-                SCORETYPE scores[4] = {Evals[s][w], Fvals[s][w], Avals[w] + edge.gfpT[s], -inf};
+                Gvals[s][w] = std::max({Evals[s][w], Fvals[s][w], Avals[w] + edge.gfpT[s]});
                 if (s > 0 && w > 0)
-                    scores[3] = Gvals[s - 1][w - 1] + edge.gamma[ref[s - 1]][O[w - 1]];
-                M = &Gvals[s][w] - vals.get();
-                vals[M] = scores[0];
-                bits[M] = 1;
-                for (SIZETYPE i = 1, bi = 2; i < 4; ++i, bi *= 2)
-                    if (scores[i] >= vals[M])
-                    {
-                        if (scores[i] > vals[M])
-                        {
-                            vals[M] = scores[i];
-                            bits[M] = 0;
-                        }
-                        bits[M] += bi;
-                    }
+                    Gvals[s][w] = std::max(Gvals[s][w], Gvals[s - 1][w - 1] + edge.gamma[ref[s - 1]][O[w - 1]]);
 
                 Node &head = node_map[boost::target(*ei, graph)];
                 if (Gvals[s][w] >= head.Avals[0][w])
@@ -1022,7 +993,6 @@ struct Align
 
     void GetMinimalGraph()
     {
-        memset(visits.get(), 0, tnn);
         boost::graph_traits<graph_t>::edge_iterator ei, ei_end;
         for (boost::tie(ei, ei_end) = boost::edges(graph); ei != ei_end; ++ei)
         {
@@ -1056,18 +1026,18 @@ struct Align
                 SIZETYPE M = localqueue.front();
                 localqueue.pop();
                 SWN swn = get_swn(M);
-                // if (swn.n >=0 && file2short.count(edge_name_map[*eis[swn.n]]))
-                // {
-                //     boost::graph_traits<graph_t>::vertex_descriptor hd = boost::target(*eis[swn.n], graph), td = boost::source(*eis[swn.n], graph);
-                //     if (comp_map[hd] != comp_map[td])
-                //     {
-                //         std::vector<SCORETYPE *> sources = CrossTrack(eis[swn.n], M, swn);
-                //         outputdot(M, swn, sources.size());
-                //         for (SCORETYPE *source : sources)
-                //             arrangesource(source, localqueue, id);
-                //         continue;
-                //     }
-                // }
+                if (swn.n >=0 && file2short.count(edge_name_map[*eis[swn.n]]))
+                {
+                    boost::graph_traits<graph_t>::vertex_descriptor hd = boost::target(*eis[swn.n], graph), td = boost::source(*eis[swn.n], graph);
+                    if (comp_map[hd] != comp_map[td])
+                    {
+                        std::vector<SCORETYPE *> sources = CrossTrack(eis[swn.n], M, swn);
+                        outputdot(M, swn, sources.size());
+                        for (SCORETYPE *source : sources)
+                            arrangesource(source, localqueue, id);
+                        continue;
+                    }
+                }
                 Align::VALTYPE type = get_type(M, swn);
                 if (type == VALTYPE::NA && swn.s == 0)
                     GlobalTrack(M, swn, type, globalqueue, localqueue, valuequeue, id, dot_sources);
@@ -1094,37 +1064,6 @@ struct Align
                     }
                     case VALTYPE::ABAR:
                         break;
-                    case VALTYPE::SOE:
-                    {
-                        if (bits[M] & 1)
-                            arrangesource(&vals[M-1], localqueue, id);
-                        if (bits[M] & 2)
-                            arrangesource(&(edge_map[*eis[swn.n]].Gvals[swn.s][swn.w - 1]), localqueue, id);
-                        break;
-                    }
-                    case VALTYPE::SOF:
-                    {
-                        if (bits[M] & 1)
-                            arrangesource(&vals[M-Omax-1], localqueue, id);
-                        if (bits[M] & 2)
-                            arrangesource(&(edge_map[*eis[swn.n]].Gvals[swn.s - 1][swn.w]), localqueue, id);
-                        break;
-                    }
-                    case VALTYPE::SOG:
-                    {
-                        if (bits[M] & 1)
-                            arrangesource(&(edge_map[*eis[swn.n]].Evals[swn.s][swn.w]), localqueue, id);
-                        if (bits[M] & 2)
-                            arrangesource(&(edge_map[*eis[swn.n]].Fvals[swn.s][swn.w]), localqueue, id);
-                        if (bits[M] & 4)
-                        {
-                            boost::graph_traits<graph_t>::vertex_descriptor td = boost::source(*eis[swn.n], graph);
-                            arrangesource(&(node_map[td].Avals[compsz_map[td] - 1][swn.w]), localqueue, id);
-                        }
-                        if (bits[M] & 8)
-                            arrangesource(&vals[M-Omax-2], localqueue, id);
-                        break;
-                    }
                     case VALTYPE::SID:
                     {
                         boost::graph_traits<graph_t>::vertex_descriptor td = boost::source(*eis[swn.n], graph);
@@ -1253,6 +1192,7 @@ struct Align
                 node_map[nd].AdeltaDot[w].clear();
                 node_map[nd].AdeltaGlobal[w].clear();
             }
+        memset(visits.get(), 0, tnn);
     }
 
     void GlobalTrack(SIZETYPE M, SWN &swn, Align::VALTYPE type, std::queue<Dot *> &globalqueue, std::queue<SIZETYPE> &localqueue, std::queue<SCORETYPE> &valuequeue, IDTYPE &id, std::deque<Dot *> &dot_sources)
